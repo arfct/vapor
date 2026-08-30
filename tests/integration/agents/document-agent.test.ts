@@ -816,6 +816,18 @@ describe("DocumentAgent", () => {
       expect("blocks" in r && r.blocks[0].anchor).toMatch(/^b0-[0-9a-f]{8}$/);
     });
 
+    it("exportMarkdown returns the document's markdown with no token", async () => {
+      const { agent } = await setup();
+      const r = await agent.exportMarkdown();
+      expect(r).toEqual({ markdown: "# Title\n\nBody." });
+    });
+
+    it("exportMarkdown errors doc_not_found for a document never created", async () => {
+      const agent = makeAgent();
+      const r = await agent.exportMarkdown();
+      expect(r).toMatchObject({ error: { code: "doc_not_found" } });
+    });
+
     it("denies write without capability, allows with it", async () => {
       const { agent, token } = await setup();                       // default: no write
       const denied = await agent.agentInsert(token, { where: "append", markdown: "More." });

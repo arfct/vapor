@@ -816,6 +816,23 @@ class DocumentAgent extends Agent {
   }
 
   /**
+   * Returns the document's full markdown, with no token required — docs are
+   * public by URL, and this backs the public `GET /:id.md` raw export route
+   * (workers/routes.ts) as well as any future read-only surface that wants
+   * plain markdown without the anchors/presence/threads agentRead returns.
+   */
+  async exportMarkdown(): Promise<{ markdown: string } | { error: AgentError }> {
+    this.ensureInitialised();
+
+    if (!this.docExists()) {
+      return { error: { code: "doc_not_found", message: "Document does not exist" } };
+    }
+
+    const { doc } = this.ensureInitialised();
+    return { markdown: yDocToMarkdown(doc) };
+  }
+
+  /**
    * Inserts markdown as new blocks. `where: "append"` needs no anchor;
    * otherwise the anchor is resolved and the blocks are inserted directly
    * before or after it. Requires `write`.

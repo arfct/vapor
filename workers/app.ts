@@ -1,7 +1,8 @@
 import { createRequestHandler, RouterContextProvider } from "react-router";
-import { routeAgentRequest } from "agents";
+import { routeAgentRequest, getAgentByName } from "agents";
 import { cloudflareContext } from "../app/lib/cloudflare.server";
 import { VaporMcp, type VaporMcpProps } from "../agents/mcp";
+import { handleRawMarkdown, handleMcpHelp, type MarkdownStub } from "./routes";
 
 export { default as DocumentAgent } from "../agents/document";
 export { VaporMcp };
@@ -16,6 +17,25 @@ const mcpHandler = VaporMcp.serve("/mcp", { binding: "VaporMcp" });
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    // A browser landing on /mcp (Accept: text/html) gets a how-to-connect
+    // page instead of a protocol error. MCP clients send an
+    // application/json-flavoured Accept and never match this, so they fall
+    // through to VaporMcp.serve below. Must run before that branch.
+    const helpResponse = handleMcpHelp(request);
+    if (helpResponse) {
+      return helpResponse;
+    }
+
+    // GET /:id.md serves a document's raw markdown, public by URL like the
+    // rest of vapor. Falls through (null) for anything that isn't that
+    // shape, so it must run before routeAgentRequest/React Router.
+    const markdownResponse = await handleRawMarkdown(request, (id) =>
+      getAgentByName(env.DocumentAgent, id) as unknown as Promise<MarkdownStub>,
+    );
+    if (markdownResponse) {
+      return markdownResponse;
+    }
 
     // The MCP server lives at /mcp (streamable HTTP). The bearer token rides
     // along as props so the VaporMcp DO can pass it to DocumentAgent RPCs.

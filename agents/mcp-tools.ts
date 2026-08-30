@@ -8,7 +8,7 @@
  */
 import { z } from "zod";
 import { isValidDocumentId } from "../app/shared/constants";
-import type { AgentError, AgentRosterEntry } from "../app/shared/agent-protocol";
+import { slugifyAgentName, type AgentError, type AgentRosterEntry } from "../app/shared/agent-protocol";
 
 /** The subset of the DocumentAgent RPC surface the tools call. */
 export interface DocStub {
@@ -74,6 +74,21 @@ export function validateNewDocumentMarkdown(
     return errorResult("unsupported_markup", "content appears to be binary, not text");
   }
   return null;
+}
+
+/**
+ * The base agent name create_document mints its fresh token under, derived
+ * from the connecting MCP client's declared name — the same rule the
+ * anonymous tool path uses (agents/mcp-anonymous.ts) for the same reason:
+ * "agent" for every client made every doc's first collaborator look
+ * identical, with no way to tell which client created it. Since the
+ * document is brand new, there's no roster to collide with, so (unlike
+ * enrollAnonymousAgent) no retry-with-suffix loop is needed. Lives here
+ * (rather than inline in agents/mcp.ts, which can't be imported in plain
+ * Vitest) so the naming rule is unit-testable directly.
+ */
+export function createDocumentAgentName(clientName: string | undefined): string {
+  return slugifyAgentName(clientName ?? "agent");
 }
 
 const docId = z.string().describe("The 8-character document id (from its URL).");

@@ -47,7 +47,10 @@ const AGENT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
  * Upper bound on name-collision retries in enrollAnonymousAgent (base,
  * base-2, base-3, …). Comfortably above MAX_AGENTS_PER_DOC so a full roster
  * of same-named clients still gets a shot at every suffix before the cap
- * itself (not exhausted attempts) is what stops enrollment.
+ * itself (not exhausted attempts) is what stops enrollment. The `+ 8` is
+ * just headroom — a token or two may get revoked and re-minted with the
+ * same base name between attempts, so a margin past the cap avoids a
+ * spurious failure right at the boundary; it isn't tied to any other limit.
  */
 const MAX_ANONYMOUS_NAME_ATTEMPTS = MAX_AGENTS_PER_DOC + 8;
 

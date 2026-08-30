@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { TOOLS, validateNewDocumentMarkdown } from "../../../agents/mcp-tools";
+import { TOOLS, validateNewDocumentMarkdown, createDocumentAgentName } from "../../../agents/mcp-tools";
 
 const SPEC_TOOLS = [
   "read_document",
@@ -192,5 +192,18 @@ describe("validateNewDocumentMarkdown", () => {
     expect(validateNewDocumentMarkdown("text\0more")).toMatchObject({
       error: { code: "unsupported_markup", message: expect.stringContaining("binary") },
     });
+  });
+});
+
+describe("createDocumentAgentName", () => {
+  it("derives create_document's minted agent name from the client's declared name", () => {
+    expect(createDocumentAgentName("Claude Code")).toBe("claude-code");
+    expect(createDocumentAgentName("Second Session Client")).toBe("second-session-client");
+  });
+
+  it("falls back to agent when the client name is absent or unusable", () => {
+    expect(createDocumentAgentName(undefined)).toBe("agent");
+    expect(createDocumentAgentName("")).toBe("agent");
+    expect(createDocumentAgentName("!!!")).toBe("agent");
   });
 });

@@ -14,7 +14,12 @@ import { McpAgent } from "agents/mcp";
 import { getAgentByName } from "agents";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { TOOLS, validateNewDocumentMarkdown, type DocStub } from "./mcp-tools";
+import {
+  TOOLS,
+  validateNewDocumentMarkdown,
+  createDocumentAgentName,
+  type DocStub,
+} from "./mcp-tools";
 import { runAnonymousTool, type AnonymousAgentState } from "./mcp-anonymous";
 import { generateDocumentId } from "../app/shared/constants";
 import { slugifyAgentName } from "../app/shared/agent-protocol";
@@ -108,7 +113,11 @@ export class VaporMcp extends McpAgent<Env, AnonymousAgentState, VaporMcpProps> 
           });
         }
 
-        const minted = await stub.mintAgentToken({ name: "agent" });
+        // Same clientInfo-derived naming as the anonymous tool path, for the
+        // same reason: the doc is brand new, so there's no roster to
+        // collide with and no retry loop is needed.
+        const clientInfo = this.server.server.getClientVersion();
+        const minted = await stub.mintAgentToken({ name: createDocumentAgentName(clientInfo?.name) });
         if ("error" in minted) return jsonContent(minted);
 
         // create_document is tokenless for everyone, but an anonymous

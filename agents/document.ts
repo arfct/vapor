@@ -16,6 +16,8 @@ import {
 } from "../app/shared/agent-protocol";
 import { generateAgentToken, hashToken } from "../app/lib/agent-tokens";
 import { getBlocks, yDocToMarkdown, resolveAnchor, insertMarkdownBlocks, deleteBlocks } from "../app/lib/y-markdown";
+import { parseCriticMarkupToContent } from "../app/lib/critic-parser";
+import { chunkTyping } from "../app/lib/performance-chunks";
 import type { ThreadData } from "../app/shared/types";
 
 /**
@@ -25,6 +27,37 @@ import type { ThreadData } from "../app/shared/types";
  */
 function sqlBlob(data: Uint8Array): string {
   return data as unknown as string;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** The Yjs-application-only part of a mutation, shared by all three RPCs. */
+type MutationPayload =
+  | { kind: "insert"; anchor?: string; where: "before" | "after" | "append"; markdown: string }
+  | { kind: "replace"; from: string; to?: string; markdown: string }
+  | { kind: "suggest"; anchor: string; find: string; replacement: string };
+
+/**
+ * A mutation either being applied instantly or sitting in the performance
+ * queue. `id`/`agentName`/`pace` are meaningless for the instant path (it
+ * never touches the `performances` table) — only the queue runner and
+ * eviction recovery care about them.
+ */
+interface PendingMutation {
+  id: number;
+  agentName: string;
+  pace: Pace;
+  mutation: MutationPayload;
+}
+
+interface PerformanceRow {
+  id: number;
+  agent_name: string;
+  kind: string;
+  payload: string;
+  created_at: number;
 }
 
 interface AgentTokenRow {
@@ -60,6 +93,17 @@ class DocumentAgent extends Agent {
   private doc: Y.Doc | null = null;
   private awareness: awarenessProtocol.Awareness | null = null;
 
+  /** In-memory mirror of the `performances` table, drained by runPerformances(). */
+  private performanceQueue: PendingMutation[] = [];
+  private isPerforming = false;
+  /**
+   * Assigns queue-row ids for this instance's lifetime. Reset to 1 on every
+   * fresh instantiation, which is safe because ensureInitialised() always
+   * drains (and deletes) any leftover `performances` rows before any new
+   * mutation can be enqueued.
+   */
+  private nextPerformanceId = 1;
+
   private ensureInitialised(): { doc: Y.Doc; awareness: awarenessProtocol.Awareness } {
     if (this.doc && this.awareness) {
       return { doc: this.doc, awareness: this.awareness };
@@ -87,6 +131,15 @@ class DocumentAgent extends Agent {
         recent_mutations TEXT
       )
     `;
+    this.sql`
+      CREATE TABLE IF NOT EXISTS performances (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        agent_name TEXT,
+        kind TEXT,
+        payload TEXT,
+        created_at INTEGER
+      )
+    `;
 
     // Load persisted state
     const rows = this.sql<{ value: ArrayBuffer }>`
@@ -106,6 +159,19 @@ class DocumentAgent extends Agent {
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
       `;
     });
+
+    // Eviction recovery: any row still in `performances` means the DO was
+    // evicted mid-performance (or between enqueue and its turn). There's no
+    // one left mid-typing to watch it happen, so apply each leftover
+    // mutation instantly, in the order it was queued, and drop the row.
+    const leftover = this.sql<PerformanceRow>`
+      SELECT * FROM performances ORDER BY id ASC
+    `;
+    for (const row of leftover) {
+      const mutation = JSON.parse(row.payload) as MutationPayload;
+      this.applyMutation(mutation);
+      this.sql`DELETE FROM performances WHERE id = ${row.id}`;
+    }
 
     return { doc: this.doc, awareness: this.awareness };
   }
@@ -207,6 +273,10 @@ class DocumentAgent extends Agent {
     // must not stay valid against whatever content lands at this doc id
     // if it's recreated after expiry.
     this.sql`DELETE FROM agent_tokens`;
+    // Any queued performances belong to a document that no longer exists.
+    this.sql`DELETE FROM performances`;
+    this.performanceQueue = [];
+    this.isPerforming = false;
     // Close all active WebSocket connections
     for (const conn of this.getConnections()) {
       conn.close(1000, "Document expired");
@@ -529,29 +599,18 @@ class DocumentAgent extends Agent {
     const rateLimited = await this.checkRateLimit(token, args.markdown.length);
     if (rateLimited) return rateLimited;
 
-    const { doc } = this.ensureInitialised();
-
-    let index: number;
-    if (args.where === "append") {
-      index = getBlocks(doc).length;
-    } else {
-      if (!args.anchor) {
-        return {
-          error: { code: "stale_anchor", message: `An anchor is required for where: "${args.where}"` },
-        };
-      }
-      const resolved = resolveAnchor(doc, args.anchor);
-      if ("error" in resolved) {
-        return { error: { code: resolved.error, message: "Anchor not found", snippet: resolved.snippet } };
-      }
-      index = args.where === "before" ? resolved.index : resolved.index + 1;
+    if (args.where !== "append" && !args.anchor) {
+      return {
+        error: { code: "stale_anchor", message: `An anchor is required for where: "${args.where}"` },
+      };
     }
 
-    doc.transact(() => {
-      insertMarkdownBlocks(doc, index, args.markdown);
+    return this.dispatchMutation(verified.entry.name, args.pace, {
+      kind: "insert",
+      anchor: args.anchor,
+      where: args.where,
+      markdown: args.markdown,
     });
-
-    return { ok: true };
   }
 
   /**
@@ -568,40 +627,12 @@ class DocumentAgent extends Agent {
     const rateLimited = await this.checkRateLimit(token, args.markdown.length);
     if (rateLimited) return rateLimited;
 
-    const { doc } = this.ensureInitialised();
-
-    const fromResolved = resolveAnchor(doc, args.from);
-    if ("error" in fromResolved) {
-      return { error: { code: fromResolved.error, message: "Anchor not found", snippet: fromResolved.snippet } };
-    }
-    const toResolved = resolveAnchor(doc, args.to ?? args.from);
-    if ("error" in toResolved) {
-      return { error: { code: toResolved.error, message: "Anchor not found", snippet: toResolved.snippet } };
-    }
-
-    const fromIndex = fromResolved.index;
-    const toIndex = toResolved.index;
-
-    if (toIndex < fromIndex) {
-      const snippet = getBlocks(doc)
-        .slice(0, 6)
-        .map((b) => `[b${b.index} ${b.hash}] ${b.text.slice(0, 60)}`)
-        .join("\n");
-      return {
-        error: {
-          code: "stale_anchor",
-          message: `Anchor range resolved out of order: "to" (block ${toIndex}) is before "from" (block ${fromIndex}). Re-read the document and retry with fresh anchors.`,
-          snippet,
-        },
-      };
-    }
-
-    doc.transact(() => {
-      deleteBlocks(doc, fromIndex, toIndex);
-      insertMarkdownBlocks(doc, fromIndex, args.markdown);
+    return this.dispatchMutation(verified.entry.name, args.pace, {
+      kind: "replace",
+      from: args.from,
+      to: args.to,
+      markdown: args.markdown,
     });
-
-    return { ok: true };
   }
 
   /**
@@ -621,38 +652,330 @@ class DocumentAgent extends Agent {
     const rateLimited = await this.checkRateLimit(token, args.find.length + args.replacement.length);
     if (rateLimited) return rateLimited;
 
+    return this.dispatchMutation(verified.entry.name, args.pace, {
+      kind: "suggest",
+      anchor: args.anchor,
+      find: args.find,
+      replacement: args.replacement,
+    });
+  }
+
+  /**
+   * Decides whether a mutation is applied synchronously or handed to the
+   * performance queue. `pace: "instant"` (the default, for backward
+   * compatibility with callers that don't pass `pace` at all) or the
+   * absence of any connected human always applies immediately — there's no
+   * one to watch it type. Otherwise the mutation is persisted to
+   * `performances` and the queue runner picks it up.
+   */
+  private dispatchMutation(
+    agentName: string,
+    pace: Pace | undefined,
+    mutation: MutationPayload,
+  ): { ok: true } | { error: AgentError } {
+    const effectivePace = pace ?? "instant";
+    if (effectivePace !== "instant" && this.hasHumanConnections()) {
+      return this.enqueuePerformance(agentName, effectivePace, mutation);
+    }
+    return this.applyMutation(mutation);
+  }
+
+  /** Whether any (human) WebSocket client is currently connected. */
+  private hasHumanConnections(): boolean {
+    for (const _conn of this.getConnections()) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Persists a mutation to the `performances` table and appends it to the
+   * in-memory queue, kicking off the runner if it isn't already draining
+   * the queue. Anchors are stored verbatim (not resolved to indices) so
+   * they can be re-checked for staleness at dequeue time.
+   */
+  private enqueuePerformance(
+    agentName: string,
+    pace: "natural" | "fast",
+    mutation: MutationPayload,
+  ): { ok: true } {
+    const id = this.nextPerformanceId++;
+    this.sql`
+      INSERT INTO performances (id, agent_name, kind, payload, created_at)
+      VALUES (${id}, ${agentName}, ${mutation.kind}, ${JSON.stringify(mutation)}, ${Date.now()})
+    `;
+    this.performanceQueue.push({ id, agentName, pace, mutation });
+
+    if (!this.isPerforming) {
+      void this.runPerformances();
+    }
+
+    return { ok: true };
+  }
+
+  /**
+   * Drains the performance queue one mutation at a time, in FIFO order,
+   * removing each row from `performances` once it's fully applied (or
+   * dropped as stale). Runs for as long as the DO stays live; if it's
+   * evicted mid-queue, ensureInitialised()'s recovery step picks up
+   * whatever rows are left on the next wake-up.
+   */
+  private async runPerformances(): Promise<void> {
+    this.isPerforming = true;
+    while (this.performanceQueue.length > 0) {
+      const item = this.performanceQueue[0];
+      await this.performQueuedMutation(item);
+      this.sql`DELETE FROM performances WHERE id = ${item.id}`;
+      this.performanceQueue.shift();
+    }
+    this.isPerforming = false;
+  }
+
+  /**
+   * Applies one queued mutation. `replace` has no meaningful "typing"
+   * animation (it's a delete-and-insert), so it applies atomically as soon
+   * as it's dequeued. `insert` and `suggest` type their new text out via
+   * chunkTyping ticks so connected humans see it appear incrementally.
+   */
+  private async performQueuedMutation(item: PendingMutation): Promise<void> {
+    const pace: "natural" | "fast" = item.pace === "fast" ? "fast" : "natural";
+
+    if (item.mutation.kind === "replace") {
+      this.applyMutation(item.mutation);
+      return;
+    }
+    if (item.mutation.kind === "insert") {
+      await this.performTypedInsert(item.mutation, pace, item.agentName);
+      return;
+    }
+    await this.performTypedSuggest(item.mutation, pace, item.agentName);
+  }
+
+  /**
+   * Types a single-paragraph insert out chunk by chunk. Anchor resolution
+   * happens here (dequeue time), not when the mutation was enqueued, so a
+   * stale anchor is simply dropped — nothing is applied, and the caller
+   * (runPerformances) still deletes the row.
+   *
+   * Multi-paragraph markdown applies as one shot once it's this mutation's
+   * turn — only the single-paragraph case gets the typing effect. No doc
+   * mutation happens before the first tick's delay elapses, so a DO
+   * eviction before that point leaves nothing for eviction recovery to
+   * collide with.
+   */
+  private async performTypedInsert(
+    mutation: Extract<MutationPayload, { kind: "insert" }>,
+    pace: "natural" | "fast",
+    agentName: string,
+  ): Promise<void> {
     const { doc } = this.ensureInitialised();
 
-    const resolved = resolveAnchor(doc, args.anchor);
-    if ("error" in resolved) {
-      return { error: { code: resolved.error, message: "Anchor not found", snippet: resolved.snippet } };
+    let index: number;
+    if (mutation.where === "append") {
+      index = getBlocks(doc).length;
+    } else {
+      if (!mutation.anchor) return;
+      const resolved = resolveAnchor(doc, mutation.anchor);
+      if ("error" in resolved) return;
+      index = mutation.where === "before" ? resolved.index : resolved.index + 1;
     }
+
+    if (mutation.markdown.includes("\n")) {
+      doc.transact(() => insertMarkdownBlocks(doc, index, mutation.markdown));
+      return;
+    }
+
+    const { cleanText, marks } = parseCriticMarkupToContent(mutation.markdown);
+    const ticks = chunkTyping(cleanText, pace);
+
+    const el = new Y.XmlElement("paragraph");
+    const ytext = new Y.XmlText("");
+    el.insert(0, [ytext]);
+
+    let typed = 0;
+    let inserted = false;
+    for (const tick of ticks) {
+      await sleep(tick.delayMs);
+      if (!inserted) {
+        doc.transact(() => doc.getXmlFragment("default").insert(index, [el]));
+        inserted = true;
+      }
+      doc.transact(() => ytext.insert(typed, tick.chunk));
+      typed += tick.chunk.length;
+      this.onPerformanceCursor(agentName, index);
+    }
+
+    if (!inserted) {
+      // Empty text (e.g. a blank line) — nothing to type; insert the
+      // (empty) paragraph so the block structure still matches.
+      doc.transact(() => doc.getXmlFragment("default").insert(index, [el]));
+    } else if (marks.length > 0) {
+      doc.transact(() => {
+        for (const mark of marks) {
+          ytext.format(mark.from, mark.to - mark.from, { [mark.type]: mark.attrs ?? {} });
+        }
+      });
+    }
+  }
+
+  /**
+   * Types a suggestion's replacement text out chunk by chunk. The `find`
+   * text is marked as a critic deletion only once the first tick fires —
+   * mirroring performTypedInsert, so nothing is touched before that point
+   * and eviction recovery can safely re-run the whole mutation from
+   * scratch.
+   */
+  private async performTypedSuggest(
+    mutation: Extract<MutationPayload, { kind: "suggest" }>,
+    pace: "natural" | "fast",
+    agentName: string,
+  ): Promise<void> {
+    const { doc } = this.ensureInitialised();
+
+    const resolved = resolveAnchor(doc, mutation.anchor);
+    if ("error" in resolved) return;
 
     const frag = doc.getXmlFragment("default");
     const el = frag.get(resolved.index);
     const ytext = el instanceof Y.XmlElement
       ? el.toArray().find((child): child is Y.XmlText => child instanceof Y.XmlText)
       : undefined;
-
-    const block = getBlocks(doc)[resolved.index];
-    if (!ytext) {
-      return { error: { code: "find_not_matched", message: "Block has no text", snippet: block?.text ?? "" } };
-    }
+    if (!ytext) return;
 
     const cleanText = (ytext.toDelta() as { insert: string }[]).map((op) => op.insert).join("");
-    const pos = cleanText.indexOf(args.find);
-    if (pos === -1) {
-      return {
-        error: { code: "find_not_matched", message: "Could not find text to suggest a change on", snippet: block.text },
-      };
+    const pos = cleanText.indexOf(mutation.find);
+    if (pos === -1) return;
+
+    const ticks = chunkTyping(mutation.replacement, pace);
+    let typed = 0;
+    let marked = false;
+    for (const tick of ticks) {
+      await sleep(tick.delayMs);
+      if (!marked) {
+        doc.transact(() => ytext.format(pos, mutation.find.length, { criticDeletion: {} }));
+        marked = true;
+      }
+      doc.transact(() => ytext.insert(pos + mutation.find.length + typed, tick.chunk, { criticAddition: {} }));
+      typed += tick.chunk.length;
+      this.onPerformanceCursor(agentName, resolved.index);
     }
 
-    doc.transact(() => {
-      ytext.format(pos, args.find.length, { criticDeletion: {} });
-      ytext.insert(pos + args.find.length, args.replacement, { criticAddition: {} });
-    });
+    if (!marked) {
+      // Empty replacement — still lay down the deletion mark.
+      doc.transact(() => ytext.format(pos, mutation.find.length, { criticDeletion: {} }));
+    }
+  }
 
-    return { ok: true };
+  /**
+   * Moves the agent's cursor/awareness to a block during a performance.
+   * No-op until Task 7 wires this up to real awareness state.
+   */
+  private onPerformanceCursor(_agentName: string, _blockIndex: number): void {
+    // Intentionally empty — see Task 7.
+  }
+
+  /**
+   * Applies a mutation's Yjs change directly, synchronously, in one
+   * transaction. Shared by the instant path (pace "instant", or no humans
+   * connected), eviction recovery, and the queue runner's handling of
+   * `replace` mutations (which have no typing animation of their own).
+   */
+  private applyMutation(m: MutationPayload): { ok: true } | { error: AgentError } {
+    const { doc } = this.ensureInitialised();
+
+    switch (m.kind) {
+      case "insert": {
+        let index: number;
+        if (m.where === "append") {
+          index = getBlocks(doc).length;
+        } else {
+          if (!m.anchor) {
+            return {
+              error: { code: "stale_anchor", message: `An anchor is required for where: "${m.where}"` },
+            };
+          }
+          const resolved = resolveAnchor(doc, m.anchor);
+          if ("error" in resolved) {
+            return { error: { code: resolved.error, message: "Anchor not found", snippet: resolved.snippet } };
+          }
+          index = m.where === "before" ? resolved.index : resolved.index + 1;
+        }
+
+        doc.transact(() => {
+          insertMarkdownBlocks(doc, index, m.markdown);
+        });
+
+        return { ok: true };
+      }
+
+      case "replace": {
+        const fromResolved = resolveAnchor(doc, m.from);
+        if ("error" in fromResolved) {
+          return { error: { code: fromResolved.error, message: "Anchor not found", snippet: fromResolved.snippet } };
+        }
+        const toResolved = resolveAnchor(doc, m.to ?? m.from);
+        if ("error" in toResolved) {
+          return { error: { code: toResolved.error, message: "Anchor not found", snippet: toResolved.snippet } };
+        }
+
+        const fromIndex = fromResolved.index;
+        const toIndex = toResolved.index;
+
+        if (toIndex < fromIndex) {
+          const snippet = getBlocks(doc)
+            .slice(0, 6)
+            .map((b) => `[b${b.index} ${b.hash}] ${b.text.slice(0, 60)}`)
+            .join("\n");
+          return {
+            error: {
+              code: "stale_anchor",
+              message: `Anchor range resolved out of order: "to" (block ${toIndex}) is before "from" (block ${fromIndex}). Re-read the document and retry with fresh anchors.`,
+              snippet,
+            },
+          };
+        }
+
+        doc.transact(() => {
+          deleteBlocks(doc, fromIndex, toIndex);
+          insertMarkdownBlocks(doc, fromIndex, m.markdown);
+        });
+
+        return { ok: true };
+      }
+
+      case "suggest": {
+        const resolved = resolveAnchor(doc, m.anchor);
+        if ("error" in resolved) {
+          return { error: { code: resolved.error, message: "Anchor not found", snippet: resolved.snippet } };
+        }
+
+        const frag = doc.getXmlFragment("default");
+        const el = frag.get(resolved.index);
+        const ytext = el instanceof Y.XmlElement
+          ? el.toArray().find((child): child is Y.XmlText => child instanceof Y.XmlText)
+          : undefined;
+
+        const block = getBlocks(doc)[resolved.index];
+        if (!ytext) {
+          return { error: { code: "find_not_matched", message: "Block has no text", snippet: block?.text ?? "" } };
+        }
+
+        const cleanText = (ytext.toDelta() as { insert: string }[]).map((op) => op.insert).join("");
+        const pos = cleanText.indexOf(m.find);
+        if (pos === -1) {
+          return {
+            error: { code: "find_not_matched", message: "Could not find text to suggest a change on", snippet: block.text },
+          };
+        }
+
+        doc.transact(() => {
+          ytext.format(pos, m.find.length, { criticDeletion: {} });
+          ytext.insert(pos + m.find.length, m.replacement, { criticAddition: {} });
+        });
+
+        return { ok: true };
+      }
+    }
   }
 
   private broadcastBinary(message: WSMessage, excludeId: string) {

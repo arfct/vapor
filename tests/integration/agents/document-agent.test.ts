@@ -836,5 +836,126 @@ describe("DocumentAgent", () => {
       const after = await agent.agentRead(token);
       expect("markdown" in after && after.markdown).toBe(beforeMarkdown);
     });
+
+    /* ================================================================ */
+    /*  Performance engine (pacing)                                      */
+    /* ================================================================ */
+
+    describe("pacing", () => {
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it("applies instantly when there are no human connections, even at natural pace", async () => {
+        const { agent, token } = await setup(["write"]);
+        const result = await agent.agentInsert(token, {
+          where: "append",
+          markdown: "Typed live.",
+          pace: "natural",
+        });
+        expect(result).toEqual({ ok: true });
+
+        const read = await agent.agentRead(token);
+        expect("markdown" in read && read.markdown).toContain("Typed live.");
+      });
+
+      it("applies instantly regardless of pace when pace is 'instant'", async () => {
+        const { agent, token } = await setup(["write"]);
+        createConnection();
+        const result = await agent.agentInsert(token, {
+          where: "append",
+          markdown: "Pasted in.",
+          pace: "instant",
+        });
+        expect(result).toEqual({ ok: true });
+
+        const read = await agent.agentRead(token);
+        expect("markdown" in read && read.markdown).toContain("Pasted in.");
+      });
+
+      it("enqueues and types out a natural-pace insert while a human is connected", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const { agent, token } = await setup(["write"]);
+        createConnection();
+
+        const result = await agent.agentInsert(token, {
+          where: "append",
+          markdown: "Hi. Yo",
+          pace: "natural",
+        });
+        expect(result).toEqual({ ok: true });
+
+        // The first typing tick runs synchronously before agentInsert
+        // resolves, so some content is present — but not all of it yet.
+        const afterFirstTick = await agent.agentRead(token);
+        const partial = "markdown" in afterFirstTick ? afterFirstTick.markdown : "";
+        expect(partial).not.toContain("Hi. Yo");
+
+        await vi.runAllTimersAsync();
+
+        const after = await agent.agentRead(token);
+        expect("markdown" in after && after.markdown).toContain("Hi. Yo");
+      });
+
+      it("applies a leftover queued mutation instantly on restart (eviction recovery)", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const { agent, token } = await setup(["write"]);
+        createConnection();
+
+        await agent.agentInsert(token, {
+          where: "append",
+          markdown: "Recovered text.",
+          pace: "natural",
+        });
+
+        // The mutation is mid-flight: first chunk typed, remaining ticks
+        // still pending on the (fake) clock, row still persisted. Simulate
+        // a DO eviction + restart by constructing a fresh agent instance
+        // over the same underlying SQL store, without ever advancing time.
+        const agent2 = new DocumentAgent({} as never, {} as never);
+        const read = await agent2.agentRead(token);
+        expect("markdown" in read && read.markdown).toContain("Recovered text.");
+      });
+
+      it("drops a queued mutation whose anchor goes stale before its turn", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const { agent, token } = await setup(["write"]);
+        createConnection();
+
+        const before = await agent.agentRead(token);
+        const anchor0 = ("blocks" in before ? before.blocks : [])[0].anchor; // "# Title"
+
+        // Busy the runner with a slow natural-pace insert.
+        await agent.agentInsert(token, {
+          where: "append",
+          markdown: "Long enough text to take a few typing ticks.",
+          pace: "natural",
+        });
+
+        // Queue a replace behind it, targeting the still-fresh anchor0.
+        const queuedReplace = agent.agentReplace(token, {
+          from: anchor0,
+          markdown: "Replaced!",
+          pace: "natural",
+        });
+        expect(await queuedReplace).toEqual({ ok: true });
+
+        // An instant edit invalidates anchor0 before the queued replace
+        // gets its turn.
+        const instantEdit = await agent.agentReplace(token, {
+          from: anchor0,
+          markdown: "Changed first!",
+          pace: "instant",
+        });
+        expect(instantEdit).toEqual({ ok: true });
+
+        await vi.runAllTimersAsync();
+
+        const after = await agent.agentRead(token);
+        const markdown = "markdown" in after ? after.markdown : "";
+        expect(markdown).toContain("Changed first!");
+        expect(markdown).not.toContain("Replaced!");
+      });
+    });
   });
 });

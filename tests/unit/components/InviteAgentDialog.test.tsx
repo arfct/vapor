@@ -136,4 +136,78 @@ describe("InviteAgentDialog", () => {
     const parsedBody = JSON.parse(init.body as string);
     expect(parsedBody).toMatchObject({ intent: "mint", name: "muse" });
   });
+
+  it("exposes dialog role, aria-modal, and a labelled title", async () => {
+    global.fetch = mockFetchSequence([{ body: [] }]);
+
+    const { getByText, getByRole } = renderWithDocument(
+      createElement(InviteAgentDialog),
+    );
+
+    fireEvent.click(getByText("Invite agent"));
+
+    const dialog = await waitFor(() => getByRole("dialog"));
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+
+    const labelledBy = dialog.getAttribute("aria-labelledby");
+    expect(labelledBy).toBeTruthy();
+    const title = document.getElementById(labelledBy as string);
+    expect(title?.textContent).toBe("Invite agent");
+  });
+
+  it("focuses the name input on open", async () => {
+    global.fetch = mockFetchSequence([{ body: [] }]);
+
+    const { getByText, getByLabelText } = renderWithDocument(
+      createElement(InviteAgentDialog),
+    );
+
+    fireEvent.click(getByText("Invite agent"));
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(getByLabelText("Name"));
+    });
+  });
+
+  it("closes on Escape and returns focus to the invoking button", async () => {
+    global.fetch = mockFetchSequence([{ body: [] }]);
+
+    const { getByText, getByRole, queryByRole } = renderWithDocument(
+      createElement(InviteAgentDialog),
+    );
+
+    const trigger = getByText("Invite agent");
+    fireEvent.click(trigger);
+    await waitFor(() => getByRole("dialog"));
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(queryByRole("dialog")).toBeNull();
+    });
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("closes on a backdrop click but not on a click inside the panel", async () => {
+    global.fetch = mockFetchSequence([{ body: [] }, { body: [] }]);
+
+    const { getByText, getByRole, queryByRole } = renderWithDocument(
+      createElement(InviteAgentDialog),
+    );
+
+    fireEvent.click(getByText("Invite agent"));
+    const dialog = await waitFor(() => getByRole("dialog"));
+
+    // A click that starts inside the panel must not close it.
+    fireEvent.click(dialog);
+    expect(getByRole("dialog")).toBeTruthy();
+
+    // A click on the overlay itself (the panel's parent) closes it.
+    const overlay = dialog.parentElement as HTMLElement;
+    fireEvent.click(overlay);
+
+    await waitFor(() => {
+      expect(queryByRole("dialog")).toBeNull();
+    });
+  });
 });

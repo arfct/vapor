@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useId } from "react";
+import { useState, useEffect, useCallback, useId, useRef } from "react";
 import * as Switch from "@radix-ui/react-switch";
 import { useDocument } from "~/lib/DocumentContext";
 import {
@@ -78,6 +78,9 @@ export default function InviteAgentDialog() {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const nameInputId = useId();
   const ownerInputId = useId();
+  const titleId = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   const loadRoster = useCallback(async () => {
     const res = await fetch(`/${docId}/agents`);
@@ -90,7 +93,6 @@ export default function InviteAgentDialog() {
   // happens after the await, not synchronously in the effect body.
   useEffect(() => {
     if (!open) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadRoster();
   }, [open, loadRoster]);
 
@@ -99,11 +101,10 @@ export default function InviteAgentDialog() {
   useEffect(() => {
     if (!open || minted) return;
     const taken = new Set(roster.map((r) => r.name));
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setName((current) => (current ? current : pickUnusedName(taken)));
   }, [open, roster, minted]);
 
-  function handleOpen() {
+  const handleOpen = useCallback(() => {
     setMinted(null);
     setName("");
     setOwner("");
@@ -111,10 +112,40 @@ export default function InviteAgentDialog() {
     setCopiedField(null);
     setCapabilities(new Set(DEFAULT_CAPABILITIES));
     setOpen(true);
-  }
+  }, []);
 
-  function handleClose() {
+  const handleClose = useCallback(() => {
     setOpen(false);
+    // Return focus to the menu item that opened the dialog.
+    triggerRef.current?.focus();
+  }, []);
+
+  // Focuses the name input as soon as the dialog (in its default, unminted
+  // form) mounts, so keyboard users land somewhere useful instead of on the
+  // document body.
+  useEffect(() => {
+    if (!open || minted) return;
+    nameInputRef.current?.focus();
+    // Only on the open transition — refocusing on every keystroke re-render
+    // would fight the user.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Escape closes the dialog, same as the overlay-click / close-button paths.
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") handleClose();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, handleClose]);
+
+  // Closes only on a genuine backdrop click — a click that bubbles up from
+  // the panel itself has `e.target` set to the descendant it started on, not
+  // the overlay, so it's ignored here.
+  function handleOverlayClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (e.target === e.currentTarget) handleClose();
   }
 
   function toggleCapability(cap: AgentCapability) {
@@ -191,16 +222,27 @@ export default function InviteAgentDialog() {
   return (
     <>
       <button
+        ref={triggerRef}
         onClick={handleOpen}
         className="flex h-full cursor-pointer items-center gap-1 px-3 text-sm uppercase tracking-wider transition-colors hover:bg-border"
       >
         Invite agent
       </button>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto border border-border bg-paper p-6">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={handleOverlayClick}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            className="max-h-[85vh] w-full max-w-lg overflow-y-auto border border-border bg-paper p-6"
+          >
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-medium">Invite agent</h2>
+              <h2 id={titleId} className="text-lg font-medium">
+                Invite agent
+              </h2>
               <button
                 onClick={handleClose}
                 aria-label="Close"
@@ -218,6 +260,7 @@ export default function InviteAgentDialog() {
                   </label>
                   <input
                     id={nameInputId}
+                    ref={nameInputRef}
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full border border-border bg-paper px-3 py-1.5 font-mono text-sm outline-none focus:border-ink"

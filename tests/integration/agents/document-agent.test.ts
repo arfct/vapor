@@ -717,5 +717,17 @@ describe("DocumentAgent", () => {
       const roster = await agent.getAgentRoster();
       expect(roster[0].color).not.toBe(roster[1].color);
     });
+
+    it("clears the roster and invalidates tokens on doc expiry (alarm)", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+      const minted = await agent.mintAgentToken({ name: "scribe" });
+      const token = (minted as { token: string }).token;
+
+      await agent.alarm();
+
+      expect(await agent.getAgentRoster()).toEqual([]);
+      const v = await asVerifier(agent).verifyAgentToken(token);
+      expect(v).toMatchObject({ error: { code: "invalid_token" } });
+    });
   });
 });

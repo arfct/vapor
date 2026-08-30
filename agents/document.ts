@@ -186,6 +186,10 @@ class DocumentAgent extends Agent {
   override readonly alarm = async (): Promise<void> => {
     // Auto-delete: remove all document data
     this.sql`DELETE FROM doc_state`;
+    // Revoke every minted agent token along with the document — a token
+    // must not stay valid against whatever content lands at this doc id
+    // if it's recreated after expiry.
+    this.sql`DELETE FROM agent_tokens`;
     // Close all active WebSocket connections
     for (const conn of this.getConnections()) {
       conn.close(1000, "Document expired");

@@ -878,23 +878,40 @@ describe("DocumentAgent", () => {
         const { agent, token } = await setup(["write"]);
         createConnection();
 
+        // No punctuation, so no sentence pauses — keeps the timing math
+        // below simple. 78 chars.
+        const fullText = "abcdefghijklmnopqrstuvwxyz".repeat(3);
         const result = await agent.agentInsert(token, {
           where: "append",
-          markdown: "Hi. Yo",
+          markdown: fullText,
           pace: "natural",
         });
         expect(result).toEqual({ ok: true });
 
-        // The first typing tick runs synchronously before agentInsert
-        // resolves, so some content is present — but not all of it yet.
+        // The insert's slot (an empty paragraph) is claimed synchronously
+        // before agentInsert resolves, but nothing has been typed into it
+        // yet — the first character requires the first tick's delay to
+        // elapse.
+        const beforeAnyTick = await agent.agentRead(token);
+        const blocksBefore = "blocks" in beforeAnyTick ? beforeAnyTick.blocks : [];
+        expect(blocksBefore[3]?.text ?? "").toBe("");
+
+        // Advance past at least the first tick (minimum natural-pace delay
+        // is 30ms), but nowhere near enough for the fastest possible full
+        // typing (78 chars / 6 chars-per-tick max * 30ms-per-tick min =
+        // 390ms) — so this is genuinely partial, not a fluke of timing.
+        await vi.advanceTimersByTimeAsync(100);
+
         const afterFirstTick = await agent.agentRead(token);
-        const partial = "markdown" in afterFirstTick ? afterFirstTick.markdown : "";
-        expect(partial).not.toContain("Hi. Yo");
+        const partialBlock = ("blocks" in afterFirstTick ? afterFirstTick.blocks : [])[3];
+        const partialLength = partialBlock?.text.length ?? 0;
+        expect(partialLength).toBeGreaterThan(0);
+        expect(partialLength).toBeLessThan(fullText.length);
 
         await vi.runAllTimersAsync();
 
         const after = await agent.agentRead(token);
-        expect("markdown" in after && after.markdown).toContain("Hi. Yo");
+        expect("markdown" in after && after.markdown).toContain(fullText);
       });
 
       it("applies a leftover queued mutation instantly on restart (eviction recovery)", async () => {
@@ -902,19 +919,127 @@ describe("DocumentAgent", () => {
         const { agent, token } = await setup(["write"]);
         createConnection();
 
+        // Busy the runner with a slow first mutation so the second one's
+        // turn never comes — its row is claimed (and deleted) the instant
+        // its own typing starts, which happens synchronously as part of
+        // *this* call.
+        await agent.agentInsert(token, {
+          where: "append",
+          markdown: "abcdefghijklmnopqrstuvwxyz".repeat(3),
+          pace: "natural",
+        });
+
+        // This second mutation is still sitting behind the first in the
+        // queue, completely untouched — pre-first-write, so its row is
+        // still fully intact in `performances`.
         await agent.agentInsert(token, {
           where: "append",
           markdown: "Recovered text.",
           pace: "natural",
         });
 
-        // The mutation is mid-flight: first chunk typed, remaining ticks
-        // still pending on the (fake) clock, row still persisted. Simulate
-        // a DO eviction + restart by constructing a fresh agent instance
-        // over the same underlying SQL store, without ever advancing time.
+        // Simulate a DO eviction + restart by constructing a fresh agent
+        // instance over the same underlying SQL store, without ever
+        // advancing time (so the busy first mutation never finishes, and
+        // the second mutation's row is never touched by the runner).
         const agent2 = new DocumentAgent({} as never, {} as never);
         const read = await agent2.agentRead(token);
         expect("markdown" in read && read.markdown).toContain("Recovered text.");
+      });
+
+      it("keeps both texts present exactly once, in sane positions, despite a concurrent instant append", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const { agent, token } = await setup(["write"]);
+        createConnection();
+
+        const minted2 = await agent.mintAgentToken({ name: "bot2", capabilities: ["write"] });
+        const token2 = (minted2 as { token: string }).token;
+
+        // Starts typing "Slow typed line" at natural pace — claims its
+        // block slot synchronously, before any ticks fire.
+        const pacedResult = await agent.agentInsert(token, {
+          where: "append",
+          markdown: "Slow typed line",
+          pace: "natural",
+        });
+        expect(pacedResult).toEqual({ ok: true });
+
+        // A second agent's instant append lands while the first is still
+        // mid-typing.
+        const instantResult = await agent.agentInsert(token2, {
+          where: "append",
+          markdown: "Instant line",
+          pace: "instant",
+        });
+        expect(instantResult).toEqual({ ok: true });
+
+        await vi.runAllTimersAsync();
+
+        const after = await agent.agentRead(token);
+        const markdown = "markdown" in after ? after.markdown : "";
+        const blocks = "blocks" in after ? after.blocks : [];
+        const texts = blocks.map((b) => b.text);
+
+        expect(markdown.match(/Slow typed line/g)).toHaveLength(1);
+        expect(markdown.match(/Instant line/g)).toHaveLength(1);
+        // The typed insert claimed its slot first, so the instant append
+        // lands after it instead of clobbering/reordering it.
+        expect(texts.indexOf("Slow typed line")).toBeLessThan(texts.indexOf("Instant line"));
+      });
+
+      it("keeps an anchored typed insert on the correct side of its anchor despite a concurrent instant insert before it", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const { agent, token } = await setup(["write"]);
+        createConnection();
+
+        const minted2 = await agent.mintAgentToken({ name: "bot2", capabilities: ["write"] });
+        const token2 = (minted2 as { token: string }).token;
+
+        const before = await agent.agentRead(token);
+        const anchor0 = ("blocks" in before ? before.blocks : [])[0].anchor; // "# Title"
+
+        // Starts typing "Slow typed line" right after the title, at
+        // natural pace. This claims its slot (right after block 0)
+        // synchronously, before any ticks fire — the block index it
+        // resolved to is only valid up to that point.
+        const pacedResult = await agent.agentInsert(token, {
+          where: "after",
+          anchor: anchor0,
+          markdown: "Slow typed line",
+          pace: "natural",
+        });
+        expect(pacedResult).toEqual({ ok: true });
+
+        // A second agent inserts *before* the same anchor, instantly, while
+        // the first is still mid-typing. If the typed insert's write used
+        // its originally-resolved raw index instead of tracking the
+        // paragraph itself, this would land the typed text *before* the
+        // title it was supposed to follow.
+        const instantResult = await agent.agentInsert(token2, {
+          where: "before",
+          anchor: anchor0,
+          markdown: "Preamble",
+          pace: "instant",
+        });
+        expect(instantResult).toEqual({ ok: true });
+
+        await vi.runAllTimersAsync();
+
+        const after = await agent.agentRead(token);
+        const markdown = "markdown" in after ? after.markdown : "";
+        const blocks = "blocks" in after ? after.blocks : [];
+        const texts = blocks.map((b) => b.text);
+
+        expect(markdown.match(/Slow typed line/g)).toHaveLength(1);
+        expect(markdown.match(/Preamble/g)).toHaveLength(1);
+        const titleIndex = texts.indexOf("# Title");
+        const preambleIndex = texts.indexOf("Preamble");
+        const slowIndex = texts.indexOf("Slow typed line");
+        expect(preambleIndex).toBeLessThan(titleIndex);
+        // "Slow typed line" was requested as "after # Title" — it must
+        // stay after it even though "Preamble" was inserted before the
+        // title while it was still mid-flight.
+        expect(slowIndex).toBeGreaterThan(titleIndex);
       });
 
       it("drops a queued mutation whose anchor goes stale before its turn", async () => {

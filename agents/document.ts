@@ -160,10 +160,12 @@ class DocumentAgent extends Agent {
       `;
     });
 
-    // Eviction recovery: any row still in `performances` means the DO was
-    // evicted mid-performance (or between enqueue and its turn). There's no
-    // one left mid-typing to watch it happen, so apply each leftover
-    // mutation instantly, in the order it was queued, and drop the row.
+    // Eviction recovery: a row still in `performances` means the DO was
+    // evicted before that mutation ever touched the doc — the row is
+    // deleted the instant a performance's first write lands (see
+    // performTypedInsert/performTypedSuggest), so anything still here was
+    // never applied at all. Apply each leftover mutation instantly, in the
+    // order it was queued, and drop the row.
     const leftover = this.sql<PerformanceRow>`
       SELECT * FROM performances ORDER BY id ASC
     `;
@@ -714,21 +716,27 @@ class DocumentAgent extends Agent {
   }
 
   /**
-   * Drains the performance queue one mutation at a time, in FIFO order,
-   * removing each row from `performances` once it's fully applied (or
-   * dropped as stale). Runs for as long as the DO stays live; if it's
-   * evicted mid-queue, ensureInitialised()'s recovery step picks up
-   * whatever rows are left on the next wake-up.
+   * Drains the performance queue one mutation at a time, in FIFO order.
+   * Runs for as long as the DO stays live; if it's evicted mid-queue,
+   * ensureInitialised()'s recovery step picks up whatever rows are left on
+   * the next wake-up. Each performX method below is responsible for
+   * deleting its own `performances` row at the right moment — see
+   * performTypedInsert/performTypedSuggest for why that isn't simply "when
+   * this function returns".
    */
   private async runPerformances(): Promise<void> {
     this.isPerforming = true;
     while (this.performanceQueue.length > 0) {
       const item = this.performanceQueue[0];
       await this.performQueuedMutation(item);
-      this.sql`DELETE FROM performances WHERE id = ${item.id}`;
       this.performanceQueue.shift();
     }
     this.isPerforming = false;
+  }
+
+  /** Deletes a performance's row. Safe to call more than once (no-op the second time). */
+  private deletePerformanceRow(id: number): void {
+    this.sql`DELETE FROM performances WHERE id = ${id}`;
   }
 
   /**
@@ -742,74 +750,100 @@ class DocumentAgent extends Agent {
 
     if (item.mutation.kind === "replace") {
       this.applyMutation(item.mutation);
+      this.deletePerformanceRow(item.id);
       return;
     }
     if (item.mutation.kind === "insert") {
-      await this.performTypedInsert(item.mutation, pace, item.agentName);
+      await this.performTypedInsert(item, pace);
       return;
     }
-    await this.performTypedSuggest(item.mutation, pace, item.agentName);
+    await this.performTypedSuggest(item, pace);
   }
 
   /**
    * Types a single-paragraph insert out chunk by chunk. Anchor resolution
    * happens here (dequeue time), not when the mutation was enqueued, so a
-   * stale anchor is simply dropped — nothing is applied, and the caller
-   * (runPerformances) still deletes the row.
+   * stale anchor is simply dropped.
    *
    * Multi-paragraph markdown applies as one shot once it's this mutation's
-   * turn — only the single-paragraph case gets the typing effect. No doc
-   * mutation happens before the first tick's delay elapses, so a DO
-   * eviction before that point leaves nothing for eviction recovery to
-   * collide with.
+   * turn — only the single-paragraph case gets the typing effect.
+   *
+   * Concurrency: the target block index is only trustworthy up to the
+   * point we last touched the doc without yielding. So the empty
+   * paragraph is inserted at `index` *synchronously*, before the first
+   * `await sleep(...)` — claiming its slot before any concurrent instant
+   * mutation gets a chance to run and shift indices out from under us.
+   * From there on, characters are typed in via a Y.RelativePosition bound
+   * to that paragraph's text, which stays correct regardless of what else
+   * happens to the surrounding document structure; if the position can no
+   * longer be resolved (e.g. the paragraph itself was deleted by a
+   * concurrent edit), typing stops cleanly instead of writing into the
+   * wrong place.
+   *
+   * The `performances` row is deleted the moment the slot is claimed, not
+   * when typing finishes: from that instant, whatever's been typed is
+   * already part of the Yjs document and persisted the normal way (the
+   * doc_state update hook), so a DO eviction mid-typing loses only the
+   * as-yet-untyped tail rather than risking a duplicate re-application on
+   * recovery. An eviction *before* the slot is claimed leaves the row
+   * intact, and ensureInitialised() applies the whole mutation instantly.
    */
-  private async performTypedInsert(
-    mutation: Extract<MutationPayload, { kind: "insert" }>,
-    pace: "natural" | "fast",
-    agentName: string,
-  ): Promise<void> {
+  private async performTypedInsert(item: PendingMutation, pace: "natural" | "fast"): Promise<void> {
+    const mutation = item.mutation as Extract<MutationPayload, { kind: "insert" }>;
     const { doc } = this.ensureInitialised();
 
     let index: number;
     if (mutation.where === "append") {
       index = getBlocks(doc).length;
     } else {
-      if (!mutation.anchor) return;
+      if (!mutation.anchor) {
+        this.deletePerformanceRow(item.id);
+        return;
+      }
       const resolved = resolveAnchor(doc, mutation.anchor);
-      if ("error" in resolved) return;
+      if ("error" in resolved) {
+        this.deletePerformanceRow(item.id);
+        return;
+      }
       index = mutation.where === "before" ? resolved.index : resolved.index + 1;
     }
 
     if (mutation.markdown.includes("\n")) {
       doc.transact(() => insertMarkdownBlocks(doc, index, mutation.markdown));
+      this.deletePerformanceRow(item.id);
       return;
     }
 
     const { cleanText, marks } = parseCriticMarkupToContent(mutation.markdown);
     const ticks = chunkTyping(cleanText, pace);
 
+    // Claim the slot now, synchronously — see the doc comment above.
     const el = new Y.XmlElement("paragraph");
     const ytext = new Y.XmlText("");
     el.insert(0, [ytext]);
+    doc.transact(() => doc.getXmlFragment("default").insert(index, [el]));
+    this.deletePerformanceRow(item.id);
 
     let typed = 0;
-    let inserted = false;
+    let relPos = Y.createRelativePositionFromTypeIndex(ytext, 0);
     for (const tick of ticks) {
       await sleep(tick.delayMs);
-      if (!inserted) {
-        doc.transact(() => doc.getXmlFragment("default").insert(index, [el]));
-        inserted = true;
+      const { doc: liveDoc } = this.ensureInitialised();
+      const absPos = Y.createAbsolutePositionFromRelativePosition(relPos, liveDoc);
+      if (!absPos || absPos.type !== ytext) {
+        // The paragraph (or its text) is gone — nothing sane left to type into.
+        return;
       }
-      doc.transact(() => ytext.insert(typed, tick.chunk));
+      doc.transact(() => ytext.insert(absPos.index, tick.chunk));
       typed += tick.chunk.length;
-      this.onPerformanceCursor(agentName, index);
+      relPos = Y.createRelativePositionFromTypeIndex(ytext, absPos.index + tick.chunk.length);
+      this.onPerformanceCursor(item.agentName, index);
     }
 
-    if (!inserted) {
-      // Empty text (e.g. a blank line) — nothing to type; insert the
-      // (empty) paragraph so the block structure still matches.
-      doc.transact(() => doc.getXmlFragment("default").insert(index, [el]));
-    } else if (marks.length > 0) {
+    // Only apply the original CriticMarkup marks if the full text landed
+    // undisturbed — if typing was cut short above, mark offsets computed
+    // against the original text no longer mean anything.
+    if (marks.length > 0 && typed === cleanText.length) {
       doc.transact(() => {
         for (const mark of marks) {
           ytext.format(mark.from, mark.to - mark.from, { [mark.type]: mark.attrs ?? {} });
@@ -819,50 +853,63 @@ class DocumentAgent extends Agent {
   }
 
   /**
-   * Types a suggestion's replacement text out chunk by chunk. The `find`
-   * text is marked as a critic deletion only once the first tick fires —
-   * mirroring performTypedInsert, so nothing is touched before that point
-   * and eviction recovery can safely re-run the whole mutation from
-   * scratch.
+   * Types a suggestion's replacement text out chunk by chunk.
+   *
+   * `find`'s position is resolved and immediately (synchronously, no
+   * `await` in between) marked as a critic deletion — that's the "claim"
+   * moment, matching performTypedInsert, and it's what makes "re-verify
+   * `find` is still there before marking" automatic: nothing can run
+   * between resolving `pos` and writing the mark. The `performances` row
+   * is deleted at that same moment, for the same eviction-safety reason as
+   * performTypedInsert. The replacement text is then typed in via a
+   * Y.RelativePosition anchored just after the deleted `find` text, so a
+   * concurrent edit elsewhere can't make it land in the wrong place;
+   * typing stops cleanly if that position stops resolving.
    */
-  private async performTypedSuggest(
-    mutation: Extract<MutationPayload, { kind: "suggest" }>,
-    pace: "natural" | "fast",
-    agentName: string,
-  ): Promise<void> {
+  private async performTypedSuggest(item: PendingMutation, pace: "natural" | "fast"): Promise<void> {
+    const mutation = item.mutation as Extract<MutationPayload, { kind: "suggest" }>;
     const { doc } = this.ensureInitialised();
 
     const resolved = resolveAnchor(doc, mutation.anchor);
-    if ("error" in resolved) return;
+    if ("error" in resolved) {
+      this.deletePerformanceRow(item.id);
+      return;
+    }
 
     const frag = doc.getXmlFragment("default");
     const el = frag.get(resolved.index);
     const ytext = el instanceof Y.XmlElement
       ? el.toArray().find((child): child is Y.XmlText => child instanceof Y.XmlText)
       : undefined;
-    if (!ytext) return;
+    if (!ytext) {
+      this.deletePerformanceRow(item.id);
+      return;
+    }
 
     const cleanText = (ytext.toDelta() as { insert: string }[]).map((op) => op.insert).join("");
     const pos = cleanText.indexOf(mutation.find);
-    if (pos === -1) return;
-
-    const ticks = chunkTyping(mutation.replacement, pace);
-    let typed = 0;
-    let marked = false;
-    for (const tick of ticks) {
-      await sleep(tick.delayMs);
-      if (!marked) {
-        doc.transact(() => ytext.format(pos, mutation.find.length, { criticDeletion: {} }));
-        marked = true;
-      }
-      doc.transact(() => ytext.insert(pos + mutation.find.length + typed, tick.chunk, { criticAddition: {} }));
-      typed += tick.chunk.length;
-      this.onPerformanceCursor(agentName, resolved.index);
+    if (pos === -1) {
+      this.deletePerformanceRow(item.id);
+      return;
     }
 
-    if (!marked) {
-      // Empty replacement — still lay down the deletion mark.
-      doc.transact(() => ytext.format(pos, mutation.find.length, { criticDeletion: {} }));
+    // Claim the slot now, synchronously — see the doc comment above.
+    doc.transact(() => ytext.format(pos, mutation.find.length, { criticDeletion: {} }));
+    let relPos = Y.createRelativePositionFromTypeIndex(ytext, pos + mutation.find.length);
+    this.deletePerformanceRow(item.id);
+
+    const ticks = chunkTyping(mutation.replacement, pace);
+    for (const tick of ticks) {
+      await sleep(tick.delayMs);
+      const { doc: liveDoc } = this.ensureInitialised();
+      const absPos = Y.createAbsolutePositionFromRelativePosition(relPos, liveDoc);
+      if (!absPos || absPos.type !== ytext) {
+        // The block (or its text) is gone — nothing sane left to type into.
+        return;
+      }
+      doc.transact(() => ytext.insert(absPos.index, tick.chunk, { criticAddition: {} }));
+      relPos = Y.createRelativePositionFromTypeIndex(ytext, absPos.index + tick.chunk.length);
+      this.onPerformanceCursor(item.agentName, resolved.index);
     }
   }
 

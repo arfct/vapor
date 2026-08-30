@@ -145,6 +145,8 @@ class DocumentAgent extends Agent {
   private eventWaiters: (() => void)[] = [];
   /** Timestamp of the last "doc_changed" digest event, to cap it at one per 30s. */
   private lastDigestAt = 0;
+  /** Agent names already notified for a block's text node — see notifyMentions. */
+  private notifiedMentions = new WeakMap<Y.XmlText, Set<string>>();
 
   private ensureInitialised(): { doc: Y.Doc; awareness: awarenessProtocol.Awareness } {
     if (this.doc && this.awareness) {
@@ -245,25 +247,30 @@ class DocumentAgent extends Agent {
     frag.observeDeep((events, transaction) => {
       if (transaction.origin === "agent") return;
 
+      // No agents on the roster means nothing consumes events — not
+      // mentions, and not doc_changed digests either. Check first, so an
+      // agentless document accrues no `events` rows at all.
+      const rosterNames = this.getRosterNamesSync();
+      if (rosterNames.length === 0) return;
+
       const now = Date.now();
       if (now - this.lastDigestAt >= 30_000) {
         this.lastDigestAt = now;
         this.recordEvent("doc_changed", {});
       }
 
-      const rosterNames = this.getRosterNamesSync();
-      if (rosterNames.length === 0) return;
-
+      // Scan each touched block's *full* text, not the individual delta ops:
+      // a human typing "@scribe" delivers one op per keystroke, and no single
+      // character ever matches the mention pattern. Only pasting did.
+      const scanned = new Set<Y.XmlText>();
       for (const event of events) {
-        if (!(event.target instanceof Y.XmlText)) continue;
-        for (const op of event.changes.delta) {
-          if (typeof op.insert !== "string") continue;
-          const mentions = findMentions(op.insert, rosterNames);
-          for (const name of mentions) {
-            const text = this.findBlockTextForXmlText(event.target) ?? op.insert;
-            this.recordEvent("mention", { agent: name, text });
-          }
-        }
+        const target = event.target;
+        if (!(target instanceof Y.XmlText)) continue;
+        if (scanned.has(target)) continue;
+        scanned.add(target);
+        const text = this.findBlockTextForXmlText(target);
+        if (text === null) continue; // block already gone from the fragment
+        this.notifyMentions(target, text, rosterNames);
       }
     });
 
@@ -646,6 +653,39 @@ class DocumentAgent extends Agent {
   }
 
   /**
+   * Records a "mention" event for every roster agent named in a block's text
+   * that hasn't already been notified about this block.
+   *
+   * De-duplication is per (block text node, agent name), because the scan
+   * runs over the block's whole text on every keystroke in it — without this,
+   * "@scribe, could you..." would fire a fresh mention for every character
+   * typed after the name. A name is forgotten again as soon as it is no
+   * longer present in the block, so deleting the mention and retyping it
+   * notifies properly rather than being swallowed. The map is keyed weakly by
+   * the live Y.XmlText node, so it needs no explicit clearing: entries go
+   * away with the blocks (and with the whole document on expiry).
+   */
+  private notifyMentions(ytext: Y.XmlText, text: string, rosterNames: string[]): void {
+    const mentioned = new Set(findMentions(text, rosterNames));
+
+    let notified = this.notifiedMentions.get(ytext);
+    if (!notified) {
+      notified = new Set<string>();
+      this.notifiedMentions.set(ytext, notified);
+    }
+
+    for (const name of notified) {
+      if (!mentioned.has(name)) notified.delete(name);
+    }
+
+    for (const name of mentioned) {
+      if (notified.has(name)) continue;
+      notified.add(name);
+      this.recordEvent("mention", { agent: name, text });
+    }
+  }
+
+  /**
    * Inserts a row into `events` and wakes every agentAwaitEvents long-poll
    * currently parked with nothing to return — each re-queries past its own
    * cursor once woken, so no event data needs to travel through the
@@ -679,19 +719,46 @@ class DocumentAgent extends Agent {
     if ("error" in verified) return verified;
 
     const cursor = args.cursor ?? 0;
+    const self = verified.entry.name;
 
-    const readPast = (): { seq: number; type: DocEventType; payload: unknown }[] => {
+    /**
+     * Reads events past the cursor, keeping only those addressed to this
+     * agent. "mention" and "thread_reply" name their target agent in the
+     * payload and are nobody else's business; "doc_changed" is a broadcast
+     * digest and goes to everyone.
+     *
+     * `lastSeq` is the highest row *scanned*, not the highest returned, so an
+     * agent's cursor still advances past events filtered out for it — it
+     * never re-scans another agent's notifications.
+     */
+    const readPast = (): {
+      events: { seq: number; type: DocEventType; payload: unknown }[];
+      lastSeq: number;
+    } => {
       const rows = this.sql<EventRow>`
         SELECT * FROM events WHERE seq > ${cursor} ORDER BY seq ASC
       `;
-      return rows.map((r) => ({
-        seq: r.seq,
-        type: r.type as DocEventType,
-        payload: JSON.parse(r.payload) as unknown,
-      }));
+      const out: { seq: number; type: DocEventType; payload: unknown }[] = [];
+      let lastSeq = cursor;
+      for (const row of rows) {
+        lastSeq = Math.max(lastSeq, row.seq);
+        let payload: unknown;
+        try {
+          payload = JSON.parse(row.payload) as unknown;
+        } catch {
+          console.warn(`Skipping unparseable event ${row.seq}`);
+          continue;
+        }
+        const type = row.type as DocEventType;
+        if (type === "mention" || type === "thread_reply") {
+          if ((payload as { agent?: string }).agent !== self) continue;
+        }
+        out.push({ seq: row.seq, type, payload });
+      }
+      return { events: out, lastSeq };
     };
 
-    let events = readPast();
+    let { events, lastSeq } = readPast();
     if (events.length === 0) {
       const timeoutMs = Math.min(args.timeoutMs ?? 50_000, 50_000);
       await new Promise<void>((resolve) => {
@@ -703,10 +770,10 @@ class DocumentAgent extends Agent {
         this.eventWaiters.push(finish);
         const timer = setTimeout(finish, timeoutMs);
       });
-      events = readPast();
+      ({ events, lastSeq } = readPast());
     }
 
-    return { events, cursor: events.length > 0 ? events[events.length - 1].seq : cursor };
+    return { events, cursor: lastSeq };
   }
 
   /** Revokes an agent's token by name. Idempotent. */

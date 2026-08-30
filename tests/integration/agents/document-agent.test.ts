@@ -1562,6 +1562,150 @@ describe("DocumentAgent", () => {
       cleanup(client);
     });
 
+    it("records exactly one mention when a human types @scribe one character at a time", async () => {
+      const { agent, token } = await setup();
+      const client = connectYjsClient(agent);
+
+      const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
+      const ytext = para.get(0) as Y.XmlText;
+      // Real typing: one Yjs transaction per keystroke. No single delta op
+      // ever contains "@scribe", so per-op matching never fires at all.
+      for (const ch of " @scribe") {
+        ytext.insert(ytext.length, ch);
+      }
+
+      const result = await agent.agentAwaitEvents(token, {});
+      const events = "events" in result ? result.events : [];
+      const mentions = events.filter((e) => e.type === "mention");
+      expect(mentions).toHaveLength(1);
+      expect(mentions[0].payload).toMatchObject({
+        agent: "scribe",
+        text: expect.stringContaining("@scribe"),
+      });
+
+      // Typing on in the same block must not re-fire the same mention.
+      const cursor = "cursor" in result ? result.cursor : 0;
+      for (const ch of ", please") {
+        ytext.insert(ytext.length, ch);
+      }
+      const second = await agent.agentAwaitEvents(token, { cursor, timeoutMs: 20 });
+      const secondEvents = "events" in second ? second.events : [];
+      expect(secondEvents.filter((e) => e.type === "mention")).toHaveLength(0);
+
+      cleanup(client);
+    });
+
+    it("re-fires a mention after it is deleted and retyped", async () => {
+      const { agent, token } = await setup();
+      const client = connectYjsClient(agent);
+
+      const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
+      const ytext = para.get(0) as Y.XmlText;
+      const base = ytext.length;
+      for (const ch of " @scribe") {
+        ytext.insert(ytext.length, ch);
+      }
+      const first = await agent.agentAwaitEvents(token, {});
+      const cursor = "cursor" in first ? first.cursor : 0;
+
+      ytext.delete(base, ytext.length - base);
+      for (const ch of " @scribe") {
+        ytext.insert(ytext.length, ch);
+      }
+
+      const second = await agent.agentAwaitEvents(token, { cursor });
+      const mentions = ("events" in second ? second.events : []).filter(
+        (e) => e.type === "mention",
+      );
+      expect(mentions).toHaveLength(1);
+      cleanup(client);
+    });
+
+    it("records no events at all while the roster is empty", async () => {
+      const agent = makeAgent();
+      await agent.onRequest(new Request("https://do/", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "Hello there." }),
+      }));
+      const client = connectYjsClient(agent);
+
+      const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
+      const ytext = para.get(0) as Y.XmlText;
+      ytext.insert(ytext.length, " a human edit");
+
+      // doc_changed digests used to be recorded above the roster check, so
+      // every agentless document accrued rows nobody could ever read.
+      expect(mockTables.get("events") ?? []).toEqual([]);
+
+      // With an agent on the roster, the digest is recorded as before.
+      await agent.mintAgentToken({ name: "scribe" });
+      ytext.insert(ytext.length, " and another");
+      expect((mockTables.get("events") ?? []).map((r) => r.type)).toContain("doc_changed");
+
+      cleanup(client);
+    });
+
+    it("delivers a mention only to the agent it names", async () => {
+      const { agent, token } = await setup();
+      const minted = await agent.mintAgentToken({ name: "muse" });
+      const museToken = (minted as { token: string }).token;
+
+      const client = connectYjsClient(agent);
+      const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
+      const ytext = para.get(0) as Y.XmlText;
+      for (const ch of " @scribe") {
+        ytext.insert(ytext.length, ch);
+      }
+
+      const forScribe = await agent.agentAwaitEvents(token, {});
+      const scribeEvents = "events" in forScribe ? forScribe.events : [];
+      expect(scribeEvents.filter((e) => e.type === "mention")).toHaveLength(1);
+
+      const forMuse = await agent.agentAwaitEvents(museToken, { timeoutMs: 20 });
+      const museEvents = "events" in forMuse ? forMuse.events : [];
+      expect(museEvents.some((e) => e.type === "mention")).toBe(false);
+      // The broadcast digest still reaches everyone.
+      expect(museEvents.some((e) => e.type === "doc_changed")).toBe(true);
+      // ...and muse's cursor advanced past scribe's mention regardless.
+      expect("cursor" in forMuse && forMuse.cursor).toBe(
+        "cursor" in forScribe ? forScribe.cursor : -1,
+      );
+
+      cleanup(client);
+    });
+
+    it("delivers a thread_reply only to the agent that authored the thread", async () => {
+      const { agent, token } = await setup(["comment"]);
+      const minted = await agent.mintAgentToken({ name: "muse", capabilities: ["comment"] });
+      const museToken = (minted as { token: string }).token;
+
+      const read = await agent.agentRead(token);
+      const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
+      const created = await agent.agentComment(token, { anchor, text: "needs work" });
+      const threadId = "threadId" in created ? created.threadId : "";
+
+      const client = connectYjsClient(agent);
+      const threadsMap = client.doc.getMap<string>("threads");
+      const thread = JSON.parse(threadsMap.get(threadId)!);
+      thread.replies.push({
+        id: "r1",
+        author: { name: "Nick", color: "#000", colorLight: "#000" },
+        text: "thanks!",
+        createdAt: Date.now(),
+      });
+      threadsMap.set(threadId, JSON.stringify(thread));
+
+      const forScribe = await agent.agentAwaitEvents(token, {});
+      expect(("events" in forScribe ? forScribe.events : []).some((e) => e.type === "thread_reply"))
+        .toBe(true);
+
+      const forMuse = await agent.agentAwaitEvents(museToken, { timeoutMs: 20 });
+      expect(("events" in forMuse ? forMuse.events : []).some((e) => e.type === "thread_reply"))
+        .toBe(false);
+
+      cleanup(client);
+    });
+
     it("resolves empty after the timeout when no events occur (fake timers)", async () => {
       const { agent, token } = await setup();
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });

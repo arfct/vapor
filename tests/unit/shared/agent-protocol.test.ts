@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   blockHash, formatAnchor, parseAnchor, findMentions, AGENT_NAME_RE,
+  RESERVED_SLUGS, isReservedSlug,
 } from "~/shared/agent-protocol";
 
 describe("blockHash", () => {
@@ -37,5 +38,27 @@ describe("AGENT_NAME_RE", () => {
     expect(AGENT_NAME_RE.test("-bad")).toBe(false);
     expect(AGENT_NAME_RE.test("Bad")).toBe(false);
     expect(AGENT_NAME_RE.test("a".repeat(33))).toBe(false);
+  });
+});
+
+describe("reserved slugs", () => {
+  it("covers every root route and well-known path from the spec", () => {
+    expect(RESERVED_SLUGS).toEqual(
+      expect.arrayContaining([
+        "new", "mcp", "agents", "api", "assets", "demo",
+        "favicon.ico", "robots.txt", ".well-known",
+      ]),
+    );
+  });
+
+  it("matches reserved names case-insensitively", () => {
+    expect(isReservedSlug("new")).toBe(true);
+    expect(isReservedSlug(".well-known")).toBe(true);
+    expect(isReservedSlug("Robots.txt")).toBe(true);
+  });
+
+  it("does not match ordinary document ids", () => {
+    expect(isReservedSlug("abcd1234")).toBe(false);
+    expect(isReservedSlug("newx1234")).toBe(false);
   });
 });

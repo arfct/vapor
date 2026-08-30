@@ -1,3 +1,5 @@
+import { isReservedSlug } from "./agent-protocol";
+
 export const APP_NAME = "mist";
 
 export function isValidDocumentId(id: string): boolean {
@@ -8,12 +10,20 @@ export function isValidDocumentId(id: string): boolean {
 const ID_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
 const ID_LENGTH = 8;
 
+/**
+ * Mints a random document id. Documents live at `/:id`, so the id shares a
+ * namespace with the reserved root slugs — a collision is re-rolled rather
+ * than returned. Cheap and defensive: no current reserved slug has this
+ * shape, but the list is the kind of thing that grows.
+ */
 export function generateDocumentId(): string {
-  let id = "";
-  for (let i = 0; i < ID_LENGTH; i++) {
-    id += ID_CHARS[Math.floor(Math.random() * ID_CHARS.length)];
+  for (;;) {
+    let id = "";
+    for (let i = 0; i < ID_LENGTH; i++) {
+      id += ID_CHARS[Math.floor(Math.random() * ID_CHARS.length)];
+    }
+    if (!isReservedSlug(id)) return id;
   }
-  return id;
 }
 
 export const USER_COLOURS = [

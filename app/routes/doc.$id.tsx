@@ -2,6 +2,7 @@ import { data, Link } from "react-router";
 import type { Route } from "./+types/doc.$id";
 import { getAgentByName } from "agents";
 import { isValidDocumentId, DOCUMENT_TTL_MS } from "~/shared/constants";
+import { isReservedSlug } from "~/shared/agent-protocol";
 import { getCloudflare } from "~/lib/cloudflare.server";
 import { useYjsEditor } from "~/lib/useYjsEditor";
 import { DocumentProvider, useDocument } from "~/lib/DocumentContext";
@@ -26,6 +27,12 @@ export function meta(_args: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const id = params.id;
+  // Documents share the root namespace with a handful of reserved slugs
+  // (/new, /mcp, /.well-known/…). Refuse them here explicitly rather than
+  // relying on isValidDocumentId's shape check to exclude them by accident.
+  if (isReservedSlug(id)) {
+    throw data(null, { status: 404 });
+  }
   if (!isValidDocumentId(id)) {
     throw data(null, { status: 404 });
   }

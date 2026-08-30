@@ -37,6 +37,14 @@ export type AgentErrorCode =
   | "thread_not_found";
 
 export const AGENT_NAME_RE = /^[a-z0-9][a-z0-9-]{0,30}[a-z0-9]$/;
+
+/**
+ * Root slugs that can never be a document id: documents live at `/:id`, so
+ * the root path is one shared namespace with these routes and well-known
+ * files. Enforced in two places — generateDocumentId never mints one
+ * (app/shared/constants.ts) and the `/:id` loader 404s them outright
+ * (app/routes/doc.$id.tsx).
+ */
 export const RESERVED_SLUGS = [
   "new",
   "mcp",
@@ -46,7 +54,20 @@ export const RESERVED_SLUGS = [
   "demo",
   "favicon.ico",
   "robots.txt",
+  ".well-known",
 ];
+
+/** Whether a root slug is reserved (case-insensitive — URLs aren't). */
+export function isReservedSlug(slug: string): boolean {
+  return RESERVED_SLUGS.includes(slug.toLowerCase());
+}
+
+/**
+ * The most agents one document's roster can hold. A document is a shared,
+ * unauthenticated URL, so the roster needs a ceiling: without one, anyone who
+ * can reach the invite endpoint can grow it without bound.
+ */
+export const MAX_AGENTS_PER_DOC = 16;
 export const DEFAULT_CAPABILITIES: AgentCapability[] = ["suggest", "comment"];
 export const RATE_LIMIT_MUTATIONS_PER_MIN = 10;
 export const RATE_LIMIT_CHARS_PER_HOUR = 20_000;

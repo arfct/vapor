@@ -15,6 +15,7 @@ import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
 import { DOCUMENT_TTL_MS, DOC_FORMAT_VERSION } from "~/shared/constants";
 import { YjsProvider } from "~/lib/yjs-provider";
+import type { AgentCapability } from "~/shared/agent-protocol";
 
 /* ------------------------------------------------------------------ */
 /*  Mock Agent base class                                              */
@@ -44,6 +45,21 @@ vi.mock("agents", () => ({
       },
     };
 
+    // Captured by reference at construction time (not a live binding to the
+    // outer `let`), so each `new MockAgent()` gets whatever store the
+    // module-level variables currently point to. The default `beforeEach`
+    // creates one agent per test, so this is transparent there. Tests that
+    // need several independent documents in a single test (agent-mutation
+    // tests) reassign the module-level maps to fresh ones immediately
+    // before constructing each additional agent, so its captured
+    // references never alias an earlier agent's store. Conversely, the
+    // "restore from persisted state" test constructs a second agent
+    // *without* reassigning the maps in between, so it deliberately
+    // shares the first agent's store (simulating a DO reload).
+    private _sqlStore = mockSqlStore;
+    private _tables = mockTables;
+    private _connections = mockConnectionMap;
+
     sql(strings: TemplateStringsArray, ...values: unknown[]) {
       const raw = strings.join("$");
       const query = raw.toLowerCase().trim();
@@ -51,14 +67,14 @@ vi.mock("agents", () => ({
       if (query.includes("create table")) return [];
 
       if (query.includes("delete from doc_state")) {
-        mockSqlStore.clear();
+        this._sqlStore.clear();
         return [];
       }
 
       if (query.includes("select") && query.includes("from doc_state")) {
         const match = query.match(/key\s*=\s*'(\w+)'/);
         if (match) {
-          const buf = mockSqlStore.get(match[1]);
+          const buf = this._sqlStore.get(match[1]);
           if (buf) return [{ value: buf }];
         }
         return [];
@@ -69,7 +85,7 @@ vi.mock("agents", () => ({
         if (match) {
           const val = values[0];
           if (val instanceof Uint8Array) {
-            mockSqlStore.set(
+            this._sqlStore.set(
               match[1],
               val.buffer.slice(val.byteOffset, val.byteOffset + val.byteLength),
             );
@@ -82,8 +98,8 @@ vi.mock("agents", () => ({
       const tableMatch = /(?:from|into|update)\s+(\w+)/.exec(query);
       if (tableMatch) {
         const table = tableMatch[1];
-        if (!mockTables.has(table)) mockTables.set(table, []);
-        const rows = mockTables.get(table)!;
+        if (!this._tables.has(table)) this._tables.set(table, []);
+        const rows = this._tables.get(table)!;
 
         if (query.startsWith("insert into")) {
           const colsMatch = /\(([^)]+)\)\s*values/i.exec(raw);
@@ -114,12 +130,12 @@ vi.mock("agents", () => ({
           const whereMatch = /where\s+(\w+)\s*=/i.exec(raw);
           if (whereMatch) {
             const whereVal = values[0];
-            mockTables.set(
+            this._tables.set(
               table,
               rows.filter((row) => row[whereMatch[1]] !== whereVal),
             );
           } else {
-            mockTables.set(table, []);
+            this._tables.set(table, []);
           }
           return [];
         }
@@ -148,7 +164,7 @@ vi.mock("agents", () => ({
     }
 
     getConnections() {
-      return mockConnectionMap.values();
+      return this._connections.values();
     }
   },
 }));
@@ -249,6 +265,19 @@ describe("DocumentAgent", () => {
     const conn = new MockConnection(`conn-${nextConnId++}`);
     mockConnectionMap.set(conn.id, conn);
     return conn;
+  }
+
+  /**
+   * Create a new DocumentAgent backed by its own fresh, isolated SQL store
+   * — simulating a distinct document (distinct Durable Object instance)
+   * rather than the single `agent` from `beforeEach`. See the MockAgent
+   * comment above for how isolation is achieved.
+   */
+  function makeAgent(): InstanceType<typeof DocumentAgent> {
+    mockSqlStore = new Map();
+    mockTables = new Map();
+    mockConnectionMap = new Map();
+    return new DocumentAgent({} as never, {} as never);
   }
 
   /**
@@ -728,6 +757,57 @@ describe("DocumentAgent", () => {
       expect(await agent.getAgentRoster()).toEqual([]);
       const v = await asVerifier(agent).verifyAgentToken(token);
       expect(v).toMatchObject({ error: { code: "invalid_token" } });
+    });
+  });
+
+  /* ================================================================ */
+  /*  Agent read + instant mutations                                   */
+  /* ================================================================ */
+
+  describe("agent mutations", () => {
+    async function setup(caps?: AgentCapability[]) {
+      const agent = makeAgent();
+      await agent.onRequest(new Request("https://do/", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "# Title\n\nBody." }),
+      }));
+      const m = await agent.mintAgentToken({ name: "scribe", capabilities: caps });
+      return { agent, token: (m as { token: string }).token };
+    }
+
+    it("reads markdown with anchors", async () => {
+      const { agent, token } = await setup();
+      const r = await agent.agentRead(token);
+      expect("markdown" in r && r.markdown).toBe("# Title\n\nBody.");
+      expect("blocks" in r && r.blocks[0].anchor).toMatch(/^b0-[0-9a-f]{8}$/);
+    });
+
+    it("denies write without capability, allows with it", async () => {
+      const { agent, token } = await setup();                       // default: no write
+      const denied = await agent.agentInsert(token, { where: "append", markdown: "More." });
+      expect(denied).toMatchObject({ error: { code: "capability_denied" } });
+      const { agent: a2, token: t2 } = await setup(["write"]);
+      await a2.agentInsert(t2, { where: "append", markdown: "More." });
+      const r = await a2.agentRead(t2);
+      expect("markdown" in r && r.markdown).toContain("More.");
+    });
+
+    it("suggest lays critic marks", async () => {
+      const { agent, token } = await setup();
+      const read = await agent.agentRead(token);
+      const anchor = ("blocks" in read ? read.blocks : [])[2].anchor;   // "Body."
+      await agent.agentSuggest(token, { anchor, find: "Body.", replacement: "Better body." });
+      const after = await agent.agentRead(token);
+      expect("markdown" in after && after.markdown).toContain("{--Body.--}{++Better body.++}");
+    });
+
+    it("stale anchor errors after concurrent edit", async () => {
+      const { agent, token } = await setup(["write"]);
+      const read = await agent.agentRead(token);
+      const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
+      await agent.agentReplace(token, { from: anchor, markdown: "# New title" });
+      const stale = await agent.agentReplace(token, { from: anchor, markdown: "# Again" });
+      expect(stale).toMatchObject({ error: { code: "stale_anchor" } });
     });
   });
 });

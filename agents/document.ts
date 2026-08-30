@@ -6,9 +6,17 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import { MSG_SYNC, MSG_AWARENESS, DOCUMENT_TTL_MS, DOC_FORMAT_VERSION, USER_COLOURS } from "../app/shared/constants";
-import type { AgentCapability, AgentRosterEntry, AgentError } from "../app/shared/agent-protocol";
-import { AGENT_NAME_RE, DEFAULT_CAPABILITIES } from "../app/shared/agent-protocol";
+import type { AgentCapability, AgentRosterEntry, AgentError, Pace } from "../app/shared/agent-protocol";
+import {
+  AGENT_NAME_RE,
+  DEFAULT_CAPABILITIES,
+  formatAnchor,
+  RATE_LIMIT_MUTATIONS_PER_MIN,
+  RATE_LIMIT_CHARS_PER_HOUR,
+} from "../app/shared/agent-protocol";
 import { generateAgentToken, hashToken } from "../app/lib/agent-tokens";
+import { getBlocks, yDocToMarkdown, resolveAnchor, insertMarkdownBlocks, deleteBlocks } from "../app/lib/y-markdown";
+import type { ThreadData } from "../app/shared/types";
 
 /**
  * Durable Objects SQLite accepts Uint8Array for BLOB columns via the
@@ -27,6 +35,14 @@ interface AgentTokenRow {
   capabilities: string;
   created_at: number;
   last_seen_at: number | null;
+  /** JSON array of { at: epoch-ms, chars: number }, pruned to the last hour. */
+  recent_mutations?: string | null;
+}
+
+/** One recorded mutation, used for rate-limiting agent writes. */
+interface MutationLogEntry {
+  at: number;
+  chars: number;
 }
 
 function rowToRosterEntry(row: AgentTokenRow): AgentRosterEntry {
@@ -67,7 +83,8 @@ class DocumentAgent extends Agent {
         owner TEXT,
         capabilities TEXT,
         created_at INTEGER,
-        last_seen_at INTEGER
+        last_seen_at INTEGER,
+        recent_mutations TEXT
       )
     `;
 
@@ -415,6 +432,213 @@ class DocumentAgent extends Agent {
     this.sql`UPDATE agent_tokens SET last_seen_at = ${now} WHERE token_hash = ${tokenHash}`;
 
     return { entry: rowToRosterEntry({ ...row, last_seen_at: now }) };
+  }
+
+  /**
+   * Checks and records rate-limit usage for a token ahead of a mutation of
+   * `chars` characters. Denies with `rate_limited` when the token has made
+   * more than `RATE_LIMIT_MUTATIONS_PER_MIN` mutations in the last 60s, or
+   * written more than `RATE_LIMIT_CHARS_PER_HOUR` characters in the last
+   * hour. On success, records this attempt. The log is pruned to the last
+   * hour on every check regardless of outcome.
+   */
+  private async checkRateLimit(token: string, chars: number): Promise<{ error: AgentError } | null> {
+    const tokenHash = await hashToken(token);
+    const rows = this.sql<{ recent_mutations: string | null }>`
+      SELECT recent_mutations FROM agent_tokens WHERE token_hash = ${tokenHash}
+    `;
+
+    const now = Date.now();
+    const hourAgo = now - 60 * 60 * 1000;
+    const minuteAgo = now - 60 * 1000;
+
+    const raw = rows[0]?.recent_mutations;
+    const log = (raw ? JSON.parse(raw) : []) as MutationLogEntry[];
+    const pruned = log.filter((e) => e.at > hourAgo);
+
+    const recentCount = pruned.filter((e) => e.at > minuteAgo).length;
+    const totalChars = pruned.reduce((sum, e) => sum + e.chars, 0);
+
+    if (recentCount >= RATE_LIMIT_MUTATIONS_PER_MIN || totalChars + chars > RATE_LIMIT_CHARS_PER_HOUR) {
+      this.sql`UPDATE agent_tokens SET recent_mutations = ${JSON.stringify(pruned)} WHERE token_hash = ${tokenHash}`;
+      return { error: { code: "rate_limited", message: "Agent mutation rate limit exceeded" } };
+    }
+
+    pruned.push({ at: now, chars });
+    this.sql`UPDATE agent_tokens SET recent_mutations = ${JSON.stringify(pruned)} WHERE token_hash = ${tokenHash}`;
+    return null;
+  }
+
+  /**
+   * Returns the document's full markdown, per-block anchors, current
+   * presence (humans from awareness, agents from the roster), and comment
+   * threads. Any valid token can read; no capability is required.
+   */
+  async agentRead(token: string): Promise<
+    | {
+        markdown: string;
+        blocks: { anchor: string; text: string }[];
+        presence: { name: string; isAgent: boolean }[];
+        threads: ThreadData[];
+      }
+    | { error: AgentError }
+  > {
+    const verified = await this.verifyAgentToken(token);
+    if ("error" in verified) return verified;
+
+    const { doc, awareness } = this.ensureInitialised();
+
+    const markdown = yDocToMarkdown(doc);
+    const blocks = getBlocks(doc).map((b) => ({ anchor: formatAnchor(b), text: b.text }));
+
+    const presence: { name: string; isAgent: boolean }[] = [];
+    for (const state of awareness.getStates().values()) {
+      const user = (state as { user?: { name?: string } }).user;
+      if (user?.name) presence.push({ name: user.name, isAgent: false });
+    }
+
+    const now = Date.now();
+    const roster = await this.getAgentRoster();
+    for (const entry of roster) {
+      if (entry.lastSeenAt != null && now - entry.lastSeenAt < 5 * 60 * 1000) {
+        presence.push({ name: entry.name, isAgent: true });
+      }
+    }
+
+    const threadsMap = doc.getMap<string>("threads");
+    const threads: ThreadData[] = [];
+    threadsMap.forEach((value) => {
+      threads.push(JSON.parse(value) as ThreadData);
+    });
+
+    return { markdown, blocks, presence, threads };
+  }
+
+  /**
+   * Inserts markdown as new blocks. `where: "append"` needs no anchor;
+   * otherwise the anchor is resolved and the blocks are inserted directly
+   * before or after it. Requires `write`.
+   */
+  async agentInsert(
+    token: string,
+    args: { anchor?: string; where: "before" | "after" | "append"; markdown: string; pace?: Pace },
+  ): Promise<{ ok: true } | { error: AgentError }> {
+    const verified = await this.verifyAgentToken(token, "write");
+    if ("error" in verified) return verified;
+
+    const rateLimited = await this.checkRateLimit(token, args.markdown.length);
+    if (rateLimited) return rateLimited;
+
+    const { doc } = this.ensureInitialised();
+
+    let index: number;
+    if (args.where === "append") {
+      index = getBlocks(doc).length;
+    } else {
+      if (!args.anchor) {
+        return {
+          error: { code: "stale_anchor", message: `An anchor is required for where: "${args.where}"` },
+        };
+      }
+      const resolved = resolveAnchor(doc, args.anchor);
+      if ("error" in resolved) {
+        return { error: { code: resolved.error, message: "Anchor not found", snippet: resolved.snippet } };
+      }
+      index = args.where === "before" ? resolved.index : resolved.index + 1;
+    }
+
+    doc.transact(() => {
+      insertMarkdownBlocks(doc, index, args.markdown);
+    });
+
+    return { ok: true };
+  }
+
+  /**
+   * Replaces the block range [from, to] (anchors, `to` defaults to `from`)
+   * with new markdown, in one transaction. Requires `write`.
+   */
+  async agentReplace(
+    token: string,
+    args: { from: string; to?: string; markdown: string; pace?: Pace },
+  ): Promise<{ ok: true } | { error: AgentError }> {
+    const verified = await this.verifyAgentToken(token, "write");
+    if ("error" in verified) return verified;
+
+    const rateLimited = await this.checkRateLimit(token, args.markdown.length);
+    if (rateLimited) return rateLimited;
+
+    const { doc } = this.ensureInitialised();
+
+    const fromResolved = resolveAnchor(doc, args.from);
+    if ("error" in fromResolved) {
+      return { error: { code: fromResolved.error, message: "Anchor not found", snippet: fromResolved.snippet } };
+    }
+    const toResolved = resolveAnchor(doc, args.to ?? args.from);
+    if ("error" in toResolved) {
+      return { error: { code: toResolved.error, message: "Anchor not found", snippet: toResolved.snippet } };
+    }
+
+    const fromIndex = fromResolved.index;
+    const toIndex = toResolved.index;
+
+    doc.transact(() => {
+      deleteBlocks(doc, fromIndex, toIndex);
+      insertMarkdownBlocks(doc, fromIndex, args.markdown);
+    });
+
+    return { ok: true };
+  }
+
+  /**
+   * Suggests a replacement inside a block: marks `find` as a critic
+   * deletion and inserts `replacement` as a critic addition, mirroring the
+   * marks TipTap's suggest-mode plugin applies for human edits (no
+   * author-metadata attrs — see app/lib/suggest-mode.ts). Requires
+   * `suggest`.
+   */
+  async agentSuggest(
+    token: string,
+    args: { anchor: string; find: string; replacement: string; pace?: Pace },
+  ): Promise<{ ok: true } | { error: AgentError }> {
+    const verified = await this.verifyAgentToken(token, "suggest");
+    if ("error" in verified) return verified;
+
+    const rateLimited = await this.checkRateLimit(token, args.find.length + args.replacement.length);
+    if (rateLimited) return rateLimited;
+
+    const { doc } = this.ensureInitialised();
+
+    const resolved = resolveAnchor(doc, args.anchor);
+    if ("error" in resolved) {
+      return { error: { code: resolved.error, message: "Anchor not found", snippet: resolved.snippet } };
+    }
+
+    const frag = doc.getXmlFragment("default");
+    const el = frag.get(resolved.index);
+    const ytext = el instanceof Y.XmlElement
+      ? el.toArray().find((child): child is Y.XmlText => child instanceof Y.XmlText)
+      : undefined;
+
+    const block = getBlocks(doc)[resolved.index];
+    if (!ytext) {
+      return { error: { code: "find_not_matched", message: "Block has no text", snippet: block?.text ?? "" } };
+    }
+
+    const cleanText = (ytext.toDelta() as { insert: string }[]).map((op) => op.insert).join("");
+    const pos = cleanText.indexOf(args.find);
+    if (pos === -1) {
+      return {
+        error: { code: "find_not_matched", message: "Could not find text to suggest a change on", snippet: block.text },
+      };
+    }
+
+    doc.transact(() => {
+      ytext.format(pos, args.find.length, { criticDeletion: {} });
+      ytext.insert(pos + args.find.length, args.replacement, { criticAddition: {} });
+    });
+
+    return { ok: true };
   }
 
   private broadcastBinary(message: WSMessage, excludeId: string) {

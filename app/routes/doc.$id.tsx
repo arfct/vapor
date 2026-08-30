@@ -10,6 +10,7 @@ import Preview from "~/components/Preview";
 import PreviewToggle from "~/components/PreviewToggle";
 import ConnectionStatus from "~/components/ConnectionStatus";
 import ShareButton from "~/components/ShareButton";
+import InviteAgentDialog from "~/components/InviteAgentDialog";
 import ModeToggle from "~/components/ModeToggle";
 import CleanViewToggle from "~/components/CleanViewToggle";
 import SuggestionActions from "~/components/SuggestionActions";
@@ -102,6 +103,9 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
         </div>
         <div className="shrink-0 border-l border-border">
           <ShareButton />
+        </div>
+        <div className="shrink-0 border-l border-border">
+          <InviteAgentDialog />
         </div>
         <div className="flex shrink-0 items-center border-l border-border">
           <ThemeSelector />

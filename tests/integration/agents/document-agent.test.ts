@@ -109,6 +109,15 @@ vi.mock("agents", () => ({
             cols.forEach((col, i) => {
               row[col] = values[i];
             });
+            // `events.seq` is an AUTOINCREMENT primary key the real schema
+            // assigns; the DO code never supplies it explicitly (see
+            // recordEvent), so synthesize a monotonically increasing one
+            // here, matching real SQLite's behavior closely enough for
+            // "insert then query by seq" tests.
+            if (table === "events" && !("seq" in row)) {
+              const maxSeq = rows.reduce((m, r) => Math.max(m, (r.seq as number) ?? 0), 0);
+              row.seq = maxSeq + 1;
+            }
             rows.push(row);
           }
           return [];
@@ -141,10 +150,16 @@ vi.mock("agents", () => ({
         }
 
         if (query.startsWith("select")) {
-          const whereMatch = /where\s+(\w+)\s*=/i.exec(raw);
-          let result = whereMatch
-            ? rows.filter((row) => row[whereMatch[1]] === values[0])
-            : rows;
+          // Supports plain equality (`col = ?`) and, for the events cursor
+          // query, a strictly-greater comparison (`seq > ?`).
+          const whereMatch = /where\s+(\w+)\s*(=|>)\s*/i.exec(raw);
+          let result = rows;
+          if (whereMatch) {
+            const [, col, op] = whereMatch;
+            result = rows.filter((row) =>
+              op === ">" ? (row[col] as number) > (values[0] as number) : row[col] === values[0],
+            );
+          }
 
           const orderMatch = /order by\s+(\w+)/i.exec(raw);
           if (orderMatch) {
@@ -327,6 +342,18 @@ describe("DocumentAgent", () => {
       c.provider.destroy();
       c.doc.destroy();
     }
+  }
+
+  /**
+   * Flushes real (un-faked) pending async work — e.g. the crypto.subtle
+   * hashing inside verifyAgentToken — via a real setImmediate, independent
+   * of vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }). Needed
+   * before vi.advanceTimersByTimeAsync() when a call under test does real
+   * async work *before* registering the fake timer being awaited —
+   * otherwise the advance can race ahead of the timer's registration.
+   */
+  function flushMicrotasks(): Promise<void> {
+    return new Promise((resolve) => setImmediate(resolve));
   }
 
   /* ================================================================ */
@@ -1237,6 +1264,180 @@ describe("DocumentAgent", () => {
       const b = connectYjsClient(agent);
       expect(findAgentState(b.awareness)).toBeUndefined();
       cleanup(a, b);
+    });
+  });
+
+  /* ================================================================ */
+  /*  Events: mentions, thread replies, await_events long-poll         */
+  /* ================================================================ */
+
+  describe("agent events", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    async function setup(caps?: AgentCapability[]) {
+      const agent = makeAgent();
+      await agent.onRequest(new Request("https://do/", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "Hello there." }),
+      }));
+      const m = await agent.mintAgentToken({ name: "scribe", capabilities: caps });
+      return { agent, token: (m as { token: string }).token };
+    }
+
+    it("records a mention through the real Yjs sync path when a human edits an existing block", async () => {
+      const { agent, token } = await setup();
+      const client = connectYjsClient(agent);
+
+      // A human types more text into the already-synced first paragraph —
+      // this is a real edit to an *existing* Y.XmlText, applied through the
+      // agent's onMessage/syncProtocol path with a null (human) origin.
+      const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
+      const ytext = para.get(0) as Y.XmlText;
+      ytext.insert(ytext.length, " ping @scribe please");
+
+      const result = await agent.agentAwaitEvents(token, {});
+      expect("events" in result).toBe(true);
+      const events = "events" in result ? result.events : [];
+      const mention = events.find((e) => e.type === "mention");
+      expect(mention).toBeDefined();
+      expect(mention).toMatchObject({
+        type: "mention",
+        payload: { agent: "scribe", text: expect.stringContaining("@scribe") },
+      });
+      expect(typeof mention?.seq).toBe("number");
+      expect("cursor" in result && result.cursor).toBe(events[events.length - 1].seq);
+      cleanup(client);
+    });
+
+    it("resolves empty after the timeout when no events occur (fake timers)", async () => {
+      const { agent, token } = await setup();
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+      const promise = agent.agentAwaitEvents(token, { timeoutMs: 50 });
+      // agentAwaitEvents awaits a real (un-faked) crypto.subtle.digest call
+      // inside verifyAgentToken before it ever registers its long-poll
+      // setTimeout — flush that real async work first, or advanceTimersByTimeAsync
+      // races ahead of the timer even existing yet.
+      await flushMicrotasks();
+      await vi.advanceTimersByTimeAsync(50);
+      const result = await promise;
+
+      expect(result).toEqual({ events: [], cursor: 0 });
+    });
+
+    it("excludes already-seen events once the cursor advances past them", async () => {
+      const { agent, token } = await setup();
+      const client = connectYjsClient(agent);
+
+      const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
+      const ytext = para.get(0) as Y.XmlText;
+      ytext.insert(ytext.length, " ping @scribe please");
+
+      const first = await agent.agentAwaitEvents(token, {});
+      const cursor = "cursor" in first ? first.cursor : -1;
+      expect(cursor).toBeGreaterThan(0);
+
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const secondPromise = agent.agentAwaitEvents(token, { cursor, timeoutMs: 50 });
+      await flushMicrotasks();
+      await vi.advanceTimersByTimeAsync(50);
+      const second = await secondPromise;
+
+      expect(second).toEqual({ events: [], cursor });
+      cleanup(client);
+    });
+
+    it("round-trips a comment and reply, and records a thread_reply event for a human reply", async () => {
+      const { agent, token } = await setup(["comment"]);
+      const read = await agent.agentRead(token);
+      const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
+
+      const created = await agent.agentComment(token, { anchor, quote: "Hello", text: "needs work" });
+      expect("threadId" in created).toBe(true);
+      const threadId = "threadId" in created ? created.threadId : "";
+
+      const afterCreate = await agent.agentRead(token);
+      const threads = "threads" in afterCreate ? afterCreate.threads : [];
+      expect(threads).toHaveLength(1);
+      expect(threads[0]).toMatchObject({
+        id: threadId,
+        commentText: "needs work",
+        highlightText: "Hello",
+        author: { name: "scribe" },
+        resolved: false,
+        replies: [],
+      });
+
+      // A human replies directly on the shared Y.Map, the same way
+      // useThreads.addReply does client-side (an untagged — human-origin —
+      // transaction).
+      const client = connectYjsClient(agent);
+      const threadsMap = client.doc.getMap<string>("threads");
+      const raw = threadsMap.get(threadId)!;
+      const thread = JSON.parse(raw);
+      thread.replies.push({
+        id: "r1",
+        author: { name: "Nick", color: "#000", colorLight: "#000" },
+        text: "thanks!",
+        createdAt: Date.now(),
+      });
+      threadsMap.set(threadId, JSON.stringify(thread));
+
+      const result = await agent.agentAwaitEvents(token, {});
+      const events = "events" in result ? result.events : [];
+      const threadReply = events.find((e) => e.type === "thread_reply");
+      expect(threadReply).toMatchObject({
+        type: "thread_reply",
+        payload: { agent: "scribe", threadId },
+      });
+
+      cleanup(client);
+    });
+
+    it("agentComment requires the comment capability", async () => {
+      const { agent, token } = await setup([]);
+      const read = await agent.agentRead(token);
+      const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
+      const result = await agent.agentComment(token, { anchor, text: "hi" });
+      expect(result).toMatchObject({ error: { code: "capability_denied" } });
+    });
+
+    it("agentReply appends a reply, attributed to the replying agent", async () => {
+      const { agent, token } = await setup(["comment"]);
+      const read = await agent.agentRead(token);
+      const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
+      const created = await agent.agentComment(token, { anchor, text: "hi" });
+      const threadId = "threadId" in created ? created.threadId : "";
+
+      const result = await agent.agentReply(token, { threadId, text: "reply text" });
+      expect(result).toEqual({ ok: true });
+
+      const after = await agent.agentRead(token);
+      const threads = "threads" in after ? after.threads : [];
+      expect(threads[0].replies).toHaveLength(1);
+      expect(threads[0].replies[0]).toMatchObject({ text: "reply text", author: { name: "scribe" } });
+    });
+
+    it("agentReply returns doc_not_found for an unknown thread", async () => {
+      const { agent, token } = await setup(["comment"]);
+      const result = await agent.agentReply(token, { threadId: "nope", text: "x" });
+      expect(result).toMatchObject({ error: { code: "doc_not_found" } });
+    });
+
+    it("prunes events on doc expiry (alarm)", async () => {
+      const { agent, token } = await setup();
+      const client = connectYjsClient(agent);
+      const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
+      const ytext = para.get(0) as Y.XmlText;
+      ytext.insert(ytext.length, " ping @scribe please");
+      await agent.agentAwaitEvents(token, {});
+      cleanup(client);
+
+      await agent.alarm();
+
+      expect(mockTables.get("events") ?? []).toEqual([]);
     });
   });
 });

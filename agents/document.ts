@@ -11,6 +11,7 @@ import {
   AGENT_NAME_RE,
   DEFAULT_CAPABILITIES,
   formatAnchor,
+  findMentions,
   RATE_LIMIT_MUTATIONS_PER_MIN,
   RATE_LIMIT_CHARS_PER_HOUR,
 } from "../app/shared/agent-protocol";
@@ -19,7 +20,17 @@ import { getBlocks, yDocToMarkdown, resolveAnchor, insertMarkdownBlocks, deleteB
 import { parseCriticMarkupToContent } from "../app/lib/critic-parser";
 import { chunkTyping } from "../app/lib/performance-chunks";
 import { encodeAgentAwareness, agentClientId, type AgentPresenceState } from "../app/lib/agent-awareness";
-import type { ThreadData } from "../app/shared/types";
+import type { ThreadData, ThreadReply } from "../app/shared/types";
+
+/** A recorded document event's public shape, as returned by agentAwaitEvents. */
+type DocEventType = "mention" | "thread_reply" | "doc_changed";
+
+interface EventRow {
+  seq: number;
+  type: string;
+  payload: string;
+  created_at: number;
+}
 
 /** How long an agent can go without a join/performance before its presence is auto-removed. */
 const AGENT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -123,6 +134,11 @@ class DocumentAgent extends Agent {
   /** Per-agent 5-minute idle timer, reset on every join/performance-cursor update. */
   private agentIdleTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+  /** Resolvers parked by agentAwaitEvents long-polls with nothing to return yet; flushed by recordEvent. */
+  private eventWaiters: (() => void)[] = [];
+  /** Timestamp of the last "doc_changed" digest event, to cap it at one per 30s. */
+  private lastDigestAt = 0;
+
   private ensureInitialised(): { doc: Y.Doc; awareness: awarenessProtocol.Awareness } {
     if (this.doc && this.awareness) {
       return { doc: this.doc, awareness: this.awareness };
@@ -155,6 +171,14 @@ class DocumentAgent extends Agent {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         agent_name TEXT,
         kind TEXT,
+        payload TEXT,
+        created_at INTEGER
+      )
+    `;
+    this.sql`
+      CREATE TABLE IF NOT EXISTS events (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT,
         payload TEXT,
         created_at INTEGER
       )
@@ -193,6 +217,68 @@ class DocumentAgent extends Agent {
       this.applyMutation(mutation);
       this.sql`DELETE FROM performances WHERE id = ${row.id}`;
     }
+
+    // Mention detection + doc_changed digests: only for human-originated
+    // changes to document content. Agent RPCs tag their own transactions
+    // with the "agent" origin (see applyMutation/performTypedInsert/
+    // performTypedSuggest) specifically so this observer can ignore them —
+    // an agent shouldn't get a "mention" notification for text it just
+    // typed itself, nor should its own edits consume the doc_changed
+    // digest window meant for humans.
+    const frag = this.doc.getXmlFragment("default");
+    frag.observeDeep((events, transaction) => {
+      if (transaction.origin === "agent") return;
+
+      const now = Date.now();
+      if (now - this.lastDigestAt >= 30_000) {
+        this.lastDigestAt = now;
+        this.recordEvent("doc_changed", {});
+      }
+
+      const rosterNames = this.getRosterNamesSync();
+      if (rosterNames.length === 0) return;
+
+      for (const event of events) {
+        if (!(event.target instanceof Y.XmlText)) continue;
+        for (const op of event.changes.delta) {
+          if (typeof op.insert !== "string") continue;
+          const mentions = findMentions(op.insert, rosterNames);
+          for (const name of mentions) {
+            const text = this.findBlockTextForXmlText(event.target) ?? op.insert;
+            this.recordEvent("mention", { agent: name, text });
+          }
+        }
+      }
+    });
+
+    // Human replies to an agent-authored thread: notify that agent.
+    // Deliberately simple (per the design brief) — it re-checks "is the
+    // last reply not by the thread's own agent author" on every
+    // human-origin change to the thread, so it can re-fire on later
+    // unrelated edits to the same thread (e.g. a resolve toggle) rather
+    // than tracking precisely which reply is new.
+    const threadsMap = this.doc.getMap<string>("threads");
+    threadsMap.observe((event, transaction) => {
+      if (transaction.origin === "agent") return;
+
+      const rosterNames = this.getRosterNamesSync();
+      if (rosterNames.length === 0) return;
+
+      for (const key of event.keysChanged) {
+        const raw = threadsMap.get(key);
+        if (!raw) continue;
+        let thread: ThreadData;
+        try {
+          thread = JSON.parse(raw) as ThreadData;
+        } catch {
+          continue;
+        }
+        if (!rosterNames.includes(thread.author?.name)) continue;
+        const lastReply = thread.replies[thread.replies.length - 1];
+        if (!lastReply || lastReply.author?.name === thread.author.name) continue;
+        this.recordEvent("thread_reply", { agent: thread.author.name, threadId: thread.id });
+      }
+    });
 
     return { doc: this.doc, awareness: this.awareness };
   }
@@ -305,6 +391,11 @@ class DocumentAgent extends Agent {
     this.sql`DELETE FROM performances`;
     this.performanceQueue = [];
     this.isPerforming = false;
+    // Recorded events (mentions, thread replies, doc_changed digests) are
+    // meaningless once the document they refer to is gone.
+    this.sql`DELETE FROM events`;
+    for (const finish of this.eventWaiters) finish();
+    this.eventWaiters = [];
     // Agent presence belongs to a document that no longer exists — drop it
     // and cancel every pending idle timer along with it.
     for (const timer of this.agentIdleTimers.values()) {
@@ -350,40 +441,44 @@ class DocumentAgent extends Agent {
       if (contentType.includes("application/json")) {
         try {
           const body = await request.json() as { content?: string; threads?: unknown[]; onboarding?: boolean };
-          if (body.content) {
-            // Parse CriticMarkup and apply as marks on XmlText
-            const { parseCriticMarkupToContent } = await import("../app/lib/critic-parser");
-            const frag = doc.getXmlFragment("default");
-            if (frag.length === 0) {
-              const lines = body.content.split("\n");
-              for (const line of lines) {
-                const { cleanText, marks } = parseCriticMarkupToContent(line);
-                const para = new Y.XmlElement("paragraph");
-                const ytext = new Y.XmlText(cleanText);
-                // Apply marks via Yjs formatting attributes
-                for (const mark of marks) {
-                  const attrs: Record<string, Record<string, unknown>> = {};
-                  attrs[mark.type] = mark.attrs ?? {};
-                  ytext.format(mark.from, mark.to - mark.from, attrs);
+          // Tagged "agent" (system import, not a live edit) so it doesn't
+          // register as a human edit for mention/doc_changed/thread_reply
+          // detection — see the frag/threads observers in ensureInitialised.
+          doc.transact(() => {
+            if (body.content) {
+              // Parse CriticMarkup and apply as marks on XmlText
+              const frag = doc.getXmlFragment("default");
+              if (frag.length === 0) {
+                const lines = body.content.split("\n");
+                for (const line of lines) {
+                  const { cleanText, marks } = parseCriticMarkupToContent(line);
+                  const para = new Y.XmlElement("paragraph");
+                  const ytext = new Y.XmlText(cleanText);
+                  // Apply marks via Yjs formatting attributes
+                  for (const mark of marks) {
+                    const attrs: Record<string, Record<string, unknown>> = {};
+                    attrs[mark.type] = mark.attrs ?? {};
+                    ytext.format(mark.from, mark.to - mark.from, attrs);
+                  }
+                  para.insert(0, [ytext]);
+                  frag.insert(frag.length, [para]);
                 }
-                para.insert(0, [ytext]);
-                frag.insert(frag.length, [para]);
               }
             }
-          }
-          if (body.threads && Array.isArray(body.threads)) {
-            const threadsMap = doc.getMap<string>("threads");
-            for (const thread of body.threads) {
-              const t = thread as { id?: string };
-              if (t.id) {
-                threadsMap.set(t.id, JSON.stringify(thread));
+            if (body.threads && Array.isArray(body.threads)) {
+              const threadsMap = doc.getMap<string>("threads");
+              for (const thread of body.threads) {
+                const t = thread as { id?: string };
+                if (t.id) {
+                  threadsMap.set(t.id, JSON.stringify(thread));
+                }
               }
             }
-          }
-          if (body.onboarding) {
-            const docState = doc.getMap<string>("docState");
-            docState.set("onboarding", "true");
-          }
+            if (body.onboarding) {
+              const docState = doc.getMap<string>("docState");
+              docState.set("onboarding", "true");
+            }
+          }, "agent");
         } catch (err) {
           // If it's an unsupported CriticMarkup error, return it
           if (err instanceof Error && err.message.includes("Unsupported CriticMarkup")) {
@@ -495,6 +590,96 @@ class DocumentAgent extends Agent {
       SELECT * FROM agent_tokens ORDER BY created_at ASC
     `;
     return rows.map(rowToRosterEntry);
+  }
+
+  /**
+   * Synchronous roster-name lookup for use inside Yjs observer callbacks
+   * (which cannot await getAgentRoster's async signature, even though its
+   * body is itself fully synchronous SQL access).
+   */
+  private getRosterNamesSync(): string[] {
+    const rows = this.sql<{ name: string }>`SELECT name FROM agent_tokens`;
+    return rows.map((r) => r.name);
+  }
+
+  /**
+   * Finds the markdown text (via getBlocks) of the block containing a given
+   * Y.XmlText node, for attaching context to a mention event. Returns null
+   * if the node isn't a direct child of a top-level block element (e.g. it
+   * was already removed from the fragment by a later concurrent edit).
+   */
+  private findBlockTextForXmlText(ytext: Y.XmlText): string | null {
+    if (!this.doc) return null;
+    const parent = ytext.parent;
+    if (!(parent instanceof Y.XmlElement)) return null;
+    const frag = this.doc.getXmlFragment("default");
+    const index = frag.toArray().indexOf(parent);
+    if (index === -1) return null;
+    return getBlocks(this.doc)[index]?.text ?? null;
+  }
+
+  /**
+   * Inserts a row into `events` and wakes every agentAwaitEvents long-poll
+   * currently parked with nothing to return — each re-queries past its own
+   * cursor once woken, so no event data needs to travel through the
+   * resolver itself.
+   */
+  private recordEvent(type: string, payload: unknown): void {
+    this.ensureInitialised();
+    this.sql`
+      INSERT INTO events (type, payload, created_at) VALUES (${type}, ${JSON.stringify(payload)}, ${Date.now()})
+    `;
+    const waiters = this.eventWaiters;
+    this.eventWaiters = [];
+    for (const resolve of waiters) resolve();
+  }
+
+  /**
+   * Long-polls for events past `cursor` (default 0, i.e. everything).
+   * Returns immediately if any exist; otherwise parks until either
+   * recordEvent flushes it or `timeoutMs` (capped at 50s) elapses, then
+   * returns whatever is available at that point (possibly still empty).
+   * Only a valid token is required — read is implied.
+   */
+  async agentAwaitEvents(
+    token: string,
+    args: { cursor?: number; timeoutMs?: number },
+  ): Promise<
+    | { events: { seq: number; type: DocEventType; payload: unknown }[]; cursor: number }
+    | { error: AgentError }
+  > {
+    const verified = await this.verifyAgentToken(token);
+    if ("error" in verified) return verified;
+
+    const cursor = args.cursor ?? 0;
+
+    const readPast = (): { seq: number; type: DocEventType; payload: unknown }[] => {
+      const rows = this.sql<EventRow>`
+        SELECT * FROM events WHERE seq > ${cursor} ORDER BY seq ASC
+      `;
+      return rows.map((r) => ({
+        seq: r.seq,
+        type: r.type as DocEventType,
+        payload: JSON.parse(r.payload) as unknown,
+      }));
+    };
+
+    let events = readPast();
+    if (events.length === 0) {
+      const timeoutMs = Math.min(args.timeoutMs ?? 50_000, 50_000);
+      await new Promise<void>((resolve) => {
+        const finish = () => {
+          this.eventWaiters = this.eventWaiters.filter((w) => w !== finish);
+          clearTimeout(timer);
+          resolve();
+        };
+        this.eventWaiters.push(finish);
+        const timer = setTimeout(finish, timeoutMs);
+      });
+      events = readPast();
+    }
+
+    return { events, cursor: events.length > 0 ? events[events.length - 1].seq : cursor };
   }
 
   /** Revokes an agent's token by name. Idempotent. */
@@ -693,6 +878,81 @@ class DocumentAgent extends Agent {
       find: args.find,
       replacement: args.replacement,
     });
+  }
+
+  /**
+   * Creates a new comment thread anchored at a block. `anchor` is validated
+   * (stale_anchor on failure) but — like ThreadData itself — not stored on
+   * the thread; `quote` maps to `highlightText`, `text` to `commentText`,
+   * matching how the client's own comment threads are shaped
+   * (app/lib/comment-threads.ts / useThreads.ts). Requires `comment`.
+   */
+  async agentComment(
+    token: string,
+    args: { anchor: string; quote?: string; text: string },
+  ): Promise<{ threadId: string } | { error: AgentError }> {
+    const verified = await this.verifyAgentToken(token, "comment");
+    if ("error" in verified) return verified;
+
+    const { doc } = this.ensureInitialised();
+    const resolved = resolveAnchor(doc, args.anchor);
+    if ("error" in resolved) {
+      return { error: { code: resolved.error, message: "Anchor not found", snippet: resolved.snippet } };
+    }
+
+    const { name, color } = verified.entry;
+    const id = crypto.randomUUID();
+    const thread: ThreadData = {
+      id,
+      commentText: args.text,
+      highlightText: args.quote,
+      author: { name, color, colorLight: color },
+      createdAt: Date.now(),
+      resolved: false,
+      replies: [],
+    };
+
+    doc.transact(() => {
+      doc.getMap<string>("threads").set(id, JSON.stringify(thread));
+    }, "agent");
+
+    return { threadId: id };
+  }
+
+  /**
+   * Appends a reply to an existing thread. Requires `comment`. A missing
+   * thread returns `doc_not_found` (the closed AgentErrorCode union has no
+   * dedicated "thread not found" code).
+   */
+  async agentReply(
+    token: string,
+    args: { threadId: string; text: string },
+  ): Promise<{ ok: true } | { error: AgentError }> {
+    const verified = await this.verifyAgentToken(token, "comment");
+    if ("error" in verified) return verified;
+
+    const { doc } = this.ensureInitialised();
+    const threadsMap = doc.getMap<string>("threads");
+    const raw = threadsMap.get(args.threadId);
+    if (!raw) {
+      return { error: { code: "doc_not_found", message: "thread not found" } };
+    }
+
+    const thread = JSON.parse(raw) as ThreadData;
+    const { name, color } = verified.entry;
+    const reply: ThreadReply = {
+      id: crypto.randomUUID(),
+      author: { name, color, colorLight: color },
+      text: args.text,
+      createdAt: Date.now(),
+    };
+    thread.replies.push(reply);
+
+    doc.transact(() => {
+      threadsMap.set(args.threadId, JSON.stringify(thread));
+    }, "agent");
+
+    return { ok: true };
   }
 
   /**
@@ -920,7 +1180,7 @@ class DocumentAgent extends Agent {
     }
 
     if (mutation.markdown.includes("\n")) {
-      doc.transact(() => insertMarkdownBlocks(doc, index, mutation.markdown));
+      doc.transact(() => insertMarkdownBlocks(doc, index, mutation.markdown), "agent");
       this.deletePerformanceRow(item.id);
       return;
     }
@@ -932,7 +1192,7 @@ class DocumentAgent extends Agent {
     const el = new Y.XmlElement("paragraph");
     const ytext = new Y.XmlText("");
     el.insert(0, [ytext]);
-    doc.transact(() => doc.getXmlFragment("default").insert(index, [el]));
+    doc.transact(() => doc.getXmlFragment("default").insert(index, [el]), "agent");
     this.deletePerformanceRow(item.id);
 
     let typed = 0;
@@ -945,7 +1205,7 @@ class DocumentAgent extends Agent {
         // The paragraph (or its text) is gone — nothing sane left to type into.
         return;
       }
-      doc.transact(() => ytext.insert(absPos.index, tick.chunk));
+      doc.transact(() => ytext.insert(absPos.index, tick.chunk), "agent");
       typed += tick.chunk.length;
       const caretOffset = absPos.index + tick.chunk.length;
       relPos = Y.createRelativePositionFromTypeIndex(ytext, caretOffset);
@@ -960,7 +1220,7 @@ class DocumentAgent extends Agent {
         for (const mark of marks) {
           ytext.format(mark.from, mark.to - mark.from, { [mark.type]: mark.attrs ?? {} });
         }
-      });
+      }, "agent");
     }
   }
 
@@ -1006,7 +1266,7 @@ class DocumentAgent extends Agent {
     }
 
     // Claim the slot now, synchronously — see the doc comment above.
-    doc.transact(() => ytext.format(pos, mutation.find.length, { criticDeletion: {} }));
+    doc.transact(() => ytext.format(pos, mutation.find.length, { criticDeletion: {} }), "agent");
     let relPos = Y.createRelativePositionFromTypeIndex(ytext, pos + mutation.find.length);
     this.deletePerformanceRow(item.id);
 
@@ -1019,7 +1279,7 @@ class DocumentAgent extends Agent {
         // The block (or its text) is gone — nothing sane left to type into.
         return;
       }
-      doc.transact(() => ytext.insert(absPos.index, tick.chunk, { criticAddition: {} }));
+      doc.transact(() => ytext.insert(absPos.index, tick.chunk, { criticAddition: {} }), "agent");
       const caretOffset = absPos.index + tick.chunk.length;
       relPos = Y.createRelativePositionFromTypeIndex(ytext, caretOffset);
       this.onPerformanceCursor(item.agentName, ytext, caretOffset);
@@ -1095,7 +1355,7 @@ class DocumentAgent extends Agent {
 
         doc.transact(() => {
           insertMarkdownBlocks(doc, index, m.markdown);
-        });
+        }, "agent");
 
         return { ok: true };
       }
@@ -1130,7 +1390,7 @@ class DocumentAgent extends Agent {
         doc.transact(() => {
           deleteBlocks(doc, fromIndex, toIndex);
           insertMarkdownBlocks(doc, fromIndex, m.markdown);
-        });
+        }, "agent");
 
         return { ok: true };
       }
@@ -1163,7 +1423,7 @@ class DocumentAgent extends Agent {
         doc.transact(() => {
           ytext.format(pos, m.find.length, { criticDeletion: {} });
           ytext.insert(pos + m.find.length, m.replacement, { criticAddition: {} });
-        });
+        }, "agent");
 
         return { ok: true };
       }

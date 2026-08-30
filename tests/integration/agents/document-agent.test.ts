@@ -16,6 +16,7 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import { DOCUMENT_TTL_MS, DOC_FORMAT_VERSION } from "~/shared/constants";
 import { YjsProvider } from "~/lib/yjs-provider";
 import { MAX_AGENTS_PER_DOC, type AgentCapability } from "~/shared/agent-protocol";
+import { yDocToMarkdown } from "~/lib/y-markdown";
 
 /* ------------------------------------------------------------------ */
 /*  Mock Agent base class                                              */
@@ -681,6 +682,67 @@ describe("DocumentAgent", () => {
       a.doc.getText("default").delete(6, 5);
       expect(b.doc.getText("default").toString()).toBe("hello ");
       cleanup(a, b);
+    });
+
+    it("propagates an instant agent mutation to an already-connected client without reconnecting", async () => {
+      await agent.onRequest(
+        new Request("https://do/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: "# Title\n\nBody." }),
+        }),
+      );
+      const minted = await agent.mintAgentToken({ name: "scribe", capabilities: ["write"] });
+      const token = (minted as { token: string }).token;
+
+      const client = connectYjsClient(agent);
+      expect(yDocToMarkdown(client.doc)).toBe("# Title\n\nBody.");
+
+      const result = await agent.agentInsert(token, {
+        where: "append",
+        markdown: "Agent wrote this.",
+        pace: "instant",
+      });
+      expect(result).toEqual({ ok: true });
+
+      // No reconnect, no re-sync — the client's live replica must already
+      // reflect the agent's mutation via a broadcast update.
+      expect(yDocToMarkdown(client.doc)).toContain("Agent wrote this.");
+      cleanup(client);
+    });
+
+    it("propagates a paced (natural) agent mutation to a connected client tick by tick", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      try {
+        await agent.onRequest(
+          new Request("https://do/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content: "# Title\n\nBody." }),
+          }),
+        );
+        const minted = await agent.mintAgentToken({ name: "scribe", capabilities: ["write"] });
+        const token = (minted as { token: string }).token;
+
+        const client = connectYjsClient(agent);
+        // A connected human is required for a non-instant pace to queue
+        // rather than apply immediately.
+        createConnection();
+
+        const result = await agent.agentInsert(token, {
+          where: "append",
+          markdown: "Typed live to the client.",
+          pace: "natural",
+        });
+        expect(result).toEqual({ ok: true });
+
+        await vi.runAllTimersAsync();
+
+        expect(yDocToMarkdown(client.doc)).toContain("Typed live to the client.");
+        cleanup(client);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

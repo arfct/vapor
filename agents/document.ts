@@ -205,12 +205,25 @@ class DocumentAgent extends Agent {
     }
 
     // Persist on every update
-    this.doc.on("update", () => {
+    this.doc.on("update", (update: Uint8Array, origin: unknown) => {
       const state = Y.encodeStateAsUpdate(this.doc!);
       this.sql`
         INSERT INTO doc_state (key, value) VALUES ('state', ${sqlBlob(state)})
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
       `;
+
+      // Agent-originated mutations (doc.transact(fn, "agent")) never pass
+      // through onMessage's relay — they mutate this DO's Y.Doc directly —
+      // so without this, connected browsers never see them until their next
+      // reconnect replays full state. Human-origin updates are already
+      // relayed by onMessage's broadcastBinary of the raw incoming sync
+      // message, so broadcasting them again here would double-send.
+      if (origin === "agent") {
+        const encoder = encoding.createEncoder();
+        encoding.writeVarUint(encoder, MSG_SYNC);
+        syncProtocol.writeUpdate(encoder, update);
+        this.broadcastToAll(encoding.toUint8Array(encoder));
+      }
     });
 
     // Eviction recovery: a row still in `performances` means the DO was
@@ -1655,6 +1668,19 @@ class DocumentAgent extends Agent {
 
         return { ok: true };
       }
+    }
+  }
+
+  /**
+   * Sends a pre-encoded binary frame to every connected client, with no
+   * exclusion — used for server-originated broadcasts (agent mutations)
+   * where there is no originating connection to exclude, unlike
+   * broadcastBinary's relay of a message that arrived from one client.
+   */
+  private broadcastToAll(bytes: Uint8Array) {
+    const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    for (const conn of this.getConnections()) {
+      conn.send(buf);
     }
   }
 

@@ -110,6 +110,23 @@ Connecting an agent must be a copy-paste, not a documentation hunt.
 - **Roster panel** in the same dialog lists the doc's agents — name, colour, capability chips, owner, last seen — with revoke.
 - **`GET /mcp` from a browser** (Accept: text/html) renders a short "how to connect" page instead of a protocol error, linking back to the invite flow.
 
+## Anonymous agents (added 2026-08-30, post-v1)
+
+The bearer token is optional. A tokenless MCP session gets an **anonymous agent identity**:
+
+- The name derives from the MCP client's `clientInfo.name` at initialize, slugified to `AGENT_NAME_RE` (fallback `agent`); a collision inside a doc appends `-2`, `-3`, ….
+- On the first tool call that touches a document, `VaporMcp` auto-enrolls the agent: a server-generated token is minted with `DEFAULT_CAPABILITIES` (suggest + comment) and `owner: null`, held in the MCP session's state and never shown to anyone. All downstream RPCs, rate limits, roster UI, and revoke work unchanged — an anonymous agent is an ordinary roster entry.
+- `write` still requires an explicitly minted token. The existing `MAX_AGENTS_PER_DOC` cap bounds roster flooding.
+- Escalation argument: vapor is public by URL — any human with the link can already edit anonymously over the Yjs WebSocket, so a tokenless agent with suggest rights grants nothing new.
+
+Connecting becomes one line with no token:
+
+```
+claude mcp add --transport http vapor https://vapor.fyi/mcp
+```
+
+Explicit agent naming and cross-doc user tokens are the next phase (user-level credentials), not this one.
+
 ## Other doors (this phase)
 
 - **Raw REST**: `GET /:id.md` public (docs are public by URL); mutation stays MCP-only this phase. The existing `curl /new -T file.md` flow is unchanged.

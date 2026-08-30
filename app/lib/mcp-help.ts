@@ -3,8 +3,24 @@
  * (Accept: text/html) — API/MCP clients POST and never see this. Rendered by
  * `workers/routes.ts`'s `handleMcpHelp`.
  */
+
+/** Fallback used whenever `origin` doesn't look like a plain http(s) origin. */
+const DEFAULT_ORIGIN = "https://vapor.fyi";
+
+/**
+ * `origin` comes from `url.origin` in workers/routes.ts, which derives from
+ * the client-controlled Host header — it is interpolated unescaped into raw
+ * HTML below (a `<pre>` block and a JSON literal), so a crafted Host like
+ * `https://evil<script>...` must never reach the template. Restricting it to
+ * the character set a real http(s) origin can contain (scheme, host,
+ * optional port/IPv6 brackets) rules out `<`, `>`, `"`, `'`, and `/` beyond
+ * the scheme separator, so nothing here can break out of its context.
+ */
+const SAFE_ORIGIN_RE = /^https?:\/\/[a-z0-9.:[\]-]+$/i;
+
 export function mcpHelpHtml(origin: string): string {
-  const mcpUrl = `${origin}/mcp`;
+  const safeOrigin = SAFE_ORIGIN_RE.test(origin) ? origin : DEFAULT_ORIGIN;
+  const mcpUrl = `${safeOrigin}/mcp`;
   const mcpServersJson = JSON.stringify(
     {
       mcpServers: {

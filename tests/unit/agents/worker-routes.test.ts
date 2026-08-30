@@ -16,6 +16,7 @@ describe("handleRawMarkdown", () => {
     expect(res).not.toBeNull();
     expect(res!.status).toBe(200);
     expect(res!.headers.get("Content-Type")).toBe("text/markdown; charset=utf-8");
+    expect(res!.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(await res!.text()).toBe("# Hello\n\nWorld");
     expect(getStub).toHaveBeenCalledWith("abcd1234");
   });

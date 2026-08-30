@@ -43,7 +43,12 @@ export async function handleRawMarkdown(
 
   return new Response(result.markdown, {
     status: 200,
-    headers: { "Content-Type": "text/markdown; charset=utf-8" },
+    headers: {
+      "Content-Type": "text/markdown; charset=utf-8",
+      // Raw, user-authored content served at a public URL — don't let a
+      // browser sniff it into something more dangerous than markdown.
+      "X-Content-Type-Options": "nosniff",
+    },
   });
 }
 

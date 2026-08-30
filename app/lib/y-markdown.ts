@@ -2,25 +2,37 @@ import * as Y from "yjs";
 import { blockHash, parseAnchor } from "~/shared/agent-protocol";
 import type { DocBlock } from "~/shared/agent-protocol";
 import { parseCriticMarkupToContent } from "~/lib/critic-parser";
+import { DELIMITERS } from "~/lib/critic-constants";
 
-// Keep in sync with DELIMITERS in app/lib/critic-marks.ts:71. That module
-// pulls in @tiptap/core and DOM APIs (document.createElement) via its
-// ProseMirror decoration plugin, so it can't be imported from this
-// TipTap-free layer — the map is small enough to duplicate here.
-const DELIMS: Record<string, [string, string]> = {
-  criticAddition: ["{++", "++}"],
-  criticDeletion: ["{--", "--}"],
-  criticComment: ["{>>", "<<}"],
-  criticHighlight: ["{==", "==}"],
+// Maps Yjs formatting-attribute keys (the ProseMirror mark names used by
+// critic-marks.ts) to the shared delimiter strings in critic-constants.ts.
+const MARK_DELIMS: Record<string, { open: string; close: string }> = {
+  criticAddition: DELIMITERS.addition,
+  criticDeletion: DELIMITERS.deletion,
+  criticComment: DELIMITERS.comment,
+  criticHighlight: DELIMITERS.highlight,
 };
+
+// criticHighlight declares no `excludes` in critic-marks.ts, so a run can
+// carry criticHighlight together with one of criticAddition/criticDeletion/
+// criticComment (those three do mutually exclude each other). When more
+// than one mark type is present on a run, nest delimiters in this stable
+// order — highlight outermost — rather than silently dropping all but one.
+const NEST_ORDER = ["criticHighlight", "criticAddition", "criticDeletion", "criticComment"];
 
 function blockText(el: Y.XmlElement): string {
   let out = "";
   for (const child of el.toArray()) {
     if (!(child instanceof Y.XmlText)) continue;
     for (const op of child.toDelta() as { insert: string; attributes?: Record<string, unknown> }[]) {
-      const markType = op.attributes && Object.keys(op.attributes).find((k) => DELIMS[k]);
-      out += markType ? DELIMS[markType][0] + op.insert + DELIMS[markType][1] : op.insert;
+      const attrs = op.attributes ?? {};
+      const activeTypes = NEST_ORDER.filter((t) => t in attrs);
+      let text = op.insert;
+      for (let i = activeTypes.length - 1; i >= 0; i--) {
+        const delims = MARK_DELIMS[activeTypes[i]];
+        text = delims.open + text + delims.close;
+      }
+      out += text;
     }
   }
   return out;

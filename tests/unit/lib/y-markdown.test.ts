@@ -38,4 +38,22 @@ describe("y-markdown", () => {
     expect(r).toMatchObject({ error: "stale_anchor" });
     expect((r as { snippet: string }).snippet).toContain("alpha");
   });
+
+  it("round-trips overlapping highlight+addition marks on the same run without dropping either delimiter", () => {
+    const doc = new Y.Doc();
+    const frag = doc.getXmlFragment("default");
+    const para = new Y.XmlElement("paragraph");
+    const ytext = new Y.XmlText("keep highlighted addition end");
+    para.insert(0, [ytext]);
+    frag.insert(0, [para]);
+
+    const start = "keep ".length;
+    const length = "highlighted addition".length;
+    // Apply both mark types to the same run in one format call, the way
+    // overlapping criticHighlight + criticAddition marks would land on the
+    // Yjs delta (criticHighlight declares no `excludes` in critic-marks.ts).
+    ytext.format(start, length, { criticHighlight: {}, criticAddition: {} });
+
+    expect(yDocToMarkdown(doc)).toBe("keep {=={++highlighted addition++}==} end");
+  });
 });

@@ -816,15 +816,21 @@ class DocumentAgent extends Agent {
     }
 
     const row = rows[0];
+
+    // last_seen_at tracks presence, not authorisation: an agent that
+    // presented a valid token has been seen, whether or not the call it was
+    // making turns out to need a capability it lacks. Update before the
+    // capability check, so a denied call still keeps the agent in the
+    // presence list rather than making it look idle.
+    const now = Date.now();
+    this.sql`UPDATE agent_tokens SET last_seen_at = ${now} WHERE token_hash = ${tokenHash}`;
+
     const capabilities = JSON.parse(row.capabilities) as AgentCapability[];
     if (needs && !capabilities.includes(needs)) {
       return {
         error: { code: "capability_denied", message: `Agent lacks capability: ${needs}` },
       };
     }
-
-    const now = Date.now();
-    this.sql`UPDATE agent_tokens SET last_seen_at = ${now} WHERE token_hash = ${tokenHash}`;
 
     return { entry: rowToRosterEntry({ ...row, last_seen_at: now }) };
   }
@@ -956,14 +962,16 @@ class DocumentAgent extends Agent {
     const verified = await this.verifyAgentToken(token, "write");
     if ("error" in verified) return verified;
 
-    const rateLimited = await this.checkRateLimit(token, args.markdown.length);
-    if (rateLimited) return rateLimited;
-
+    // Validate before charging the rate limit — a malformed call shouldn't
+    // spend the agent's budget.
     if (args.where !== "append" && !args.anchor) {
       return {
         error: { code: "stale_anchor", message: `An anchor is required for where: "${args.where}"` },
       };
     }
+
+    const rateLimited = await this.checkRateLimit(token, args.markdown.length);
+    if (rateLimited) return rateLimited;
 
     return this.dispatchMutation(verified.entry.name, args.pace, {
       kind: "insert",
@@ -983,6 +991,13 @@ class DocumentAgent extends Agent {
   ): Promise<{ ok: true } | { error: AgentError }> {
     const verified = await this.verifyAgentToken(token, "write");
     if ("error" in verified) return verified;
+
+    // Validate before charging the rate limit — see agentInsert.
+    if (!args.from) {
+      return {
+        error: { code: "stale_anchor", message: 'A "from" anchor is required for replace' },
+      };
+    }
 
     const rateLimited = await this.checkRateLimit(token, args.markdown.length);
     if (rateLimited) return rateLimited;

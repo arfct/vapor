@@ -805,6 +805,20 @@ describe("DocumentAgent", () => {
       expect(entry.lastSeenAt).not.toBeNull();
     });
 
+    it("updates lastSeenAt even when the capability check denies the call", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+      const minted = await agent.mintAgentToken({ name: "scribe" }); // no write
+      const token = (minted as { token: string }).token;
+      expect((await agent.getAgentRoster())[0].lastSeenAt).toBeNull();
+
+      const v = await asVerifier(agent).verifyAgentToken(token, "write");
+      expect(v).toMatchObject({ error: { code: "capability_denied" } });
+
+      // The agent was here — a denied call is still a sighting, and presence
+      // is derived from lastSeenAt.
+      expect((await agent.getAgentRoster())[0].lastSeenAt).not.toBeNull();
+    });
+
     it("assigns roster colors round-robin by roster size", async () => {
       await agent.onRequest(new Request("https://do/", { method: "POST" }));
       await agent.mintAgentToken({ name: "first" });
@@ -878,6 +892,16 @@ describe("DocumentAgent", () => {
       await agent.agentSuggest(token, { anchor, find: "Body.", replacement: "Better body." });
       const after = await agent.agentRead(token);
       expect("markdown" in after && after.markdown).toContain("{--Body.--}{++Better body.++}");
+    });
+
+    it("rejects a missing anchor without spending the rate-limit budget", async () => {
+      const { agent, token } = await setup(["write"]);
+
+      const result = await agent.agentInsert(token, { where: "after", markdown: "Orphan." });
+      expect(result).toMatchObject({ error: { code: "stale_anchor" } });
+
+      const row = (mockTables.get("agent_tokens") ?? []).find((r) => r.name === "scribe")!;
+      expect(row.recent_mutations ?? null).toBeNull();
     });
 
     it("stale anchor errors after concurrent edit", async () => {

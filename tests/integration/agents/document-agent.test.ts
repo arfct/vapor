@@ -23,6 +23,14 @@ import { YjsProvider } from "~/lib/yjs-provider";
 let mockSqlStore: Map<string, ArrayBuffer>;
 let mockConnectionMap: Map<string, MockConnection>;
 let mockSetAlarm: ReturnType<typeof vi.fn>;
+/**
+ * Generic in-memory table store for tables other than `doc_state`
+ * (currently `agent_tokens`; later tasks add `performances`/`events`).
+ * Keyed by table name -> array of row objects. Query-shaped, not a real
+ * SQL engine: it pattern-matches the exact INSERT/SELECT/UPDATE/DELETE
+ * forms the DO code uses, mirroring the `doc_state` fake above.
+ */
+let mockTables: Map<string, Array<Record<string, unknown>>>;
 
 vi.mock("agents", () => ({
   Agent: class MockAgent {
@@ -37,7 +45,8 @@ vi.mock("agents", () => ({
     };
 
     sql(strings: TemplateStringsArray, ...values: unknown[]) {
-      const query = strings.join("$").toLowerCase().trim();
+      const raw = strings.join("$");
+      const query = raw.toLowerCase().trim();
 
       if (query.includes("create table")) return [];
 
@@ -67,6 +76,72 @@ vi.mock("agents", () => ({
           }
         }
         return [];
+      }
+
+      // Generic table store, matched by table name in the query.
+      const tableMatch = /(?:from|into|update)\s+(\w+)/.exec(query);
+      if (tableMatch) {
+        const table = tableMatch[1];
+        if (!mockTables.has(table)) mockTables.set(table, []);
+        const rows = mockTables.get(table)!;
+
+        if (query.startsWith("insert into")) {
+          const colsMatch = /\(([^)]+)\)\s*values/i.exec(raw);
+          if (colsMatch) {
+            const cols = colsMatch[1].split(",").map((c) => c.trim());
+            const row: Record<string, unknown> = {};
+            cols.forEach((col, i) => {
+              row[col] = values[i];
+            });
+            rows.push(row);
+          }
+          return [];
+        }
+
+        if (query.startsWith("update")) {
+          const setMatch = /set\s+(\w+)\s*=/i.exec(raw);
+          const whereMatch = /where\s+(\w+)\s*=/i.exec(raw);
+          if (setMatch && whereMatch) {
+            const [setVal, whereVal] = values;
+            for (const row of rows) {
+              if (row[whereMatch[1]] === whereVal) row[setMatch[1]] = setVal;
+            }
+          }
+          return [];
+        }
+
+        if (query.startsWith("delete from")) {
+          const whereMatch = /where\s+(\w+)\s*=/i.exec(raw);
+          if (whereMatch) {
+            const whereVal = values[0];
+            mockTables.set(
+              table,
+              rows.filter((row) => row[whereMatch[1]] !== whereVal),
+            );
+          } else {
+            mockTables.set(table, []);
+          }
+          return [];
+        }
+
+        if (query.startsWith("select")) {
+          const whereMatch = /where\s+(\w+)\s*=/i.exec(raw);
+          let result = whereMatch
+            ? rows.filter((row) => row[whereMatch[1]] === values[0])
+            : rows;
+
+          const orderMatch = /order by\s+(\w+)/i.exec(raw);
+          if (orderMatch) {
+            const col = orderMatch[1];
+            result = [...result].sort((a, b) => {
+              const av = a[col] as number;
+              const bv = b[col] as number;
+              return av < bv ? -1 : av > bv ? 1 : 0;
+            });
+          }
+
+          return result.map((row) => ({ ...row }));
+        }
       }
 
       return [];
@@ -154,6 +229,7 @@ describe("DocumentAgent", () => {
     vi.stubGlobal("WebSocket", MockSocket);
     mockSqlStore = new Map();
     mockConnectionMap = new Map();
+    mockTables = new Map();
     mockSetAlarm = vi.fn();
     nextConnId = 1;
 
@@ -557,6 +633,89 @@ describe("DocumentAgent", () => {
       const conn = createConnection();
       await agent.onConnect(conn as never, {} as never);
       await agent.onClose(conn as never, 1000, "normal", true);
+    });
+  });
+
+  /* ================================================================ */
+  /*  Agent token roster                                               */
+  /* ================================================================ */
+
+  describe("agent roster", () => {
+    /** verifyAgentToken is private on DocumentAgent; cast to call it from tests. */
+    function asVerifier(a: InstanceType<typeof DocumentAgent>) {
+      return a as unknown as {
+        verifyAgentToken(
+          token: string,
+          needs?: string,
+        ): Promise<{ entry: unknown } | { error: { code: string } }>;
+      };
+    }
+
+    it("mints, lists, verifies capability, revokes", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+
+      const minted = await agent.mintAgentToken({ name: "scribe" });
+      expect("token" in minted && minted.token).toMatch(/^vpr_/);
+      expect((await agent.getAgentRoster())[0]).toMatchObject({
+        name: "scribe",
+        capabilities: ["suggest", "comment"],
+      });
+
+      // Default grant lacks write.
+      const v = await asVerifier(agent).verifyAgentToken(
+        (minted as { token: string }).token,
+        "write",
+      );
+      expect(v).toMatchObject({ error: { code: "capability_denied" } });
+
+      await agent.revokeAgentToken("scribe");
+      expect(await agent.getAgentRoster()).toHaveLength(0);
+    });
+
+    it("rejects bad names and duplicates", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+
+      expect(await agent.mintAgentToken({ name: "Bad Name" })).toMatchObject({
+        error: { code: "invalid_name" },
+      });
+
+      await agent.mintAgentToken({ name: "scribe" });
+      expect(await agent.mintAgentToken({ name: "scribe" })).toMatchObject({
+        error: { code: "invalid_name" },
+      });
+    });
+
+    it("returns doc_not_found when minting before the doc exists", async () => {
+      expect(await agent.mintAgentToken({ name: "scribe" })).toMatchObject({
+        error: { code: "doc_not_found" },
+      });
+    });
+
+    it("returns invalid_token for an unknown token", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+      const v = await asVerifier(agent).verifyAgentToken("vpr_nonexistent");
+      expect(v).toMatchObject({ error: { code: "invalid_token" } });
+    });
+
+    it("verifies a granted capability and updates lastSeenAt", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+      const minted = await agent.mintAgentToken({ name: "scribe" });
+      const token = (minted as { token: string }).token;
+
+      const v = await asVerifier(agent).verifyAgentToken(token, "suggest");
+      expect(v).toMatchObject({ entry: { name: "scribe" } });
+
+      const [entry] = await agent.getAgentRoster();
+      expect(entry.lastSeenAt).not.toBeNull();
+    });
+
+    it("assigns roster colors round-robin by roster size", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+      await agent.mintAgentToken({ name: "first" });
+      await agent.mintAgentToken({ name: "second" });
+
+      const roster = await agent.getAgentRoster();
+      expect(roster[0].color).not.toBe(roster[1].color);
     });
   });
 });

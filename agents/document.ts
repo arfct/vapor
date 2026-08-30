@@ -5,7 +5,10 @@ import * as syncProtocol from "y-protocols/sync";
 import * as awarenessProtocol from "y-protocols/awareness";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
-import { MSG_SYNC, MSG_AWARENESS, DOCUMENT_TTL_MS, DOC_FORMAT_VERSION } from "../app/shared/constants";
+import { MSG_SYNC, MSG_AWARENESS, DOCUMENT_TTL_MS, DOC_FORMAT_VERSION, USER_COLOURS } from "../app/shared/constants";
+import type { AgentCapability, AgentRosterEntry, AgentError } from "../app/shared/agent-protocol";
+import { AGENT_NAME_RE, DEFAULT_CAPABILITIES } from "../app/shared/agent-protocol";
+import { generateAgentToken, hashToken } from "../app/lib/agent-tokens";
 
 /**
  * Durable Objects SQLite accepts Uint8Array for BLOB columns via the
@@ -14,6 +17,27 @@ import { MSG_SYNC, MSG_AWARENESS, DOCUMENT_TTL_MS, DOC_FORMAT_VERSION } from "..
  */
 function sqlBlob(data: Uint8Array): string {
   return data as unknown as string;
+}
+
+interface AgentTokenRow {
+  token_hash: string;
+  name: string;
+  color: string;
+  owner: string | null;
+  capabilities: string;
+  created_at: number;
+  last_seen_at: number | null;
+}
+
+function rowToRosterEntry(row: AgentTokenRow): AgentRosterEntry {
+  return {
+    name: row.name,
+    color: row.color,
+    owner: row.owner,
+    capabilities: JSON.parse(row.capabilities) as AgentCapability[],
+    createdAt: row.created_at,
+    lastSeenAt: row.last_seen_at,
+  };
 }
 
 class DocumentAgent extends Agent {
@@ -28,11 +52,22 @@ class DocumentAgent extends Agent {
     this.doc = new Y.Doc();
     this.awareness = new awarenessProtocol.Awareness(this.doc);
 
-    // Create table if needed
+    // Create tables if needed
     this.sql`
       CREATE TABLE IF NOT EXISTS doc_state (
         key TEXT PRIMARY KEY,
         value BLOB
+      )
+    `;
+    this.sql`
+      CREATE TABLE IF NOT EXISTS agent_tokens (
+        token_hash TEXT PRIMARY KEY,
+        name TEXT UNIQUE,
+        color TEXT,
+        owner TEXT,
+        capabilities TEXT,
+        created_at INTEGER,
+        last_seen_at INTEGER
       )
     `;
 
@@ -243,10 +278,7 @@ class DocumentAgent extends Agent {
     if (request.method === "GET") {
       // Check whether this document exists
       this.ensureInitialised();
-      const rows = this.sql<{ value: ArrayBuffer }>`
-        SELECT value FROM doc_state WHERE key = 'exists'
-      `;
-      const exists = rows.length > 0;
+      const exists = this.docExists();
 
       const createdAtRows = this.sql<{ value: ArrayBuffer }>`
         SELECT value FROM doc_state WHERE key = 'createdAt'
@@ -262,6 +294,123 @@ class DocumentAgent extends Agent {
     }
 
     return new Response("Not found", { status: 404 });
+  }
+
+  /** Whether this document has been created (POSTed to) yet. */
+  private docExists(): boolean {
+    const rows = this.sql<{ value: ArrayBuffer }>`
+      SELECT value FROM doc_state WHERE key = 'exists'
+    `;
+    return rows.length > 0;
+  }
+
+  /**
+   * Mints a new agent token for this document, assigning it a slug name,
+   * a roster color (round-robin over USER_COLOURS), and a set of
+   * capabilities. Only the SHA-256 hash of the token is stored.
+   */
+  async mintAgentToken(opts: {
+    name: string;
+    owner?: string;
+    capabilities?: AgentCapability[];
+  }): Promise<{ token: string; entry: AgentRosterEntry } | { error: AgentError }> {
+    this.ensureInitialised();
+
+    if (!this.docExists()) {
+      return { error: { code: "doc_not_found", message: "Document does not exist" } };
+    }
+
+    if (!AGENT_NAME_RE.test(opts.name)) {
+      return {
+        error: { code: "invalid_name", message: `Invalid agent name: ${opts.name}` },
+      };
+    }
+
+    const existing = this.sql<{ name: string }>`
+      SELECT name FROM agent_tokens WHERE name = ${opts.name}
+    `;
+    if (existing.length > 0) {
+      return {
+        error: { code: "invalid_name", message: `Agent name already taken: ${opts.name}` },
+      };
+    }
+
+    const roster = this.sql<{ name: string }>`SELECT name FROM agent_tokens`;
+    const color = USER_COLOURS[roster.length % USER_COLOURS.length].color;
+
+    const token = generateAgentToken();
+    const tokenHash = await hashToken(token);
+    const capabilities = opts.capabilities ?? DEFAULT_CAPABILITIES;
+    const owner = opts.owner ?? null;
+    const createdAt = Date.now();
+
+    this.sql`
+      INSERT INTO agent_tokens (token_hash, name, color, owner, capabilities, created_at, last_seen_at)
+      VALUES (${tokenHash}, ${opts.name}, ${color}, ${owner}, ${JSON.stringify(capabilities)}, ${createdAt}, ${null})
+    `;
+
+    return {
+      token,
+      entry: {
+        name: opts.name,
+        color,
+        owner,
+        capabilities,
+        createdAt,
+        lastSeenAt: null,
+      },
+    };
+  }
+
+  /** Lists all agents minted for this document, oldest first. */
+  async getAgentRoster(): Promise<AgentRosterEntry[]> {
+    this.ensureInitialised();
+    const rows = this.sql<AgentTokenRow>`
+      SELECT * FROM agent_tokens ORDER BY created_at ASC
+    `;
+    return rows.map(rowToRosterEntry);
+  }
+
+  /** Revokes an agent's token by name. Idempotent. */
+  async revokeAgentToken(name: string): Promise<{ ok: true } | { error: AgentError }> {
+    this.ensureInitialised();
+    this.sql`DELETE FROM agent_tokens WHERE name = ${name}`;
+    return { ok: true };
+  }
+
+  /**
+   * Verifies a presented agent token, optionally checking it carries a
+   * needed capability. `read` is implied by any valid token and is never
+   * stored in `capabilities`, so omit `needs` to check validity only.
+   * Updates `last_seen_at` on success. Used internally by every
+   * agent-facing RPC method.
+   */
+  private async verifyAgentToken(
+    token: string,
+    needs?: AgentCapability,
+  ): Promise<{ entry: AgentRosterEntry } | { error: AgentError }> {
+    this.ensureInitialised();
+
+    const tokenHash = await hashToken(token);
+    const rows = this.sql<AgentTokenRow>`
+      SELECT * FROM agent_tokens WHERE token_hash = ${tokenHash}
+    `;
+    if (rows.length === 0) {
+      return { error: { code: "invalid_token", message: "Invalid or unknown agent token" } };
+    }
+
+    const row = rows[0];
+    const capabilities = JSON.parse(row.capabilities) as AgentCapability[];
+    if (needs && !capabilities.includes(needs)) {
+      return {
+        error: { code: "capability_denied", message: `Agent lacks capability: ${needs}` },
+      };
+    }
+
+    const now = Date.now();
+    this.sql`UPDATE agent_tokens SET last_seen_at = ${now} WHERE token_hash = ${tokenHash}`;
+
+    return { entry: rowToRosterEntry({ ...row, last_seen_at: now }) };
   }
 
   private broadcastBinary(message: WSMessage, excludeId: string) {

@@ -98,6 +98,18 @@ Rate limit: per token, a budget consistent with the simulated typing speed (enfo
 
 The UI renders agent presence with a distinguishing badge in the avatar stack and caret label — human-like, but never passing as human.
 
+## Connect UI
+
+Connecting an agent must be a copy-paste, not a documentation hunt.
+
+- **Invite agent** action in the doc's share/menu area opens a dialog: agent name (slug, auto-suggested), capability toggles (suggest + comment pre-checked; write off by default), optional owner. Creating it shows the token **once** (only the hash is stored) alongside ready-to-paste connection snippets:
+  - **Claude Code**: `claude mcp add --transport http vapor https://vapor.fyi/mcp --header "Authorization: Bearer <token>"`
+  - **claude.ai**: the connector URL plus where to paste it (Settings → Connectors → Add custom connector).
+  - **Generic MCP client**: the `mcpServers` JSON block.
+  Each snippet has a copy button; the dialog warns the token can't be shown again (revoke and re-mint instead).
+- **Roster panel** in the same dialog lists the doc's agents — name, colour, capability chips, owner, last seen — with revoke.
+- **`GET /mcp` from a browser** (Accept: text/html) renders a short "how to connect" page instead of a protocol error, linking back to the invite flow.
+
 ## Other doors (this phase)
 
 - **Raw REST**: `GET /:id.md` public (docs are public by URL); mutation stays MCP-only this phase. The existing `curl /new -T file.md` flow is unchanged.

@@ -26,7 +26,7 @@ mist:
       resolved: false
 ---
 
-# mist
+# vapor
 
 This is a **collaborative Markdown editor** with _real-time_ multiplayer editing, suggestions, and inline comments.
 
@@ -55,7 +55,7 @@ Click on a highlighted region or comment to open the thread panel. Threads suppo
 
 The Share button in the header copies a link to your clipboard. Export the document as Markdown from the same menu.
 
-The exported document includes suggested edits and comment threads. Importing the exported doc back into mist preserves suggestions and threads.
+The exported document includes suggested edits and comment threads. Importing the exported doc back into vapor preserves suggestions and threads.
 
 ## Try It Out
 

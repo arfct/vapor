@@ -8,7 +8,7 @@ import { isReservedSlug } from "~/shared/agent-protocol";
 
 describe("scaffolding", () => {
   it("exports app name", () => {
-    expect(APP_NAME).toBe("mist");
+    expect(APP_NAME).toBe("vapor");
   });
 });
 

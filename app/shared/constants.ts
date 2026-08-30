@@ -1,6 +1,6 @@
 import { isReservedSlug } from "./agent-protocol";
 
-export const APP_NAME = "mist";
+export const APP_NAME = "vapor";
 
 export function isValidDocumentId(id: string): boolean {
   if (id.length !== 8) return false;

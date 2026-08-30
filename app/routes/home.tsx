@@ -13,7 +13,7 @@ export function loader({ request }: Route.LoaderArgs) {
 
 export function meta(_args: Route.MetaArgs) {
   return [
-    { title: "mist" },
+    { title: "vapor" },
     { name: "description", content: "Collaborative markdown editor" },
   ];
 }
@@ -165,7 +165,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <span className="whitespace-nowrap">Work in progress.</span> Bugs and
           feedback on{" "}
           <a
-            href="https://github.com/inanimate-tech/mist"
+            href="https://github.com/arfct/vapor"
             target="_blank"
             rel="noopener noreferrer"
             className="text-ink transition-colors hover:text-coral"

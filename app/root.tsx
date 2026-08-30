@@ -65,9 +65,9 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center">
         <p className="mb-1 text-6xl font-light tracking-tight text-ink">404</p>
-        <p className="mb-6 text-muted">mist not found</p>
+        <p className="mb-6 text-muted">vapor not found</p>
         <Link to="/" className="font-bold text-ink underline">
-          mist home
+          vapor home
         </Link>
       </main>
     );
@@ -78,7 +78,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       <p className="mb-1 text-6xl font-light tracking-tight text-ink">{status}</p>
       <p className="mb-6 text-muted">Something went wrong</p>
       <Link to="/" className="font-bold text-ink underline">
-        mist home
+        vapor home
       </Link>
       {stack && (
         <pre className="mt-8 max-w-2xl overflow-x-auto p-4 text-sm text-muted">

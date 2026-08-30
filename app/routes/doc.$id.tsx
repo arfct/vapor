@@ -22,7 +22,7 @@ import MobilePanel from "~/components/MobilePanel";
 import OnboardingBanner from "~/components/OnboardingBanner";
 
 export function meta(_args: Route.MetaArgs) {
-  return [{ title: "mist" }];
+  return [{ title: "vapor" }];
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
@@ -95,7 +95,7 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
           to="/"
           className="flex items-center bg-ink px-4 py-2 font-medium text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
         >
-          mist
+          vapor
         </Link>
         <div className="flex grow shrink-0 items-center px-4">
           <span className="font-mono font-bold">{id}</span>

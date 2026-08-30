@@ -44,11 +44,11 @@ function postRequest(body: string | null, headers?: Record<string, string>) {
   const init: RequestInit = { method: "POST" };
   if (body !== null) init.body = body;
   if (headers) init.headers = headers;
-  return new Request("https://mist.example.com/new", init);
+  return new Request("https://vapor.example.com/new", init);
 }
 
 function putRequest(body: string) {
-  return new Request("https://mist.example.com/new", { method: "PUT", body });
+  return new Request("https://vapor.example.com/new", { method: "PUT", body });
 }
 
 // The action's second argument — context is passed to getCloudflare which is mocked
@@ -82,7 +82,7 @@ describe("POST /new (action)", () => {
     expect(response.headers.get("Content-Type")).toBe("text/plain");
 
     const text = await response.text();
-    expect(text).toBe("https://mist.example.com/abcd1234\n");
+    expect(text).toBe("https://vapor.example.com/abcd1234\n");
   });
 
   it("returns 201 for empty body (blank document)", async () => {
@@ -141,7 +141,7 @@ describe("POST /new (action)", () => {
 
   it("strips frontmatter and passes threads to agent", async () => {
     const md = `---
-mist:
+vapor:
   threads:
     - comment: "Nice"
       author: "Alice"

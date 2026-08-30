@@ -25,7 +25,7 @@ Also check `plans/` for any active plan.
 
 vapor is a collaborative markdown editor — a cross between GitHub Gist and Google Docs. Users can quickly share and do multiplayer editing on markdown documents in real-time. Everything is public by URL (no auth yet). Documents persist live with no save button. Documents auto-expire after 99 hours. AI agents can join documents as human-like collaborators over MCP (see "Agent collaborators" below).
 
-User-visible naming is "vapor" (`APP_NAME`, page titles, wordmark). The markdown-export frontmatter key stays `mist:` for round-trip compatibility with existing exports, and the theme localStorage key stays `mist-theme` so users' theme choices survive.
+Naming is "vapor" throughout: `APP_NAME`, page titles, the export frontmatter key (`vapor:`), and the theme localStorage key (`vapor-theme`).
 
 ### Tech Stack
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 
 export type Theme = "light" | "dark" | "auto";
 
-const STORAGE_KEY = "mist-theme";
+const STORAGE_KEY = "vapor-theme";
 
 export function useTheme() {
   const [theme, setThemeState] = useState<Theme>("auto");

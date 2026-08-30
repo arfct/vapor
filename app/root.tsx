@@ -25,7 +25,7 @@ export const links: Route.LinksFunction = () => [
   },
 ];
 
-const themeScript = `(function(){var t=localStorage.getItem('mist-theme')||'auto';document.documentElement.setAttribute('data-theme',t)})()`;
+const themeScript = `(function(){var t=localStorage.getItem('vapor-theme')||'auto';document.documentElement.setAttribute('data-theme',t)})()`;
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (

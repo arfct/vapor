@@ -1,5 +1,5 @@
 ---
-mist:
+vapor:
   onboarding: true
   threads:
     - comment: "Docs are ephemeral."

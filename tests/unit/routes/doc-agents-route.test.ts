@@ -36,7 +36,7 @@ function loaderArgs(id: string) {
   return {
     params: { id },
     context,
-    request: new Request(`https://mist.example.com/${id}/agents`),
+    request: new Request(`https://vapor.example.com/${id}/agents`),
   } as unknown as Parameters<typeof loader>[0];
 }
 
@@ -44,7 +44,7 @@ function actionArgs(id: string, body: unknown) {
   return {
     params: { id },
     context,
-    request: new Request(`https://mist.example.com/${id}/agents`, {
+    request: new Request(`https://vapor.example.com/${id}/agents`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

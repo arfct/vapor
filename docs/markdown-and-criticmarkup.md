@@ -75,13 +75,13 @@ Each suggestion (addition or deletion) can be accepted or rejected:
 
 ## Comments and threads
 
-Comment threads are stored in **YAML frontmatter** under the `mist` key. The frontmatter is prepended on download and stripped on upload.
+Comment threads are stored in **YAML frontmatter** under the `vapor` key. The frontmatter is prepended on download and stripped on upload.
 
 ### Format
 
 ```yaml
 ---
-mist:
+vapor:
   threads:
     - comment: "This needs a citation"
       highlight: "highlighted passage"

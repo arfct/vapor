@@ -34,7 +34,9 @@ export type AgentErrorCode =
   | "find_not_matched"
   | "rate_limited"
   | "invalid_name"
-  | "thread_not_found";
+  | "thread_not_found"
+  /** Markdown the editor's mark model can't represent (CriticMarkup substitution). */
+  | "unsupported_markup";
 
 export const AGENT_NAME_RE = /^[a-z0-9][a-z0-9-]{0,30}[a-z0-9]$/;
 

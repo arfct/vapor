@@ -1,7 +1,7 @@
 import * as Y from "yjs";
 import { blockHash, parseAnchor } from "~/shared/agent-protocol";
 import type { DocBlock } from "~/shared/agent-protocol";
-import { parseCriticMarkupToContent } from "~/lib/critic-parser";
+import { tryParseCriticMarkup, type ParsedMark } from "~/lib/critic-parser";
 import { DELIMITERS } from "~/lib/critic-constants";
 
 // Maps Yjs formatting-attribute keys (the ProseMirror mark names used by
@@ -66,8 +66,7 @@ export function resolveAnchor(
   return { index: best.index };
 }
 
-function makeParagraph(line: string): Y.XmlElement {
-  const { cleanText, marks } = parseCriticMarkupToContent(line);
+function makeParagraph(cleanText: string, marks: ParsedMark[]): Y.XmlElement {
   const para = new Y.XmlElement("paragraph");
   const ytext = new Y.XmlText(cleanText);
   for (const mark of marks) {
@@ -77,10 +76,33 @@ function makeParagraph(line: string): Y.XmlElement {
   return para;
 }
 
-export function insertMarkdownBlocks(doc: Y.Doc, index: number, markdown: string): void {
+/**
+ * Parses markdown into detached paragraph nodes, one per line, without
+ * touching any document.
+ *
+ * Deliberately split from the insert so callers can validate first: Yjs has
+ * no transaction rollback, so a delete-then-insert (see the `replace`
+ * mutation) that discovers bad markdown halfway through would commit the
+ * delete and lose the content it was replacing. Build the nodes, and only
+ * then open the transaction.
+ */
+export function buildMarkdownBlocks(
+  markdown: string,
+): { ok: true; nodes: Y.XmlElement[] } | { ok: false; message: string } {
+  const nodes: Y.XmlElement[] = [];
+  for (const line of markdown.split("\n")) {
+    const parsed = tryParseCriticMarkup(line);
+    if (!parsed.ok) return { ok: false, message: parsed.message };
+    nodes.push(makeParagraph(parsed.cleanText, parsed.marks));
+  }
+  return { ok: true, nodes };
+}
+
+/** Inserts prebuilt paragraph nodes (from buildMarkdownBlocks) at `index`. */
+export function insertBlockNodes(doc: Y.Doc, index: number, nodes: Y.XmlElement[]): void {
   const frag = doc.getXmlFragment("default");
   doc.transact(() => {
-    frag.insert(index, markdown.split("\n").map(makeParagraph));
+    frag.insert(index, nodes);
   });
 }
 

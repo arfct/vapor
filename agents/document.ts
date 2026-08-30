@@ -16,8 +16,15 @@ import {
   RATE_LIMIT_CHARS_PER_HOUR,
 } from "../app/shared/agent-protocol";
 import { generateAgentToken, hashToken } from "../app/lib/agent-tokens";
-import { getBlocks, yDocToMarkdown, resolveAnchor, insertMarkdownBlocks, deleteBlocks } from "../app/lib/y-markdown";
-import { parseCriticMarkupToContent } from "../app/lib/critic-parser";
+import {
+  getBlocks,
+  yDocToMarkdown,
+  resolveAnchor,
+  buildMarkdownBlocks,
+  insertBlockNodes,
+  deleteBlocks,
+} from "../app/lib/y-markdown";
+import { parseCriticMarkupToContent, tryParseCriticMarkup } from "../app/lib/critic-parser";
 import { chunkTyping } from "../app/lib/performance-chunks";
 import { encodeAgentAwareness, agentClientId, type AgentPresenceState } from "../app/lib/agent-awareness";
 import type { ThreadData, ThreadReply } from "../app/shared/types";
@@ -212,9 +219,18 @@ class DocumentAgent extends Agent {
     const leftover = this.sql<PerformanceRow>`
       SELECT * FROM performances ORDER BY id ASC
     `;
+    // A poisoned row (unparseable payload, or one whose application throws)
+    // must not take the rest of initialisation down with it: the observers
+    // below would never be registered, permanently disabling mentions and
+    // events, and the surviving row would later collide with a
+    // nextPerformanceId that restarts at 1. Log it and drop it.
     for (const row of leftover) {
-      const mutation = JSON.parse(row.payload) as MutationPayload;
-      this.applyMutation(mutation);
+      try {
+        const mutation = JSON.parse(row.payload) as MutationPayload;
+        this.applyMutation(mutation);
+      } catch (err) {
+        console.error(`Dropping unrecoverable performance row ${row.id}:`, err);
+      }
       this.sql`DELETE FROM performances WHERE id = ${row.id}`;
     }
 
@@ -754,7 +770,18 @@ class DocumentAgent extends Agent {
     const minuteAgo = now - 60 * 1000;
 
     const raw = rows[0]?.recent_mutations;
-    const log = (raw ? JSON.parse(raw) : []) as MutationLogEntry[];
+    // A corrupt log is treated as empty rather than thrown from: it is
+    // rewritten (pruned) at the end of every check, so the column self-heals
+    // on this very call.
+    let log: MutationLogEntry[] = [];
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (Array.isArray(parsed)) log = parsed as MutationLogEntry[];
+      } catch {
+        console.warn("Discarding unparseable rate-limit log for an agent token");
+      }
+    }
     const pruned = log.filter((e) => e.at > hourAgo);
 
     const recentCount = pruned.filter((e) => e.at > minuteAgo).length;
@@ -808,8 +835,15 @@ class DocumentAgent extends Agent {
 
     const threadsMap = doc.getMap<string>("threads");
     const threads: ThreadData[] = [];
-    threadsMap.forEach((value) => {
-      threads.push(JSON.parse(value) as ThreadData);
+    threadsMap.forEach((value, key) => {
+      // Thread JSON is written by clients into a shared Y.Map, so a single
+      // malformed entry must not take the whole read down with it — the rest
+      // of the document is still perfectly readable without it.
+      try {
+        threads.push(JSON.parse(value) as ThreadData);
+      } catch {
+        console.warn(`Skipping unparseable thread ${key} in agentRead`);
+      }
     });
 
     return { markdown, blocks, presence, threads };
@@ -971,7 +1005,18 @@ class DocumentAgent extends Agent {
       return { error: { code: "thread_not_found", message: "thread not found" } };
     }
 
-    const thread = JSON.parse(raw) as ThreadData;
+    // An unparseable thread is no more replyable than a missing one — same
+    // typed error, rather than a throw through the RPC.
+    let thread: ThreadData;
+    try {
+      thread = JSON.parse(raw) as ThreadData;
+    } catch {
+      return { error: { code: "thread_not_found", message: "thread is unreadable" } };
+    }
+    if (!Array.isArray(thread?.replies)) {
+      return { error: { code: "thread_not_found", message: "thread is unreadable" } };
+    }
+
     const { name, color } = verified.entry;
     const reply: ThreadReply = {
       id: crypto.randomUUID(),
@@ -1079,6 +1124,16 @@ class DocumentAgent extends Agent {
     pace: Pace | undefined,
     mutation: MutationPayload,
   ): { ok: true } | { error: AgentError } {
+    // Reject markdown the mark model can't represent here, before the
+    // instant/queued fork: an agent gets the same typed error whatever its
+    // pace, and nothing unparseable is ever persisted to `performances`.
+    if (mutation.kind === "insert" || mutation.kind === "replace") {
+      const parsed = tryParseCriticMarkup(mutation.markdown);
+      if (!parsed.ok) {
+        return { error: { code: "unsupported_markup", message: parsed.message } };
+      }
+    }
+
     const effectivePace = pace ?? "instant";
     if (effectivePace !== "instant" && this.hasHumanConnections()) {
       return this.enqueuePerformance(agentName, effectivePace, mutation);
@@ -1113,7 +1168,11 @@ class DocumentAgent extends Agent {
     this.performanceQueue.push({ id, agentName, pace, mutation });
 
     if (!this.isPerforming) {
-      void this.runPerformances();
+      // runPerformances swallows per-mutation failures itself; the catch is
+      // the last line of defence against an unhandled rejection here.
+      void this.runPerformances().catch((err) => {
+        console.error("Performance runner failed:", err);
+      });
     }
 
     return { ok: true };
@@ -1127,15 +1186,29 @@ class DocumentAgent extends Agent {
    * deleting its own `performances` row at the right moment — see
    * performTypedInsert/performTypedSuggest for why that isn't simply "when
    * this function returns".
+   *
+   * Nothing here may escape as a throw. `isPerforming` is cleared in a
+   * `finally` (leaking it `true` would wedge the queue forever, since
+   * enqueuePerformance only starts a runner when it is false), and each
+   * mutation is attempted inside its own try/catch so one poisoned item is
+   * dropped — row and all — instead of stalling everything behind it.
    */
   private async runPerformances(): Promise<void> {
     this.isPerforming = true;
-    while (this.performanceQueue.length > 0) {
-      const item = this.performanceQueue[0];
-      await this.performQueuedMutation(item);
-      this.performanceQueue.shift();
+    try {
+      while (this.performanceQueue.length > 0) {
+        const item = this.performanceQueue[0];
+        try {
+          await this.performQueuedMutation(item);
+        } catch (err) {
+          console.error(`Dropping failed performance ${item.id}:`, err);
+          this.deletePerformanceRow(item.id);
+        }
+        this.performanceQueue.shift();
+      }
+    } finally {
+      this.isPerforming = false;
     }
-    this.isPerforming = false;
   }
 
   /** Deletes a performance's row. Safe to call more than once (no-op the second time). */
@@ -1213,12 +1286,26 @@ class DocumentAgent extends Agent {
     }
 
     if (mutation.markdown.includes("\n")) {
-      doc.transact(() => insertMarkdownBlocks(doc, index, mutation.markdown), "agent");
+      const built = buildMarkdownBlocks(mutation.markdown);
+      if (!built.ok) {
+        // Unreachable via the RPCs (dispatchMutation validates before
+        // queueing) — this is the poisoned-row backstop.
+        console.warn(`Dropping queued insert with unsupported markup: ${built.message}`);
+        this.deletePerformanceRow(item.id);
+        return;
+      }
+      doc.transact(() => insertBlockNodes(doc, index, built.nodes), "agent");
       this.deletePerformanceRow(item.id);
       return;
     }
 
-    const { cleanText, marks } = parseCriticMarkupToContent(mutation.markdown);
+    const parsed = tryParseCriticMarkup(mutation.markdown);
+    if (!parsed.ok) {
+      console.warn(`Dropping queued insert with unsupported markup: ${parsed.message}`);
+      this.deletePerformanceRow(item.id);
+      return;
+    }
+    const { cleanText, marks } = parsed;
     const ticks = chunkTyping(cleanText, pace);
 
     // Claim the slot now, synchronously — see the doc comment above.
@@ -1386,8 +1473,14 @@ class DocumentAgent extends Agent {
           index = m.where === "before" ? resolved.index : resolved.index + 1;
         }
 
+        // Parse before opening the transaction — see buildMarkdownBlocks.
+        const built = buildMarkdownBlocks(m.markdown);
+        if (!built.ok) {
+          return { error: { code: "unsupported_markup", message: built.message } };
+        }
+
         doc.transact(() => {
-          insertMarkdownBlocks(doc, index, m.markdown);
+          insertBlockNodes(doc, index, built.nodes);
         }, "agent");
 
         return { ok: true };
@@ -1420,9 +1513,18 @@ class DocumentAgent extends Agent {
           };
         }
 
+        // Build the replacement paragraphs *before* the transaction opens.
+        // Yjs cannot roll a transaction back, so parsing inside it would let
+        // a parse failure commit the delete and lose the replaced blocks
+        // outright.
+        const built = buildMarkdownBlocks(m.markdown);
+        if (!built.ok) {
+          return { error: { code: "unsupported_markup", message: built.message } };
+        }
+
         doc.transact(() => {
           deleteBlocks(doc, fromIndex, toIndex);
-          insertMarkdownBlocks(doc, fromIndex, m.markdown);
+          insertBlockNodes(doc, fromIndex, built.nodes);
         }, "agent");
 
         return { ok: true };

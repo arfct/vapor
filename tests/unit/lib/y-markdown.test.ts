@@ -1,11 +1,18 @@
 import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
-import { getBlocks, yDocToMarkdown, resolveAnchor, insertMarkdownBlocks, deleteBlocks } from "~/lib/y-markdown";
+import { getBlocks, yDocToMarkdown, resolveAnchor, buildMarkdownBlocks, insertBlockNodes, deleteBlocks } from "~/lib/y-markdown";
 import { formatAnchor, blockHash } from "~/shared/agent-protocol";
+
+/** buildMarkdownBlocks + insertBlockNodes, for markdown known to be valid. */
+function insertMarkdown(doc: Y.Doc, index: number, markdown: string): void {
+  const built = buildMarkdownBlocks(markdown);
+  if (!built.ok) throw new Error(built.message);
+  insertBlockNodes(doc, index, built.nodes);
+}
 
 function docFrom(lines: string[]): Y.Doc {
   const doc = new Y.Doc();
-  insertMarkdownBlocks(doc, 0, lines.join("\n"));
+  insertMarkdown(doc, 0, lines.join("\n"));
   return doc;
 }
 
@@ -25,7 +32,7 @@ describe("y-markdown", () => {
   it("resolveAnchor finds by hash after blocks shift", () => {
     const doc = docFrom(["alpha", "beta", "gamma"]);
     const anchor = formatAnchor(getBlocks(doc)[2]);       // gamma at index 2
-    insertMarkdownBlocks(doc, 0, "zero");                 // shifts everything down
+    insertMarkdown(doc, 0, "zero");                       // shifts everything down
     const r = resolveAnchor(doc, anchor);
     expect(r).toEqual({ index: 3 });
   });
@@ -37,6 +44,14 @@ describe("y-markdown", () => {
     const r = resolveAnchor(doc, anchor);
     expect(r).toMatchObject({ error: "stale_anchor" });
     expect((r as { snippet: string }).snippet).toContain("alpha");
+  });
+
+  it("buildMarkdownBlocks reports unsupported markup instead of throwing, and touches no document", () => {
+    const doc = docFrom(["alpha"]);
+    const built = buildMarkdownBlocks("fine\n{~~old~>new~~}");
+    expect(built.ok).toBe(false);
+    expect(!built.ok && built.message).toContain("Unsupported CriticMarkup");
+    expect(yDocToMarkdown(doc)).toBe("alpha");
   });
 
   it("round-trips overlapping highlight+addition marks on the same run without dropping either delimiter", () => {

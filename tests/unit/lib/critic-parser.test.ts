@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { parseCriticMarkupToContent } from "~/lib/critic-parser";
+import {
+  parseCriticMarkupToContent,
+  tryParseCriticMarkup,
+  UNSUPPORTED_SUBSTITUTION_MESSAGE,
+} from "~/lib/critic-parser";
 
 describe("parseCriticMarkupToContent", () => {
   it("parses addition", () => {
@@ -95,5 +99,23 @@ describe("parseCriticMarkupToContent", () => {
     expect(result.marks).toHaveLength(2);
     expect(result.marks[0].type).toBe("criticHighlight");
     expect(result.marks[1].type).toBe("criticComment");
+  });
+});
+
+describe("tryParseCriticMarkup", () => {
+  it("returns the parse as a result value on success", () => {
+    const result = tryParseCriticMarkup("hello {++world++}");
+    expect(result).toEqual({
+      ok: true,
+      cleanText: "hello world",
+      marks: [{ from: 6, to: 11, type: "criticAddition" }],
+    });
+  });
+
+  it("returns an error result for substitution instead of throwing", () => {
+    const result = tryParseCriticMarkup("{~~old~>new~~}");
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.message).toBe(UNSUPPORTED_SUBSTITUTION_MESSAGE);
+    expect(UNSUPPORTED_SUBSTITUTION_MESSAGE).toContain("Unsupported CriticMarkup: substitution");
   });
 });

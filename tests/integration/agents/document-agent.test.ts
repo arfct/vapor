@@ -118,6 +118,22 @@ vi.mock("agents", () => ({
               const maxSeq = rows.reduce((m, r) => Math.max(m, (r.seq as number) ?? 0), 0);
               row.seq = maxSeq + 1;
             }
+            // Real SQLite rejects a duplicate PRIMARY KEY / UNIQUE value with
+            // a constraint error, and code that assumes ids are free (e.g.
+            // the performance-queue id counter resetting after an eviction
+            // that left rows behind) is only wrong if the fake enforces that
+            // too. Mirror the two constraints the schema actually declares
+            // and the DO code actually supplies values for.
+            const constrained: Record<string, string> = {
+              performances: "id",
+              agent_tokens: "name",
+            };
+            const uniqueCol = constrained[table];
+            if (uniqueCol && rows.some((r) => r[uniqueCol] === row[uniqueCol])) {
+              throw new Error(
+                `UNIQUE constraint failed: ${table}.${uniqueCol} (${String(row[uniqueCol])})`,
+              );
+            }
             rows.push(row);
           }
           return [];
@@ -1126,6 +1142,222 @@ describe("DocumentAgent", () => {
         const markdown = "markdown" in after ? after.markdown : "";
         expect(markdown).toContain("Changed first!");
         expect(markdown).not.toContain("Replaced!");
+      });
+    });
+
+    /* ================================================================ */
+    /*  Unsupported markup: errors as values, never a throw              */
+    /* ================================================================ */
+
+    describe("unsupported markup", () => {
+      /** CriticMarkup substitution — the one syntax the mark model can't hold. */
+      const SUBSTITUTION = "A {~~old~>new~~} B";
+
+      /**
+       * The performance queue's internals. Tests reach in to plant the kind
+       * of payload the RPCs now reject up front, standing in for a row
+       * written by an older build (or corrupted in storage).
+       */
+      function asQueue(a: InstanceType<typeof DocumentAgent>) {
+        return a as unknown as {
+          enqueuePerformance(name: string, pace: string, mutation: unknown): { ok: true };
+          isPerforming: boolean;
+        };
+      }
+
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it("agentInsert returns unsupported_markup and leaves the document untouched", async () => {
+        const { agent, token } = await setup(["write"]);
+        const before = await agent.agentRead(token);
+
+        const result = await agent.agentInsert(token, {
+          where: "append",
+          markdown: SUBSTITUTION,
+          pace: "instant",
+        });
+
+        expect(result).toMatchObject({
+          error: { code: "unsupported_markup", message: expect.stringContaining("substitution") },
+        });
+        const after = await agent.agentRead(token);
+        expect("markdown" in after && after.markdown).toBe(
+          "markdown" in before ? before.markdown : "",
+        );
+      });
+
+      it("agentReplace returns unsupported_markup without deleting the blocks it would replace", async () => {
+        const { agent, token } = await setup(["write"]);
+        const before = await agent.agentRead(token);
+        const beforeMarkdown = "markdown" in before ? before.markdown : "";
+        const anchor = ("blocks" in before ? before.blocks : [])[0].anchor;
+
+        const result = await agent.agentReplace(token, {
+          from: anchor,
+          markdown: SUBSTITUTION,
+          pace: "instant",
+        });
+
+        expect(result).toMatchObject({ error: { code: "unsupported_markup" } });
+        // The data-loss case: deleteBlocks and insertMarkdownBlocks used to
+        // share one transaction, and Yjs cannot roll a transaction back, so
+        // a parse failure between them committed the delete.
+        const after = await agent.agentRead(token);
+        expect("markdown" in after && after.markdown).toBe(beforeMarkdown);
+      });
+
+      it("rejects unsupported markup at any pace, without queueing it", async () => {
+        const { agent, token } = await setup(["write"]);
+        createConnection();
+
+        const result = await agent.agentInsert(token, {
+          where: "append",
+          markdown: SUBSTITUTION,
+          pace: "natural",
+        });
+
+        expect(result).toMatchObject({ error: { code: "unsupported_markup" } });
+        expect(mockTables.get("performances") ?? []).toEqual([]);
+      });
+
+      it("drains the queue past a queued mutation with unsupported markup", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const { agent, token } = await setup(["write"]);
+        createConnection();
+
+        asQueue(agent).enqueuePerformance("scribe", "fast", {
+          kind: "insert",
+          where: "append",
+          markdown: SUBSTITUTION,
+        });
+        await agent.agentInsert(token, {
+          where: "append",
+          markdown: "Good text.",
+          pace: "fast",
+        });
+
+        await vi.runAllTimersAsync();
+
+        const after = await agent.agentRead(token);
+        const markdown = "markdown" in after ? after.markdown : "";
+        expect(markdown).toContain("Good text.");
+        expect(markdown).not.toContain("~>");
+        expect(asQueue(agent).isPerforming).toBe(false);
+        expect(mockTables.get("performances") ?? []).toEqual([]);
+      });
+
+      it("does not wedge the queue when a queued mutation throws", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const { agent, token } = await setup(["write"]);
+        createConnection();
+
+        // A payload no code path can apply: `markdown` isn't a string, so
+        // the first thing performTypedInsert does with it throws. Before the
+        // runner caught this, isPerforming stayed true forever and every
+        // later mutation queued behind it was never performed.
+        asQueue(agent).enqueuePerformance("scribe", "fast", {
+          kind: "insert",
+          where: "append",
+          markdown: null,
+        });
+        await vi.runAllTimersAsync();
+
+        expect(asQueue(agent).isPerforming).toBe(false);
+        expect(mockTables.get("performances") ?? []).toEqual([]);
+
+        await agent.agentInsert(token, {
+          where: "append",
+          markdown: "Still working.",
+          pace: "fast",
+        });
+        await vi.runAllTimersAsync();
+
+        const after = await agent.agentRead(token);
+        expect("markdown" in after && after.markdown).toContain("Still working.");
+      });
+
+      it("recovers from a poisoned leftover performance row on restart", async () => {
+        const { agent, token } = await setup(["write"]);
+
+        // An eviction mid-queue leaves rows behind. This one can't be
+        // applied at all — a throw here used to abort ensureInitialised with
+        // doc/awareness already set, leaving the Yjs observers unregistered
+        // (no mentions, no events, ever) and the row alive to collide with a
+        // performance id counter that restarts at 1.
+        mockTables.set("performances", [
+          { id: 1, agent_name: "scribe", kind: "insert", payload: "{ not json", created_at: Date.now() },
+        ]);
+
+        const agent2 = new DocumentAgent({} as never, {} as never);
+        const read = await agent2.agentRead(token);
+        expect("markdown" in read).toBe(true);
+        expect(mockTables.get("performances") ?? []).toEqual([]);
+
+        // Observers registered: a human mention still fires.
+        const client = connectYjsClient(agent2);
+        const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
+        const ytext = para.get(0) as Y.XmlText;
+        ytext.insert(ytext.length, " ping @scribe");
+        const events = await agent2.agentAwaitEvents(token, {});
+        expect(("events" in events ? events.events : []).some((e) => e.type === "mention")).toBe(true);
+
+        // And the reused performance id no longer collides with a survivor.
+        const queued = await agent2.agentInsert(token, {
+          where: "append",
+          markdown: "After recovery.",
+          pace: "natural",
+        });
+        expect(queued).toEqual({ ok: true });
+        cleanup(client);
+        void agent;
+      });
+    });
+
+    /* ================================================================ */
+    /*  Corrupt stored JSON: typed errors, never a throw                 */
+    /* ================================================================ */
+
+    describe("corrupt stored state", () => {
+      it("agentRead skips an unparseable thread rather than throwing", async () => {
+        const { agent, token } = await setup(["comment"]);
+        const read = await agent.agentRead(token);
+        const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
+        await agent.agentComment(token, { anchor, text: "fine" });
+
+        const client = connectYjsClient(agent);
+        client.doc.getMap<string>("threads").set("broken", "{ not json");
+
+        const after = await agent.agentRead(token);
+        expect("threads" in after && after.threads).toHaveLength(1);
+        expect("threads" in after && after.threads[0].commentText).toBe("fine");
+        cleanup(client);
+      });
+
+      it("agentReply returns thread_not_found for an unparseable thread", async () => {
+        const { agent, token } = await setup(["comment"]);
+        const client = connectYjsClient(agent);
+        client.doc.getMap<string>("threads").set("broken", "{ not json");
+
+        const result = await agent.agentReply(token, { threadId: "broken", text: "hi" });
+        expect(result).toMatchObject({ error: { code: "thread_not_found" } });
+        cleanup(client);
+      });
+
+      it("treats an unparseable rate-limit log as empty and rewrites it", async () => {
+        const { agent, token } = await setup(["write"]);
+        const row = (mockTables.get("agent_tokens") ?? []).find((r) => r.name === "scribe")!;
+        row.recent_mutations = "{ not json";
+
+        const result = await agent.agentInsert(token, {
+          where: "append",
+          markdown: "Fine.",
+          pace: "instant",
+        });
+
+        expect(result).toEqual({ ok: true });
+        expect(JSON.parse(row.recent_mutations as string)).toHaveLength(1);
       });
     });
   });

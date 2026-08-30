@@ -7,25 +7,30 @@ export interface ParsedMark {
   attrs?: Record<string, unknown>;
 }
 
+export type CriticParseResult =
+  | { ok: true; cleanText: string; marks: ParsedMark[] }
+  | { ok: false; message: string };
+
+export const UNSUPPORTED_SUBSTITUTION_MESSAGE =
+  "Unsupported CriticMarkup: substitution ({~~old~>new~~}) is not supported. " +
+  "Use separate deletion and addition instead: {--old--}{++new++}";
+
 /**
- * Parse CriticMarkup text into clean text + mark ranges.
- * Used by the agent's POST handler to populate Yjs docs with marks.
+ * Parse CriticMarkup text into clean text + mark ranges, as a result value
+ * rather than an exception.
  *
- * Throws on unsupported substitution syntax ({~~old~>new~~}).
+ * Prefer this everywhere the input is agent- or user-supplied. Agent writes
+ * arrive as arbitrary MCP arguments and travel through Yjs transactions that
+ * cannot be rolled back, so a throw mid-transaction is both a lost error code
+ * and a data-loss hazard — the caller needs to know the markdown is bad
+ * *before* it touches the document.
  */
-export function parseCriticMarkupToContent(text: string): {
-  cleanText: string;
-  marks: ParsedMark[];
-} {
+export function tryParseCriticMarkup(text: string): CriticParseResult {
   const ranges = parseCriticRanges(text);
 
-  // Check for unsupported substitution
-  const sub = ranges.find((r) => r.type === "substitution");
-  if (sub) {
-    throw new Error(
-      "Unsupported CriticMarkup: substitution ({~~old~>new~~}) is not supported. " +
-        "Use separate deletion and addition instead: {--old--}{++new++}",
-    );
+  // Substitution has no equivalent in the mark model the editor uses.
+  if (ranges.some((r) => r.type === "substitution")) {
+    return { ok: false, message: UNSUPPORTED_SUBSTITUTION_MESSAGE };
   }
 
   const marks: ParsedMark[] = [];
@@ -80,5 +85,21 @@ export function parseCriticMarkupToContent(text: string): {
   // Append remaining text
   cleanText += text.slice(cursor);
 
-  return { cleanText, marks };
+  return { ok: true, cleanText, marks };
+}
+
+/**
+ * Throwing wrapper around tryParseCriticMarkup, for the document-import path
+ * (the agent's POST handler), where a throw is caught and turned into a 400
+ * before anything has been written.
+ *
+ * Throws on unsupported substitution syntax ({~~old~>new~~}).
+ */
+export function parseCriticMarkupToContent(text: string): {
+  cleanText: string;
+  marks: ParsedMark[];
+} {
+  const result = tryParseCriticMarkup(text);
+  if (!result.ok) throw new Error(result.message);
+  return { cleanText: result.cleanText, marks: result.marks };
 }

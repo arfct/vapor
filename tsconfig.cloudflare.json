@@ -18,10 +18,14 @@
     "module": "ES2022",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "baseUrl": ".",
+    // No baseUrl: it would resolve bare specifiers like "agents/mcp" against
+    // this repo's own agents/ directory instead of the `agents` npm package.
     "rootDirs": [".", "./.react-router/types"],
     "paths": {
-      "~/*": ["./app/*"]
+      "~/*": ["./app/*"],
+      // Lets tsc name the agents package's internal types (which leak into
+      // inferred types, e.g. useAgent's return) without a baseUrl.
+      "agents/dist/*": ["./node_modules/agents/dist/*"]
     },
     "esModuleInterop": true,
     "resolveJsonModule": true

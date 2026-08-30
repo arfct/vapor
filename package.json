@@ -15,6 +15,7 @@
 		"typecheck": "npm run cf-typegen && react-router typegen && tsc -b"
 	},
 	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.25.2",
 		"@radix-ui/react-dropdown-menu": "^2.1.16",
 		"@radix-ui/react-switch": "^1.2.6",
 		"@tiptap/core": "^3.19.0",
@@ -40,7 +41,8 @@
 		"sugar-high": "^1.1.0",
 		"y-protocols": "^1.0.7",
 		"yaml": "^2.8.2",
-		"yjs": "^13.6.29"
+		"yjs": "^13.6.29",
+		"zod": "^4.3.6"
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "^1.13.5",

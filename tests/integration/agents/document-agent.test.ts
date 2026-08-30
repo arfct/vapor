@@ -809,5 +809,32 @@ describe("DocumentAgent", () => {
       const stale = await agent.agentReplace(token, { from: anchor, markdown: "# Again" });
       expect(stale).toMatchObject({ error: { code: "stale_anchor" } });
     });
+
+    it("rejects an inverted range when to resolves before from", async () => {
+      const { agent, token } = await setup(["write"]);
+      // Append two blocks with identical text ("Same") so they share a
+      // content hash. resolveAnchor's nearest-index heuristic then lets us
+      // pick out either occurrence by fabricating an anchor whose *stated*
+      // index is far from one occurrence and close to the other.
+      await agent.agentInsert(token, { where: "append", markdown: "Same\nOther\nSame\nEnd" });
+
+      const before = await agent.agentRead(token);
+      const beforeMarkdown = "markdown" in before ? before.markdown : "";
+      const blocks = "blocks" in before ? before.blocks : [];
+      const sameBlocks = blocks.filter((b) => b.text === "Same");
+      expect(sameBlocks).toHaveLength(2); // real indices 3 and 5
+
+      const hash = sameBlocks[0].anchor.split("-")[1];
+      // "from" resolves to the later occurrence (nearest to stated index 100).
+      const fromAnchor = `b100-${hash}`;
+      // "to" resolves to the earlier occurrence (nearest to stated index 0).
+      const toAnchor = `b0-${hash}`;
+
+      const result = await agent.agentReplace(token, { from: fromAnchor, to: toAnchor, markdown: "Nope" });
+      expect(result).toMatchObject({ error: { code: "stale_anchor" } });
+
+      const after = await agent.agentRead(token);
+      expect("markdown" in after && after.markdown).toBe(beforeMarkdown);
+    });
   });
 });

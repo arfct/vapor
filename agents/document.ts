@@ -582,6 +582,20 @@ class DocumentAgent extends Agent {
     const fromIndex = fromResolved.index;
     const toIndex = toResolved.index;
 
+    if (toIndex < fromIndex) {
+      const snippet = getBlocks(doc)
+        .slice(0, 6)
+        .map((b) => `[b${b.index} ${b.hash}] ${b.text.slice(0, 60)}`)
+        .join("\n");
+      return {
+        error: {
+          code: "stale_anchor",
+          message: `Anchor range resolved out of order: "to" (block ${toIndex}) is before "from" (block ${fromIndex}). Re-read the document and retry with fresh anchors.`,
+          snippet,
+        },
+      };
+    }
+
     doc.transact(() => {
       deleteBlocks(doc, fromIndex, toIndex);
       insertMarkdownBlocks(doc, fromIndex, args.markdown);

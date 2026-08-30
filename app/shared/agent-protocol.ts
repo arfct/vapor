@@ -33,7 +33,8 @@ export type AgentErrorCode =
   | "doc_expired"
   | "find_not_matched"
   | "rate_limited"
-  | "invalid_name";
+  | "invalid_name"
+  | "thread_not_found";
 
 export const AGENT_NAME_RE = /^[a-z0-9][a-z0-9-]{0,30}[a-z0-9]$/;
 export const RESERVED_SLUGS = [

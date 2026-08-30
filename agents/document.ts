@@ -251,12 +251,11 @@ class DocumentAgent extends Agent {
       }
     });
 
-    // Human replies to an agent-authored thread: notify that agent.
-    // Deliberately simple (per the design brief) — it re-checks "is the
-    // last reply not by the thread's own agent author" on every
-    // human-origin change to the thread, so it can re-fire on later
-    // unrelated edits to the same thread (e.g. a resolve toggle) rather
-    // than tracking precisely which reply is new.
+    // Human replies to an agent-authored thread: notify that agent. Only
+    // fires when a reply was actually *added* — compares the previous
+    // replies.length (from event.changes.keys' oldValue, the prior raw
+    // JSON) against the new one, so a resolve toggle or any other edit to
+    // an already-replied-to thread doesn't re-fire the notification.
     const threadsMap = this.doc.getMap<string>("threads");
     threadsMap.observe((event, transaction) => {
       if (transaction.origin === "agent") return;
@@ -274,6 +273,18 @@ class DocumentAgent extends Agent {
           continue;
         }
         if (!rosterNames.includes(thread.author?.name)) continue;
+
+        const change = event.changes.keys.get(key);
+        if (!change || change.action !== "update") continue; // "add" = brand-new thread, not a reply
+        let previousReplyCount = 0;
+        try {
+          const previous = JSON.parse(change.oldValue) as ThreadData;
+          previousReplyCount = previous.replies.length;
+        } catch {
+          continue;
+        }
+        if (thread.replies.length <= previousReplyCount) continue;
+
         const lastReply = thread.replies[thread.replies.length - 1];
         if (!lastReply || lastReply.author?.name === thread.author.name) continue;
         this.recordEvent("thread_reply", { agent: thread.author.name, threadId: thread.id });
@@ -894,6 +905,9 @@ class DocumentAgent extends Agent {
     const verified = await this.verifyAgentToken(token, "comment");
     if ("error" in verified) return verified;
 
+    const rateLimited = await this.checkRateLimit(token, args.text.length);
+    if (rateLimited) return rateLimited;
+
     const { doc } = this.ensureInitialised();
     const resolved = resolveAnchor(doc, args.anchor);
     if ("error" in resolved) {
@@ -921,8 +935,7 @@ class DocumentAgent extends Agent {
 
   /**
    * Appends a reply to an existing thread. Requires `comment`. A missing
-   * thread returns `doc_not_found` (the closed AgentErrorCode union has no
-   * dedicated "thread not found" code).
+   * thread returns `thread_not_found`.
    */
   async agentReply(
     token: string,
@@ -931,11 +944,14 @@ class DocumentAgent extends Agent {
     const verified = await this.verifyAgentToken(token, "comment");
     if ("error" in verified) return verified;
 
+    const rateLimited = await this.checkRateLimit(token, args.text.length);
+    if (rateLimited) return rateLimited;
+
     const { doc } = this.ensureInitialised();
     const threadsMap = doc.getMap<string>("threads");
     const raw = threadsMap.get(args.threadId);
     if (!raw) {
-      return { error: { code: "doc_not_found", message: "thread not found" } };
+      return { error: { code: "thread_not_found", message: "thread not found" } };
     }
 
     const thread = JSON.parse(raw) as ThreadData;

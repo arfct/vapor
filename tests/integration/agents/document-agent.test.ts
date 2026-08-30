@@ -345,15 +345,22 @@ describe("DocumentAgent", () => {
   }
 
   /**
-   * Flushes real (un-faked) pending async work — e.g. the crypto.subtle
-   * hashing inside verifyAgentToken — via a real setImmediate, independent
-   * of vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }). Needed
-   * before vi.advanceTimersByTimeAsync() when a call under test does real
-   * async work *before* registering the fake timer being awaited —
-   * otherwise the advance can race ahead of the timer's registration.
+   * Waits for a call under test to register its (faked) setTimeout before
+   * vi.advanceTimersByTimeAsync() runs. agentAwaitEvents does real,
+   * un-faked async work (crypto.subtle.digest inside verifyAgentToken)
+   * *before* parking on a setTimeout — advancing fake time too early would
+   * race ahead of that registration and hang forever, since no further
+   * real time ever passes to let the crypto step catch up. Polls
+   * vi.getTimerCount() via real (un-faked) setImmediate ticks rather than
+   * a fixed number of flushes, so it's robust regardless of how many real
+   * event-loop turns the crypto call actually needs (which varies under
+   * system load) — capped so a genuine bug still fails fast instead of
+   * hanging.
    */
-  function flushMicrotasks(): Promise<void> {
-    return new Promise((resolve) => setImmediate(resolve));
+  async function waitForTimerRegistered(): Promise<void> {
+    for (let i = 0; i < 200 && vi.getTimerCount() === 0; i++) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
   }
 
   /* ================================================================ */
@@ -1316,11 +1323,7 @@ describe("DocumentAgent", () => {
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
       const promise = agent.agentAwaitEvents(token, { timeoutMs: 50 });
-      // agentAwaitEvents awaits a real (un-faked) crypto.subtle.digest call
-      // inside verifyAgentToken before it ever registers its long-poll
-      // setTimeout — flush that real async work first, or advanceTimersByTimeAsync
-      // races ahead of the timer even existing yet.
-      await flushMicrotasks();
+      await waitForTimerRegistered();
       await vi.advanceTimersByTimeAsync(50);
       const result = await promise;
 
@@ -1341,7 +1344,7 @@ describe("DocumentAgent", () => {
 
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
       const secondPromise = agent.agentAwaitEvents(token, { cursor, timeoutMs: 50 });
-      await flushMicrotasks();
+      await waitForTimerRegistered();
       await vi.advanceTimersByTimeAsync(50);
       const second = await secondPromise;
 
@@ -1420,10 +1423,72 @@ describe("DocumentAgent", () => {
       expect(threads[0].replies[0]).toMatchObject({ text: "reply text", author: { name: "scribe" } });
     });
 
-    it("agentReply returns doc_not_found for an unknown thread", async () => {
+    it("agentReply returns thread_not_found for an unknown thread", async () => {
       const { agent, token } = await setup(["comment"]);
       const result = await agent.agentReply(token, { threadId: "nope", text: "x" });
-      expect(result).toMatchObject({ error: { code: "doc_not_found" } });
+      expect(result).toMatchObject({ error: { code: "thread_not_found" } });
+    });
+
+    it("records a thread_reply event only when a reply is actually added, not on a resolve toggle", async () => {
+      const { agent, token } = await setup(["comment"]);
+      const read = await agent.agentRead(token);
+      const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
+      const created = await agent.agentComment(token, { anchor, text: "needs work" });
+      const threadId = "threadId" in created ? created.threadId : "";
+
+      const client = connectYjsClient(agent);
+      const threadsMap = client.doc.getMap<string>("threads");
+
+      // Human resolves the thread (no reply added) — an untagged, human-
+      // origin edit to an agent-authored thread that must NOT be mistaken
+      // for a reply.
+      const beforeResolve = JSON.parse(threadsMap.get(threadId)!);
+      threadsMap.set(threadId, JSON.stringify({ ...beforeResolve, resolved: true }));
+
+      const afterResolve = await agent.agentAwaitEvents(token, { timeoutMs: 20 });
+      const eventsAfterResolve = "events" in afterResolve ? afterResolve.events : [];
+      expect(eventsAfterResolve.some((e) => e.type === "thread_reply")).toBe(false);
+      const cursorAfterResolve = "cursor" in afterResolve ? afterResolve.cursor : 0;
+
+      // Now a real reply is added.
+      const beforeReply = JSON.parse(threadsMap.get(threadId)!);
+      beforeReply.replies.push({
+        id: "r1",
+        author: { name: "Nick", color: "#000", colorLight: "#000" },
+        text: "thanks!",
+        createdAt: Date.now(),
+      });
+      threadsMap.set(threadId, JSON.stringify(beforeReply));
+
+      const afterReply = await agent.agentAwaitEvents(token, { cursor: cursorAfterResolve });
+      const eventsAfterReply = "events" in afterReply ? afterReply.events : [];
+      const threadReplyEvents = eventsAfterReply.filter((e) => e.type === "thread_reply");
+      expect(threadReplyEvents).toHaveLength(1);
+      expect(threadReplyEvents[0]).toMatchObject({ payload: { agent: "scribe", threadId } });
+
+      cleanup(client);
+    });
+
+    it("agentComment and agentReply are rate-limited like the other mutation RPCs", async () => {
+      const { agent, token } = await setup(["comment"]);
+      const read = await agent.agentRead(token);
+      const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
+
+      // Pre-fill this agent's rate-limit log at the per-minute mutation
+      // cap, driving checkRateLimit's denial path directly rather than via
+      // 10 real calls.
+      const tokenRows = mockTables.get("agent_tokens") ?? [];
+      const row = tokenRows.find((r) => r.name === "scribe")!;
+      const now = Date.now();
+      row.recent_mutations = JSON.stringify(
+        Array.from({ length: 10 }, () => ({ at: now, chars: 1 })),
+      );
+
+      const commentResult = await agent.agentComment(token, { anchor, text: "hi" });
+      expect(commentResult).toMatchObject({ error: { code: "rate_limited" } });
+
+      const replyResult = await agent.agentReply(token, { threadId: "whatever", text: "hi" });
+      expect(replyResult).toMatchObject({ error: { code: "rate_limited" } });
     });
 
     it("prunes events on doc expiry (alarm)", async () => {

@@ -1,5 +1,5 @@
 import { data, Link } from "react-router";
-import type { Route } from "./+types/docs.$id";
+import type { Route } from "./+types/doc.$id";
 import { getAgentByName } from "agents";
 import { isValidDocumentId, DOCUMENT_TTL_MS } from "~/shared/constants";
 import { getCloudflare } from "~/lib/cloudflare.server";

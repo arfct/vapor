@@ -59,7 +59,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     }
 
     const url = new URL(request.url);
-    return new Response(`${url.origin}/docs/${id}\n`, {
+    return new Response(`${url.origin}/${id}\n`, {
       status: 201,
       headers: { "Content-Type": "text/plain" },
     });

@@ -40,7 +40,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: body, threads, onboarding }),
     });
-    navigate(`/docs/${id}`);
+    navigate(`/${id}`);
   }
 
   const handleUpload = useCallback(
@@ -56,7 +56,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         body: JSON.stringify({ content: body, threads }),
       });
 
-      navigate(`/docs/${id}`);
+      navigate(`/${id}`);
     },
     [navigate],
   );

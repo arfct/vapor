@@ -82,7 +82,7 @@ describe("POST /new (action)", () => {
     expect(response.headers.get("Content-Type")).toBe("text/plain");
 
     const text = await response.text();
-    expect(text).toBe("https://mist.example.com/docs/abcd1234\n");
+    expect(text).toBe("https://mist.example.com/abcd1234\n");
   });
 
   it("returns 201 for empty body (blank document)", async () => {
@@ -91,7 +91,7 @@ describe("POST /new (action)", () => {
 
     expect(response.status).toBe(201);
     const text = await response.text();
-    expect(text).toContain("/docs/abcd1234");
+    expect(text).toContain("/abcd1234");
   });
 
   it("creates document via agent with content", async () => {
@@ -113,7 +113,7 @@ describe("POST /new (action)", () => {
 
     expect(response.status).toBe(201);
     const text = await response.text();
-    expect(text).toContain("/docs/abcd1234");
+    expect(text).toContain("/abcd1234");
 
     const agentRequest = mockAgentFetch.mock.calls[0][0] as Request;
     const body = await agentRequest.json();

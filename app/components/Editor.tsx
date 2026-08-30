@@ -182,6 +182,13 @@ function renderCaret(user: Record<string, unknown>) {
   label.setAttribute("style", `background-color: ${user.color}`);
   label.insertBefore(document.createTextNode(user.name as string), null);
 
+  if (user.isAgent) {
+    const badge = document.createElement("span");
+    badge.classList.add("collaboration-cursor__badge");
+    badge.insertBefore(document.createTextNode("AI"), null);
+    label.insertBefore(badge, null);
+  }
+
   cursor.insertBefore(label, null);
   return cursor;
 }

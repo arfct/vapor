@@ -1083,4 +1083,160 @@ describe("DocumentAgent", () => {
       });
     });
   });
+
+  /* ================================================================ */
+  /*  Agent presence in awareness                                      */
+  /* ================================================================ */
+
+  describe("agent presence", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    async function setup(caps?: AgentCapability[]) {
+      const agent = makeAgent();
+      await agent.onRequest(new Request("https://do/", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "# Title\n\nBody." }),
+      }));
+      const m = await agent.mintAgentToken({ name: "scribe", capabilities: caps });
+      return { agent, token: (m as { token: string }).token };
+    }
+
+    /** Finds the (at most one) agent presence state among a client's awareness states. */
+    function findAgentState(awareness: awarenessProtocol.Awareness) {
+      return Array.from(awareness.getStates().values()).find(
+        (s) => (s as { user?: { isAgent?: boolean } }).user?.isAgent,
+      ) as { user: { name: string; isAgent: boolean }; status?: string; cursor?: { anchor: unknown; head: unknown } } | undefined;
+    }
+
+    it("broadcasts a presence state every connected client can decode", async () => {
+      const { agent, token } = await setup();
+      const a = connectYjsClient(agent);
+      const b = connectYjsClient(agent);
+
+      const result = await agent.agentJoin(token, "typing");
+      expect(result).toEqual({ ok: true });
+
+      for (const client of [a, b]) {
+        expect(findAgentState(client.awareness)).toMatchObject({
+          user: { name: "scribe", isAgent: true },
+          status: "typing",
+        });
+      }
+      cleanup(a, b);
+    });
+
+    it("replays current agent presence to a client that connects after join", async () => {
+      const { agent, token } = await setup();
+      await agent.agentJoin(token);
+
+      const late = connectYjsClient(agent);
+      expect(findAgentState(late.awareness)).toMatchObject({
+        user: { name: "scribe", isAgent: true },
+      });
+      cleanup(late);
+    });
+
+    it("replays nothing for an agent that never joined", async () => {
+      const { agent } = await setup();
+      const late = connectYjsClient(agent);
+      expect(findAgentState(late.awareness)).toBeUndefined();
+      cleanup(late);
+    });
+
+    it("removes presence for all connections immediately on leave", async () => {
+      const { agent, token } = await setup();
+      const a = connectYjsClient(agent);
+      await agent.agentJoin(token);
+      expect(findAgentState(a.awareness)).toBeDefined();
+
+      const result = await agent.agentLeave(token);
+      expect(result).toEqual({ ok: true });
+      expect(findAgentState(a.awareness)).toBeUndefined();
+      cleanup(a);
+    });
+
+    it("rejects join/leave for an invalid token", async () => {
+      const { agent } = await setup();
+      expect(await agent.agentJoin("vpr_nonexistent")).toMatchObject({
+        error: { code: "invalid_token" },
+      });
+      expect(await agent.agentLeave("vpr_nonexistent")).toMatchObject({
+        error: { code: "invalid_token" },
+      });
+    });
+
+    it("removes presence automatically after 5 minutes of inactivity", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const { agent, token } = await setup();
+      const a = connectYjsClient(agent);
+      await agent.agentJoin(token);
+
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 1);
+      expect(findAgentState(a.awareness)).toBeDefined();
+
+      await vi.advanceTimersByTimeAsync(2);
+      expect(findAgentState(a.awareness)).toBeUndefined();
+      cleanup(a);
+    });
+
+    it("resets the idle timer on every performance, keeping a busy agent present", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const { agent, token } = await setup(["write"]);
+      const a = connectYjsClient(agent);
+      await agent.agentJoin(token);
+
+      // Just under the idle window, perform a (quick) mutation — its
+      // typing ticks call onPerformanceCursor, which resets the timer. Only
+      // advance far enough to finish typing "hi" (well under 5 minutes) —
+      // vi.runAllTimersAsync() would also drain the *freshly reset* 5-minute
+      // idle timeout in the same call, defeating the point of the test.
+      await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
+      await agent.agentInsert(token, { where: "append", markdown: "hi", pace: "natural" });
+      await vi.advanceTimersByTimeAsync(200);
+
+      // Another 4 minutes — past the original 5-minute mark from join, but
+      // well within 5 minutes of the reset above.
+      await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
+      expect(findAgentState(a.awareness)).toBeDefined();
+      cleanup(a);
+    });
+
+    it("populates a y-tiptap-shaped cursor field during a performance, even for an agent that never joined", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const { agent, token } = await setup(["write"]);
+      const a = connectYjsClient(agent);
+
+      // Bounded advance, not vi.runAllTimersAsync(): each tick's
+      // onPerformanceCursor resets a fresh 5-minute idle timeout, which
+      // runAllTimersAsync() would drain too, removing presence again before
+      // this assertion runs.
+      await agent.agentInsert(token, { where: "append", markdown: "abcdefghij", pace: "natural" });
+      await vi.advanceTimersByTimeAsync(800);
+
+      const state = findAgentState(a.awareness);
+      expect(state).toMatchObject({ user: { name: "scribe", isAgent: true } });
+      expect(state?.cursor).toBeDefined();
+      // Both fields must be decodable Y.RelativePosition JSON (the shape
+      // @tiptap/y-tiptap's cursor plugin expects — see agent-awareness.ts).
+      expect(() => Y.createRelativePositionFromJSON(state!.cursor!.anchor as never)).not.toThrow();
+      expect(() => Y.createRelativePositionFromJSON(state!.cursor!.head as never)).not.toThrow();
+      cleanup(a);
+    });
+
+    it("clears agent presence and idle timers on alarm", async () => {
+      const { agent, token } = await setup();
+      const a = connectYjsClient(agent);
+      await agent.agentJoin(token);
+      expect(findAgentState(a.awareness)).toBeDefined();
+
+      await agent.alarm();
+
+      mockConnectionMap.clear();
+      const b = connectYjsClient(agent);
+      expect(findAgentState(b.awareness)).toBeUndefined();
+      cleanup(a, b);
+    });
+  });
 });

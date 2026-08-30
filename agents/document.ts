@@ -18,7 +18,11 @@ import { generateAgentToken, hashToken } from "../app/lib/agent-tokens";
 import { getBlocks, yDocToMarkdown, resolveAnchor, insertMarkdownBlocks, deleteBlocks } from "../app/lib/y-markdown";
 import { parseCriticMarkupToContent } from "../app/lib/critic-parser";
 import { chunkTyping } from "../app/lib/performance-chunks";
+import { encodeAgentAwareness, agentClientId, type AgentPresenceState } from "../app/lib/agent-awareness";
 import type { ThreadData } from "../app/shared/types";
+
+/** How long an agent can go without a join/performance before its presence is auto-removed. */
+const AGENT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * Durable Objects SQLite accepts Uint8Array for BLOB columns via the
@@ -103,6 +107,21 @@ class DocumentAgent extends Agent {
    * mutation can be enqueued.
    */
   private nextPerformanceId = 1;
+
+  /**
+   * Synthetic awareness presence for agents, keyed by agent name. `clock`
+   * is monotonically increasing (never reset) because `clientId` is stable
+   * across join/leave/idle cycles for a given agent name — a browser
+   * client's Awareness only accepts an update whose clock is strictly
+   * greater than the last one it saw for that clientId (or an equal clock
+   * that carries a null state), so restarting the clock at 1 after a leave
+   * would make later updates silently ignored by anyone who saw the higher
+   * clock before. `state: null` means "currently absent" (left or idled
+   * out) but the entry is kept so the clock keeps counting up.
+   */
+  private agentPresence = new Map<string, { clientId: number; clock: number; state: AgentPresenceState | null }>();
+  /** Per-agent 5-minute idle timer, reset on every join/performance-cursor update. */
+  private agentIdleTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   private ensureInitialised(): { doc: Y.Doc; awareness: awarenessProtocol.Awareness } {
     if (this.doc && this.awareness) {
@@ -203,6 +222,13 @@ class DocumentAgent extends Agent {
       encoding.writeVarUint8Array(awarenessEncoder, update);
       connection.send(encoding.toUint8Array(awarenessEncoder));
     }
+
+    // Replay current agent presence so a late joiner sees resident agents.
+    for (const presence of this.agentPresence.values()) {
+      if (presence.state) {
+        connection.send(encodeAgentAwareness(presence.clientId, presence.clock, presence.state));
+      }
+    }
   }
 
   async onMessage(connection: Connection, message: WSMessage) {
@@ -279,6 +305,13 @@ class DocumentAgent extends Agent {
     this.sql`DELETE FROM performances`;
     this.performanceQueue = [];
     this.isPerforming = false;
+    // Agent presence belongs to a document that no longer exists — drop it
+    // and cancel every pending idle timer along with it.
+    for (const timer of this.agentIdleTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.agentIdleTimers.clear();
+    this.agentPresence.clear();
     // Close all active WebSocket connections
     for (const conn of this.getConnections()) {
       conn.close(1000, "Document expired");
@@ -663,6 +696,84 @@ class DocumentAgent extends Agent {
   }
 
   /**
+   * Marks an agent present in awareness (visible in the presence stack and,
+   * once it performs a mutation, as a caret) and (re)starts its 5-minute
+   * idle timer. Any valid token may join — presence is not a capability.
+   */
+  async agentJoin(token: string, status?: string): Promise<{ ok: true } | { error: AgentError }> {
+    const verified = await this.verifyAgentToken(token);
+    if ("error" in verified) return verified;
+
+    const { name, color } = verified.entry;
+    this.setAgentPresence(name, {
+      user: { name, color, isAgent: true },
+      ...(status !== undefined ? { status } : {}),
+    });
+    this.resetAgentIdleTimer(name);
+
+    return { ok: true };
+  }
+
+  /**
+   * Removes an agent's presence immediately (broadcasts a null state) and
+   * cancels its idle timer. The agent's token stays valid — leaving is
+   * purely an awareness-visibility signal, not a revocation.
+   */
+  async agentLeave(token: string): Promise<{ ok: true } | { error: AgentError }> {
+    const verified = await this.verifyAgentToken(token);
+    if ("error" in verified) return verified;
+
+    this.clearAgentIdleTimer(verified.entry.name);
+    this.setAgentPresence(verified.entry.name, null);
+
+    return { ok: true };
+  }
+
+  /**
+   * Records and broadcasts a synthetic client's awareness state to every
+   * connection. Bumps that agent's clock (see the `agentPresence` field
+   * doc comment for why it never resets) regardless of whether `state` is
+   * a real presence or `null` (removal).
+   */
+  private setAgentPresence(name: string, state: AgentPresenceState | null): void {
+    const existing = this.agentPresence.get(name);
+    const clientId = existing?.clientId ?? agentClientId(name);
+    const clock = (existing?.clock ?? 0) + 1;
+    this.agentPresence.set(name, { clientId, clock, state });
+    this.broadcastAgentPresence(clientId, clock, state);
+  }
+
+  /** Sends a hand-encoded MSG_AWARENESS frame to every connected client. */
+  private broadcastAgentPresence(clientId: number, clock: number, state: AgentPresenceState | null): void {
+    const frame = encodeAgentAwareness(clientId, clock, state);
+    for (const conn of this.getConnections()) {
+      conn.send(frame);
+    }
+  }
+
+  /**
+   * (Re)starts an agent's 5-minute idle timer. Called on join and on every
+   * performance-cursor update; firing removes the agent's presence (a
+   * broadcast null state) without touching its token.
+   */
+  private resetAgentIdleTimer(name: string): void {
+    this.clearAgentIdleTimer(name);
+    const timer = setTimeout(() => {
+      this.agentIdleTimers.delete(name);
+      this.setAgentPresence(name, null);
+    }, AGENT_IDLE_TIMEOUT_MS);
+    this.agentIdleTimers.set(name, timer);
+  }
+
+  private clearAgentIdleTimer(name: string): void {
+    const timer = this.agentIdleTimers.get(name);
+    if (timer) {
+      clearTimeout(timer);
+      this.agentIdleTimers.delete(name);
+    }
+  }
+
+  /**
    * Decides whether a mutation is applied synchronously or handed to the
    * performance queue. `pace: "instant"` (the default, for backward
    * compatibility with callers that don't pass `pace` at all) or the
@@ -836,8 +947,9 @@ class DocumentAgent extends Agent {
       }
       doc.transact(() => ytext.insert(absPos.index, tick.chunk));
       typed += tick.chunk.length;
-      relPos = Y.createRelativePositionFromTypeIndex(ytext, absPos.index + tick.chunk.length);
-      this.onPerformanceCursor(item.agentName, index);
+      const caretOffset = absPos.index + tick.chunk.length;
+      relPos = Y.createRelativePositionFromTypeIndex(ytext, caretOffset);
+      this.onPerformanceCursor(item.agentName, ytext, caretOffset);
     }
 
     // Only apply the original CriticMarkup marks if the full text landed
@@ -908,17 +1020,50 @@ class DocumentAgent extends Agent {
         return;
       }
       doc.transact(() => ytext.insert(absPos.index, tick.chunk, { criticAddition: {} }));
-      relPos = Y.createRelativePositionFromTypeIndex(ytext, absPos.index + tick.chunk.length);
-      this.onPerformanceCursor(item.agentName, resolved.index);
+      const caretOffset = absPos.index + tick.chunk.length;
+      relPos = Y.createRelativePositionFromTypeIndex(ytext, caretOffset);
+      this.onPerformanceCursor(item.agentName, ytext, caretOffset);
     }
   }
 
   /**
-   * Moves the agent's cursor/awareness to a block during a performance.
-   * No-op until Task 7 wires this up to real awareness state.
+   * Moves an agent's caret to its live typing position during a
+   * performance. Takes the `Y.XmlText` node and offset being typed into
+   * *right now* rather than a block index: a block index resolved when the
+   * performance started goes stale the moment any concurrent edit shifts
+   * blocks around it (see the eviction/concurrency notes on
+   * performTypedInsert/performTypedSuggest above), whereas a fresh
+   * `Y.RelativePosition` built from the live text node at the moment of
+   * each tick always resolves to the right place regardless of what else
+   * has happened to the document structure.
+   *
+   * Builds the presence state itself (rather than going through
+   * `agentJoin`) because a performing agent may never have explicitly
+   * joined; on first cursor update for such an agent this looks its
+   * name/color up from the roster instead of failing silently.
    */
-  private onPerformanceCursor(_agentName: string, _blockIndex: number): void {
-    // Intentionally empty — see Task 7.
+  private onPerformanceCursor(agentName: string, ytext: Y.XmlText, offset: number): void {
+    const relPos = Y.createRelativePositionFromTypeIndex(ytext, offset);
+    // Round-trip through JSON to strip the class instance down to the plain
+    // object y-tiptap's cursor plugin expects (and that JSON.stringify in
+    // encodeAgentAwareness will produce anyway) — see AgentPresenceState's
+    // doc comment for the exact shape.
+    const posJson = JSON.parse(JSON.stringify(Y.relativePositionToJSON(relPos))) as unknown;
+    const cursor = { anchor: posJson, head: posJson };
+
+    const existing = this.agentPresence.get(agentName);
+    const status = existing?.state?.status;
+    let user = existing?.state?.user;
+    if (!user) {
+      const rows = this.sql<{ name: string; color: string }>`
+        SELECT name, color FROM agent_tokens WHERE name = ${agentName}
+      `;
+      if (rows.length === 0) return; // unknown agent — nothing sane to show
+      user = { name: rows[0].name, color: rows[0].color, isAgent: true };
+    }
+
+    this.setAgentPresence(agentName, { user, ...(status !== undefined ? { status } : {}), cursor });
+    this.resetAgentIdleTimer(agentName);
   }
 
   /**

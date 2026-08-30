@@ -73,3 +73,35 @@ export function handleMcpHelp(request: Request): Response | null {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 }
+
+/**
+ * Redirects secondary domains to the primary vapor.fyi domain. Hostnames
+ * vpr.fyi, www.vpr.fyi, vaporware.fyi, www.vaporware.fyi, and www.vapor.fyi
+ * are 301 redirected to https://vapor.fyi with the original path and query
+ * string preserved. Returns null for the primary domain (vapor.fyi),
+ * localhost, and *.workers.dev subdomains.
+ */
+export function redirectHost(request: Request): Response | null {
+  const url = new URL(request.url);
+  const hostname = url.hostname;
+
+  const redirectTargets = [
+    "vpr.fyi",
+    "www.vpr.fyi",
+    "vaporware.fyi",
+    "www.vaporware.fyi",
+    "www.vapor.fyi",
+  ];
+
+  if (!redirectTargets.includes(hostname)) {
+    return null;
+  }
+
+  const targetUrl = `https://vapor.fyi${url.pathname}${url.search}`;
+  return new Response(null, {
+    status: 301,
+    headers: {
+      Location: targetUrl,
+    },
+  });
+}

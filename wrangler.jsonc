@@ -8,6 +8,11 @@
 	"observability": {
 		"enabled": true
 	},
+	"routes": [
+		{ "pattern": "vapor.fyi", "custom_domain": true },
+		{ "pattern": "vpr.fyi", "custom_domain": true },
+		{ "pattern": "vaporware.fyi", "custom_domain": true }
+	],
 	"durable_objects": {
 		"bindings": [
 			{ "name": "DocumentAgent", "class_name": "DocumentAgent" },

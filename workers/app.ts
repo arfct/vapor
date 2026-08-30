@@ -2,7 +2,7 @@ import { createRequestHandler, RouterContextProvider } from "react-router";
 import { routeAgentRequest, getAgentByName } from "agents";
 import { cloudflareContext } from "../app/lib/cloudflare.server";
 import { VaporMcp, type VaporMcpProps } from "../agents/mcp";
-import { handleRawMarkdown, handleMcpHelp, type MarkdownStub } from "./routes";
+import { handleRawMarkdown, handleMcpHelp, redirectHost, type MarkdownStub } from "./routes";
 
 export { default as DocumentAgent } from "../agents/document";
 export { VaporMcp };
@@ -17,6 +17,13 @@ const mcpHandler = VaporMcp.serve("/mcp", { binding: "VaporMcp" });
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    // Redirect secondary domains to the primary vapor.fyi domain. Must run
+    // before all other handlers since it operates on the hostname level.
+    const redirectResponse = redirectHost(request);
+    if (redirectResponse) {
+      return redirectResponse;
+    }
 
     // A browser landing on /mcp (Accept: text/html) gets a how-to-connect
     // page instead of a protocol error. MCP clients send an

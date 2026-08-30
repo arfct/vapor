@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { handleRawMarkdown, handleMcpHelp } from "../../../workers/routes";
+import { handleRawMarkdown, handleMcpHelp, redirectHost } from "../../../workers/routes";
 
 describe("handleRawMarkdown", () => {
   it("returns 200 with text/markdown for an existing doc", async () => {
@@ -102,6 +102,66 @@ describe("handleMcpHelp", () => {
     const res = handleMcpHelp(
       new Request("https://vapor.fyi/mcp", { method: "POST", headers: { Accept: "text/html" } }),
     );
+
+    expect(res).toBeNull();
+  });
+});
+
+describe("redirectHost", () => {
+  it("redirects vpr.fyi with path and query to https://vapor.fyi", () => {
+    const res = redirectHost(new Request("https://vpr.fyi/abc?x=1"));
+
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(301);
+    expect(res!.headers.get("Location")).toBe("https://vapor.fyi/abc?x=1");
+  });
+
+  it("redirects www.vpr.fyi to https://vapor.fyi", () => {
+    const res = redirectHost(new Request("https://www.vpr.fyi/path?q=2"));
+
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(301);
+    expect(res!.headers.get("Location")).toBe("https://vapor.fyi/path?q=2");
+  });
+
+  it("redirects vaporware.fyi to https://vapor.fyi", () => {
+    const res = redirectHost(new Request("https://vaporware.fyi/test"));
+
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(301);
+    expect(res!.headers.get("Location")).toBe("https://vapor.fyi/test");
+  });
+
+  it("redirects www.vaporware.fyi to https://vapor.fyi", () => {
+    const res = redirectHost(new Request("https://www.vaporware.fyi/doc?id=123"));
+
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(301);
+    expect(res!.headers.get("Location")).toBe("https://vapor.fyi/doc?id=123");
+  });
+
+  it("redirects www.vapor.fyi to https://vapor.fyi", () => {
+    const res = redirectHost(new Request("https://www.vapor.fyi/"));
+
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(301);
+    expect(res!.headers.get("Location")).toBe("https://vapor.fyi/");
+  });
+
+  it("returns null for vapor.fyi (primary domain)", () => {
+    const res = redirectHost(new Request("https://vapor.fyi/abc"));
+
+    expect(res).toBeNull();
+  });
+
+  it("returns null for localhost", () => {
+    const res = redirectHost(new Request("https://localhost:3000/abc"));
+
+    expect(res).toBeNull();
+  });
+
+  it("returns null for workers.dev subdomain", () => {
+    const res = redirectHost(new Request("https://vapor.arfct.workers.dev/abc"));
 
     expect(res).toBeNull();
   });

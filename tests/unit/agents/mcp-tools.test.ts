@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { TOOLS } from "../../../agents/mcp-tools";
+import { TOOLS, validateNewDocumentMarkdown } from "../../../agents/mcp-tools";
 
 const SPEC_TOOLS = [
   "read_document",
@@ -172,5 +172,25 @@ describe("mcp tool table", () => {
       { doc_id: "abcd1234" },
     );
     expect(out).toMatchObject({ error: { code: "invalid_token" } });
+  });
+});
+
+describe("validateNewDocumentMarkdown", () => {
+  it("accepts absent and ordinary markdown", () => {
+    expect(validateNewDocumentMarkdown(undefined)).toBeNull();
+    expect(validateNewDocumentMarkdown("# Hello\n\nWorld")).toBeNull();
+  });
+
+  it("rejects markdown over the 1MB cap", () => {
+    expect(validateNewDocumentMarkdown("a".repeat(1_000_001))).toMatchObject({
+      error: { code: "rate_limited", message: expect.stringContaining("1MB") },
+    });
+    expect(validateNewDocumentMarkdown("a".repeat(1_000_000))).toBeNull();
+  });
+
+  it("rejects content containing a NUL byte as binary", () => {
+    expect(validateNewDocumentMarkdown("text\0more")).toMatchObject({
+      error: { code: "unsupported_markup", message: expect.stringContaining("binary") },
+    });
   });
 });

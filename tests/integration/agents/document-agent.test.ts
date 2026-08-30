@@ -15,7 +15,7 @@ import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
 import { DOCUMENT_TTL_MS, DOC_FORMAT_VERSION } from "~/shared/constants";
 import { YjsProvider } from "~/lib/yjs-provider";
-import type { AgentCapability } from "~/shared/agent-protocol";
+import { MAX_AGENTS_PER_DOC, type AgentCapability } from "~/shared/agent-protocol";
 
 /* ------------------------------------------------------------------ */
 /*  Mock Agent base class                                              */
@@ -762,6 +762,23 @@ describe("DocumentAgent", () => {
       expect(await agent.mintAgentToken({ name: "scribe" })).toMatchObject({
         error: { code: "invalid_name" },
       });
+    });
+
+    it("caps the roster at MAX_AGENTS_PER_DOC", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+
+      for (let i = 0; i < MAX_AGENTS_PER_DOC; i++) {
+        expect(await agent.mintAgentToken({ name: `agent-${i}` })).toHaveProperty("token");
+      }
+
+      expect(await agent.mintAgentToken({ name: "one-too-many" })).toMatchObject({
+        error: { code: "rate_limited", message: expect.stringContaining("maximum") },
+      });
+      expect(await agent.getAgentRoster()).toHaveLength(MAX_AGENTS_PER_DOC);
+
+      // Revoking frees a slot.
+      await agent.revokeAgentToken("agent-0");
+      expect(await agent.mintAgentToken({ name: "one-too-many" })).toHaveProperty("token");
     });
 
     it("returns doc_not_found when minting before the doc exists", async () => {

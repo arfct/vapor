@@ -8,7 +8,7 @@ import { McpAgent } from "agents/mcp";
 import { getAgentByName } from "agents";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { TOOLS, type DocStub } from "./mcp-tools";
+import { TOOLS, validateNewDocumentMarkdown, type DocStub } from "./mcp-tools";
 import { generateDocumentId } from "../app/shared/constants";
 import { deserializeThreads } from "../app/lib/thread-serialization";
 
@@ -69,6 +69,11 @@ export class VaporMcp extends McpAgent<Env, never, VaporMcpProps> {
         },
       },
       async ({ markdown }: { markdown?: string }) => {
+        // Same guards POST /new applies to uploaded content — this tool
+        // reaches the same document store, unauthenticated.
+        const invalid = validateNewDocumentMarkdown(markdown);
+        if (invalid) return jsonContent(invalid);
+
         const id = generateDocumentId();
         const stub = await getAgentByName(this.env.DocumentAgent, id);
 

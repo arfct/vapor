@@ -45,6 +45,29 @@ function errorResult(code: AgentError["code"], message: string): { error: AgentE
   return { error: { code, message } };
 }
 
+/** Matches MAX_CONTENT_BYTES in app/routes/new.ts — the same document store. */
+const MAX_CONTENT_BYTES = 1_000_000; // 1 MB
+
+/**
+ * Guards for markdown handed to create_document, mirroring the checks POST
+ * /new applies to an uploaded file: a size ceiling, and a NUL-byte check that
+ * catches a binary file pasted in as if it were text. Lives here (rather than
+ * inline in agents/mcp.ts, which can't be imported in plain Vitest) so it can
+ * be tested directly. Returns null when the markdown is acceptable.
+ */
+export function validateNewDocumentMarkdown(
+  markdown: string | undefined,
+): { error: AgentError } | null {
+  if (markdown === undefined) return null;
+  if (markdown.length > MAX_CONTENT_BYTES) {
+    return errorResult("rate_limited", "markdown too large (max 1MB)");
+  }
+  if (markdown.includes("\0")) {
+    return errorResult("unsupported_markup", "content appears to be binary, not text");
+  }
+  return null;
+}
+
 const docId = z.string().describe("The 8-character document id (from its URL).");
 const pace = z
   .enum(["natural", "fast", "instant"])

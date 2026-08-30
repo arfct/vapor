@@ -12,6 +12,7 @@ import {
   DEFAULT_CAPABILITIES,
   formatAnchor,
   findMentions,
+  MAX_AGENTS_PER_DOC,
   RATE_LIMIT_MUTATIONS_PER_MIN,
   RATE_LIMIT_CHARS_PER_HOUR,
 } from "../app/shared/agent-protocol";
@@ -591,6 +592,16 @@ class DocumentAgent extends Agent {
     }
 
     const roster = this.sql<{ name: string }>`SELECT name FROM agent_tokens`;
+    // A document is a public, unauthenticated URL: without a ceiling, anyone
+    // who can reach the invite endpoint can grow the roster without bound.
+    if (roster.length >= MAX_AGENTS_PER_DOC) {
+      return {
+        error: {
+          code: "rate_limited",
+          message: `This document already has the maximum of ${MAX_AGENTS_PER_DOC} agents. Revoke one before inviting another.`,
+        },
+      };
+    }
     const color = USER_COLOURS[roster.length % USER_COLOURS.length].color;
 
     const token = generateAgentToken();

@@ -8,7 +8,7 @@
  */
 import { z } from "zod";
 import { isValidDocumentId } from "../app/shared/constants";
-import type { AgentError } from "../app/shared/agent-protocol";
+import type { AgentError, AgentRosterEntry } from "../app/shared/agent-protocol";
 
 /** The subset of the DocumentAgent RPC surface the tools call. */
 export interface DocStub {
@@ -21,6 +21,14 @@ export interface DocStub {
   agentJoin(token: string, status?: string): Promise<unknown>;
   agentLeave(token: string): Promise<unknown>;
   agentAwaitEvents(token: string, args: unknown): Promise<unknown>;
+  /**
+   * Mints an anonymous roster entry (DEFAULT_CAPABILITIES, owner null) for a
+   * tokenless MCP session, retrying with `-2`, `-3`, … on a name collision.
+   * Used only by the anonymous-mode wrapper in agents/mcp-anonymous.ts.
+   */
+  enrollAnonymousAgent(
+    baseName: string,
+  ): Promise<{ token: string; entry: AgentRosterEntry } | { error: AgentError }>;
 }
 
 export interface ToolDeps {

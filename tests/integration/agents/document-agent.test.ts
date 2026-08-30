@@ -903,6 +903,56 @@ describe("DocumentAgent", () => {
     });
   });
 
+  describe("enrollAnonymousAgent", () => {
+    it("mints suggest+comment with owner null, using the given base name", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+
+      const enrolled = await agent.enrollAnonymousAgent("claude-code");
+      expect("token" in enrolled && enrolled.token).toMatch(/^vpr_/);
+      expect(enrolled).toMatchObject({
+        entry: {
+          name: "claude-code",
+          owner: null,
+          capabilities: ["suggest", "comment"],
+        },
+      });
+
+      const roster = await agent.getAgentRoster();
+      expect(roster).toHaveLength(1);
+      expect(roster[0]).toMatchObject({ name: "claude-code", owner: null });
+    });
+
+    it("retries with -2, -3, … on a name collision", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+
+      await agent.mintAgentToken({ name: "claude-code" });
+      const second = await agent.enrollAnonymousAgent("claude-code");
+      expect(second).toMatchObject({ entry: { name: "claude-code-2" } });
+
+      const third = await agent.enrollAnonymousAgent("claude-code");
+      expect(third).toMatchObject({ entry: { name: "claude-code-3" } });
+    });
+
+    it("returns rate_limited once the roster is at MAX_AGENTS_PER_DOC, without renaming forever", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+
+      for (let i = 0; i < MAX_AGENTS_PER_DOC; i++) {
+        expect(await agent.mintAgentToken({ name: `agent-${i}` })).toHaveProperty("token");
+      }
+
+      const enrolled = await agent.enrollAnonymousAgent("agent");
+      expect(enrolled).toMatchObject({
+        error: { code: "rate_limited", message: expect.stringContaining("maximum") },
+      });
+      expect(await agent.getAgentRoster()).toHaveLength(MAX_AGENTS_PER_DOC);
+    });
+
+    it("falls back to the doc_not_found error when the doc doesn't exist yet", async () => {
+      const enrolled = await agent.enrollAnonymousAgent("claude-code");
+      expect(enrolled).toMatchObject({ error: { code: "doc_not_found" } });
+    });
+  });
+
   /* ================================================================ */
   /*  Agent read + instant mutations                                   */
   /* ================================================================ */

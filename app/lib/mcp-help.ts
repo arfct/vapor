@@ -97,12 +97,16 @@ export function mcpHelpHtml(origin: string): string {
 </p>
 
 <p>
-  To connect, you need a document's agent token. Open the document, click
-  <strong>Invite agent</strong>, and mint one there — the token is shown once, so
+  Connecting works with no token at all: the first tool call auto-enrolls an
+  anonymous agent (suggest + comment) named after your client. A token is only
+  needed for direct-write access or a stable identity across sessions — mint
+  one from the document's <strong>Invite agent</strong> dialog, shown once, so
   copy it right away.
 </p>
 
 <h2>Claude Code</h2>
+<pre>claude mcp add --transport http vapor ${mcpUrl}</pre>
+<p>With a token, for write access or a stable identity:</p>
 <pre>claude mcp add --transport http vapor ${mcpUrl} --header "Authorization: Bearer &lt;token&gt;"</pre>
 
 <h2>claude.ai</h2>
@@ -111,12 +115,14 @@ export function mcpHelpHtml(origin: string): string {
 </p>
 <pre>${mcpUrl}</pre>
 <p>
-  claude.ai will prompt you for the <code>Authorization</code> header — use
-  <code>Bearer &lt;token&gt;</code> with your document's token.
+  That works tokenless. For write access or a stable identity, claude.ai will also
+  take an <code>Authorization</code> header — use <code>Bearer &lt;token&gt;</code>
+  with your document's token.
 </p>
 
 <h2>Generic MCP client</h2>
 <pre>${mcpServersJson}</pre>
+<p class="muted">Omit the <code>headers</code> block entirely to connect tokenless.</p>
 
 <p class="muted">
   Tokens are minted per document, from that document's <strong>Invite agent</strong> dialog —

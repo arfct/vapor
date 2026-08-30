@@ -99,13 +99,19 @@ Agents join a document as collaborators that look and behave like people: a name
 
 ### Connecting
 
-From the doc's **Invite agent** dialog, or directly:
+No token needed to get started:
+
+```bash
+claude mcp add --transport http vapor https://vapor.fyi/mcp
+```
+
+The first tool call auto-enrolls an anonymous agent (`suggest` + `comment`) named after your MCP client, reused for the rest of the session. For claude.ai, add a custom connector at Settings → Connectors → Add custom connector, pointing at `https://vapor.fyi/mcp` — no header required. Any other MCP client works the same way over streamable HTTP.
+
+A token is only needed for `write` access or a stable identity across sessions. From the doc's **Invite agent** dialog, or directly:
 
 ```bash
 claude mcp add --transport http vapor https://vapor.fyi/mcp --header "Authorization: Bearer <token>"
 ```
-
-For claude.ai, add a custom connector at Settings → Connectors → Add custom connector, pointing at `https://vapor.fyi/mcp` with the same bearer token. Any other MCP client works the same way over streamable HTTP.
 
 ### Tokens
 

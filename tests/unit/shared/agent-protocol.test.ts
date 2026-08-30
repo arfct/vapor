@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   blockHash, formatAnchor, parseAnchor, findMentions, AGENT_NAME_RE,
-  RESERVED_SLUGS, isReservedSlug,
+  RESERVED_SLUGS, isReservedSlug, slugifyAgentName,
 } from "~/shared/agent-protocol";
 
 describe("blockHash", () => {
@@ -60,5 +60,49 @@ describe("reserved slugs", () => {
   it("does not match ordinary document ids", () => {
     expect(isReservedSlug("abcd1234")).toBe(false);
     expect(isReservedSlug("newx1234")).toBe(false);
+  });
+});
+
+describe("slugifyAgentName", () => {
+  it("lowercases and passes through an already-valid slug", () => {
+    expect(slugifyAgentName("Claude Code")).toBe("claude-code");
+    expect(slugifyAgentName("nicks-agent")).toBe("nicks-agent");
+  });
+
+  it("collapses runs of symbols and spaces into single hyphens", () => {
+    expect(slugifyAgentName("Test   Client!!")).toBe("test-client");
+    expect(slugifyAgentName("my_cool.agent@v2")).toBe("my-cool-agent-v2");
+  });
+
+  it("trims leading and trailing hyphens", () => {
+    expect(slugifyAgentName("--edge--")).toBe("edge");
+  });
+
+  it("falls back to agent for empty or symbol-only input", () => {
+    expect(slugifyAgentName("")).toBe("agent");
+    expect(slugifyAgentName("!!!")).toBe("agent");
+    expect(slugifyAgentName("   ")).toBe("agent");
+  });
+
+  it("falls back to agent for a single character (below AGENT_NAME_RE's minimum)", () => {
+    expect(slugifyAgentName("a")).toBe("agent");
+  });
+
+  it("clamps to 32 characters and never leaves a dangling hyphen", () => {
+    const long = "a".repeat(40);
+    const slug = slugifyAgentName(long);
+    expect(slug.length).toBeLessThanOrEqual(32);
+    expect(AGENT_NAME_RE.test(slug)).toBe(true);
+
+    const longWithBoundaryHyphen = "b".repeat(31) + "-" + "c".repeat(10);
+    const slug2 = slugifyAgentName(longWithBoundaryHyphen);
+    expect(slug2.length).toBeLessThanOrEqual(32);
+    expect(AGENT_NAME_RE.test(slug2)).toBe(true);
+  });
+
+  it("always returns a string matching AGENT_NAME_RE", () => {
+    for (const input of ["Claude Code", "", "a", "!!!", "A".repeat(50), "  --  "]) {
+      expect(AGENT_NAME_RE.test(slugifyAgentName(input))).toBe(true);
+    }
   });
 });

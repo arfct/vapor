@@ -3,13 +3,21 @@
  * `DocumentAgent` agent* RPC; the bearer token from the HTTP request arrives
  * as `props.bearer` (set in workers/app.ts) and is passed straight through —
  * the DocumentAgent is the only thing that validates it.
+ *
+ * A session with no bearer token isn't turned away: it operates in
+ * anonymous mode instead (see agents/mcp-anonymous.ts and the "Anonymous
+ * agents" section of docs/plans/2026-08-30-agent-collaborators-design.md).
+ * The per-(session, doc) identity it auto-enrolls lives in this DO's
+ * persisted `state`, so reconnects and replayed calls reuse it.
  */
 import { McpAgent } from "agents/mcp";
 import { getAgentByName } from "agents";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { TOOLS, validateNewDocumentMarkdown, type DocStub } from "./mcp-tools";
+import { runAnonymousTool, type AnonymousAgentState } from "./mcp-anonymous";
 import { generateDocumentId } from "../app/shared/constants";
+import { slugifyAgentName } from "../app/shared/agent-protocol";
 import { deserializeThreads } from "../app/lib/thread-serialization";
 
 export interface VaporMcpProps extends Record<string, unknown> {
@@ -26,32 +34,41 @@ function jsonContent(result: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
 }
 
-const INVALID_TOKEN = {
-  error: {
-    code: "invalid_token",
-    message: "Missing bearer token. Connect with Authorization: Bearer <agent token>.",
-  },
-};
-
-export class VaporMcp extends McpAgent<Env, never, VaporMcpProps> {
+export class VaporMcp extends McpAgent<Env, AnonymousAgentState, VaporMcpProps> {
   server = new McpServer({ name: "vapor", version: "1.0.0" });
 
+  /** Per-doc anonymous identities this session has auto-enrolled, keyed by doc_id. */
+  initialState: AnonymousAgentState = {};
+
   async init() {
+    const getStub = (docId: string) =>
+      getAgentByName(this.env.DocumentAgent, docId) as unknown as Promise<DocStub>;
+
     for (const tool of TOOLS) {
       this.server.registerTool(
         tool.name,
         { description: tool.description, inputSchema: tool.schema },
         async (args: Record<string, unknown>) => {
           const token = this.props?.bearer ?? null;
-          if (!token) return jsonContent(INVALID_TOKEN);
-          const result = await tool.run(
-            {
-              getStub: (docId) =>
-                getAgentByName(this.env.DocumentAgent, docId) as unknown as Promise<DocStub>,
-              token,
-            },
+
+          if (token) {
+            const result = await tool.run({ getStub, token }, args);
+            return jsonContent(result);
+          }
+
+          // No bearer: run in anonymous mode, auto-enrolling (and reusing)
+          // an agent identity per document for the lifetime of this
+          // session. The client's declared name seeds the agent's name.
+          const clientInfo = this.server.server.getClientVersion();
+          const baseName = slugifyAgentName(clientInfo?.name ?? "agent");
+          const result = await runAnonymousTool({
+            tool,
             args,
-          );
+            getStub,
+            baseName,
+            state: this.state,
+            setState: (next) => this.setState(next),
+          });
           return jsonContent(result);
         },
       );
@@ -93,6 +110,13 @@ export class VaporMcp extends McpAgent<Env, never, VaporMcpProps> {
 
         const minted = await stub.mintAgentToken({ name: "agent" });
         if ("error" in minted) return jsonContent(minted);
+
+        // create_document is tokenless for everyone, but an anonymous
+        // session should keep using this same minted token for follow-up
+        // tool calls on the new doc rather than enrolling a second agent.
+        if (!this.props?.bearer) {
+          this.setState({ ...this.state, [id]: { token: minted.token, name: minted.entry.name } });
+        }
 
         const origin = this.props?.origin ?? DEFAULT_ORIGIN;
         return jsonContent({ id, url: `${origin}/${id}`, token: minted.token });

@@ -44,6 +44,14 @@ interface EventRow {
 const AGENT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
+ * Upper bound on name-collision retries in enrollAnonymousAgent (base,
+ * base-2, base-3, …). Comfortably above MAX_AGENTS_PER_DOC so a full roster
+ * of same-named clients still gets a shot at every suffix before the cap
+ * itself (not exhausted attempts) is what stops enrollment.
+ */
+const MAX_ANONYMOUS_NAME_ATTEMPTS = MAX_AGENTS_PER_DOC + 8;
+
+/**
  * Durable Objects SQLite accepts Uint8Array for BLOB columns via the
  * template literal API, but the type signature expects string. This
  * helper makes the cast explicit and grep-able.
@@ -639,6 +647,44 @@ class DocumentAgent extends Agent {
         lastSeenAt: null,
       },
     };
+  }
+
+  /**
+   * Mints an anonymous roster entry for a tokenless MCP session:
+   * DEFAULT_CAPABILITIES, owner null, name derived from `baseName` (already
+   * slugified by the caller). On a name collision, retries with `-2`,
+   * `-3`, … up to MAX_ANONYMOUS_NAME_ATTEMPTS. The MAX_AGENTS_PER_DOC cap
+   * still applies and is surfaced as-is (mintAgentToken's `rate_limited`).
+   */
+  async enrollAnonymousAgent(
+    baseName: string,
+  ): Promise<{ token: string; entry: AgentRosterEntry } | { error: AgentError }> {
+    this.ensureInitialised();
+
+    const base = AGENT_NAME_RE.test(baseName) ? baseName : "agent";
+    let lastError: AgentError = {
+      code: "rate_limited",
+      message: "Could not find an available anonymous agent name",
+    };
+
+    for (let attempt = 0; attempt < MAX_ANONYMOUS_NAME_ATTEMPTS; attempt++) {
+      const suffix = attempt === 0 ? "" : `-${attempt + 1}`;
+      let candidate = `${base}${suffix}`;
+      if (candidate.length > 32) {
+        candidate = `${base.slice(0, 32 - suffix.length).replace(/-+$/, "")}${suffix}`;
+      }
+      if (!AGENT_NAME_RE.test(candidate)) continue;
+
+      const minted = await this.mintAgentToken({ name: candidate, capabilities: DEFAULT_CAPABILITIES });
+      if (!("error" in minted)) return minted;
+
+      lastError = minted.error;
+      // Only a name collision is worth retrying under a new suffix; the
+      // roster cap or a doc-existence failure won't clear up by renaming.
+      if (minted.error.code !== "invalid_name") return minted;
+    }
+
+    return { error: lastError };
   }
 
   /** Lists all agents minted for this document, oldest first. */

@@ -92,6 +92,24 @@ export function parseAnchor(s: string): BlockAnchor | null {
   return m ? { index: Number(m[1]), hash: m[2] } : null;
 }
 
+/**
+ * Turns an arbitrary string (an MCP client's `clientInfo.name`, typically)
+ * into a valid agent name: lowercased, non-slug characters collapsed to a
+ * single hyphen, leading/trailing hyphens trimmed, clamped to the 32-char
+ * limit `AGENT_NAME_RE` allows. Falls back to `"agent"` when nothing usable
+ * survives (empty input, symbols only, a single character).
+ */
+export function slugifyAgentName(raw: string): string {
+  const slug = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32)
+    .replace(/-+$/g, "");
+  return AGENT_NAME_RE.test(slug) ? slug : "agent";
+}
+
 export function findMentions(
   text: string,
   rosterNames: string[]

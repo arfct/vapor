@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { handleRawMarkdown, handleMcpHelp, redirectHost } from "../../../workers/routes";
+import {
+  handleRawMarkdown,
+  handleMcpHelp,
+  redirectHost,
+  redirectLegacyDocPath,
+} from "../../../workers/routes";
 
 describe("handleRawMarkdown", () => {
   it("returns 200 with text/markdown for an existing doc", async () => {
@@ -101,6 +106,65 @@ describe("handleMcpHelp", () => {
   it("returns null for non-GET requests", () => {
     const res = handleMcpHelp(
       new Request("https://vapor.fyi/mcp", { method: "POST", headers: { Accept: "text/html" } }),
+    );
+
+    expect(res).toBeNull();
+  });
+});
+
+describe("redirectLegacyDocPath", () => {
+  it("permanently redirects /docs/:id to /:id", () => {
+    const res = redirectLegacyDocPath(new Request("https://vapor.fyi/docs/abcd1234"));
+
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(301);
+    expect(res!.headers.get("Location")).toBe("/abcd1234");
+  });
+
+  it("permanently redirects /docs/:id.md to /:id.md", () => {
+    const res = redirectLegacyDocPath(new Request("https://vapor.fyi/docs/abcd1234.md"));
+
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(301);
+    expect(res!.headers.get("Location")).toBe("/abcd1234.md");
+  });
+
+  it("preserves the query string", () => {
+    const res = redirectLegacyDocPath(
+      new Request("https://vapor.fyi/docs/abcd1234?ref=slack&x=1"),
+    );
+
+    expect(res!.headers.get("Location")).toBe("/abcd1234?ref=slack&x=1");
+  });
+
+  it("preserves the query string on the .md form", () => {
+    const res = redirectLegacyDocPath(new Request("https://vapor.fyi/docs/abcd1234.md?raw=1"));
+
+    expect(res!.headers.get("Location")).toBe("/abcd1234.md?raw=1");
+  });
+
+  it("returns null for an id that isn't a valid document id", () => {
+    expect(redirectLegacyDocPath(new Request("https://vapor.fyi/docs/nope"))).toBeNull();
+    expect(redirectLegacyDocPath(new Request("https://vapor.fyi/docs/ABCD1234"))).toBeNull();
+    expect(redirectLegacyDocPath(new Request("https://vapor.fyi/docs/nope.md"))).toBeNull();
+  });
+
+  it("returns null for /docs and for deeper paths", () => {
+    expect(redirectLegacyDocPath(new Request("https://vapor.fyi/docs"))).toBeNull();
+    expect(redirectLegacyDocPath(new Request("https://vapor.fyi/docs/"))).toBeNull();
+    expect(
+      redirectLegacyDocPath(new Request("https://vapor.fyi/docs/abcd1234/edit")),
+    ).toBeNull();
+  });
+
+  it("returns null for unrelated paths", () => {
+    expect(redirectLegacyDocPath(new Request("https://vapor.fyi/abcd1234"))).toBeNull();
+    expect(redirectLegacyDocPath(new Request("https://vapor.fyi/docsomething"))).toBeNull();
+  });
+
+  it("returns null for non-GET requests", () => {
+    const res = redirectLegacyDocPath(
+      new Request("https://vapor.fyi/docs/abcd1234", { method: "POST" }),
     );
 
     expect(res).toBeNull();

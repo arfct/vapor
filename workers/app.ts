@@ -2,7 +2,13 @@ import { createRequestHandler, RouterContextProvider } from "react-router";
 import { routeAgentRequest, getAgentByName } from "agents";
 import { cloudflareContext } from "../app/lib/cloudflare.server";
 import { VaporMcp, type VaporMcpProps } from "../agents/mcp";
-import { handleRawMarkdown, handleMcpHelp, redirectHost, type MarkdownStub } from "./routes";
+import {
+  handleRawMarkdown,
+  handleMcpHelp,
+  redirectHost,
+  redirectLegacyDocPath,
+  type MarkdownStub,
+} from "./routes";
 
 export { default as DocumentAgent } from "../agents/document";
 export { VaporMcp };
@@ -23,6 +29,14 @@ export default {
     const redirectResponse = redirectHost(request);
     if (redirectResponse) {
       return redirectResponse;
+    }
+
+    // Documents used to live under /docs/:id. Links shared before the move
+    // are still live (docs last 99 hours), so 301 them to the root-level URL
+    // rather than letting React Router 404 them.
+    const legacyDocResponse = redirectLegacyDocPath(request);
+    if (legacyDocResponse) {
+      return legacyDocResponse;
     }
 
     // A browser landing on /mcp (Accept: text/html) gets a how-to-connect

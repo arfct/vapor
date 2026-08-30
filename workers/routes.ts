@@ -85,6 +85,8 @@ export function redirectHost(request: Request): Response | null {
   const url = new URL(request.url);
   const hostname = url.hostname;
 
+  // The www.* entries are not (yet) registered routes for this worker — they
+  // only ever fire if DNS is later pointed at it, and are harmless until then.
   const redirectTargets = [
     "vpr.fyi",
     "www.vpr.fyi",
@@ -103,5 +105,36 @@ export function redirectHost(request: Request): Response | null {
     headers: {
       Location: targetUrl,
     },
+  });
+}
+
+/**
+ * `GET /docs/:id` and `GET /docs/:id.md` — permanent redirects to the current
+ * root-level document URLs (`/:id`, `/:id.md`).
+ *
+ * Documents used to live under `/docs/`; vapor.fyi is live and documents last
+ * 99 hours, so links shared before the rename are still being opened. Without
+ * this they 404. 301 (permanent) because the move is permanent, and the
+ * `Location` is path-relative so the redirect stays on whichever host served
+ * it — vapor.fyi, a workers.dev preview, or localhost. The query string is
+ * preserved verbatim.
+ *
+ * Returns null for anything else, including a `/docs/` path whose id isn't a
+ * valid document id, so those keep falling through to the normal 404.
+ */
+export function redirectLegacyDocPath(request: Request): Response | null {
+  if (request.method !== "GET") return null;
+
+  const url = new URL(request.url);
+  const match = /^\/docs\/([^/]+?)(\.md)?$/.exec(url.pathname);
+  if (!match) return null;
+
+  const id = match[1];
+  if (!isValidDocumentId(id)) return null;
+
+  const target = `/${id}${match[2] ?? ""}${url.search}`;
+  return new Response(null, {
+    status: 301,
+    headers: { Location: target },
   });
 }

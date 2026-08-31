@@ -75,6 +75,8 @@ export const RESERVED_SLUGS = [
   "auth",
   "oauth",
   "settings",
+  "privacy",
+  "terms",
 ];
 
 /** Whether a root slug is reserved (case-insensitive — URLs aren't). */

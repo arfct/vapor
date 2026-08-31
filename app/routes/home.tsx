@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, Link } from "react-router";
 import type { Route } from "./+types/home";
 import { APP_NAME, generateDocumentId } from "~/shared/constants";
 import { deserializeThreads } from "~/lib/thread-serialization";
@@ -174,8 +174,14 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           </a>
           .
         </span>
-        <span className="font-mono font-light uppercase tracking-wider text-ink">
-          MIT licensed
+        <span className="whitespace-nowrap">
+          <Link to="/privacy" className="text-ink transition-colors hover:text-coral">
+            Privacy
+          </Link>
+          {" · "}
+          <Link to="/terms" className="text-ink transition-colors hover:text-coral">
+            Terms
+          </Link>
         </span>
       </footer>
     </>

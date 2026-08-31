@@ -62,7 +62,183 @@ body {
 
 .tiptap p {
   max-width: 65ch;
+  margin: 0 0 0.5rem;
+}
+
+/* Rich-node typographic defaults (imported from the notes app) */
+.tiptap h1 {
+  font-size: 1.875rem;
+  font-weight: bold;
+  line-height: 1.3;
+  margin: 1.5rem 0 1rem;
+  max-width: 65ch;
+}
+
+.tiptap h2 {
+  font-size: 1.5rem;
+  font-weight: bold;
+  line-height: 1.3;
+  margin: 1.25rem 0 0.75rem;
+  max-width: 65ch;
+}
+
+.tiptap h3 {
+  font-size: 1.25rem;
+  font-weight: bold;
+  line-height: 1.3;
+  margin: 1rem 0 0.5rem;
+  max-width: 65ch;
+}
+
+.tiptap h1:first-child,
+.tiptap h2:first-child,
+.tiptap h3:first-child {
+  margin-top: 0;
+}
+
+.tiptap ul,
+.tiptap ol {
+  margin: 0 0 0.5rem 1.5rem;
+  max-width: 65ch;
+}
+
+.tiptap ul {
+  list-style-type: disc;
+}
+
+.tiptap ol {
+  list-style-type: decimal;
+}
+
+.tiptap li {
+  margin-bottom: 0.25rem;
+}
+
+.tiptap li > p {
+  margin-bottom: 0;
+}
+
+.tiptap blockquote {
+  border-left: 4px solid var(--color-border);
+  padding-left: 1rem;
+  font-style: italic;
+  color: var(--color-muted);
+  margin: 0 0 1rem;
+  max-width: 65ch;
+}
+
+.tiptap code {
+  background-color: var(--color-border);
+  padding: 0.125rem 0.4rem;
+  border-radius: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+}
+
+.tiptap pre {
+  background-color: var(--color-border);
+  padding: 1rem;
+  border-radius: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  margin: 0 0 1rem;
+  overflow-x: auto;
+}
+
+.tiptap pre code {
+  background: none;
+  padding: 0;
+  display: block;
+  color: inherit;
+}
+
+.tiptap hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1.5rem 0;
+  max-width: 65ch;
+}
+
+.tiptap a {
+  color: #2563eb;
+  cursor: pointer;
+}
+
+.tiptap a:hover {
+  text-decoration: underline;
+}
+
+/* Task lists (schema lands with the WYSIWYG change; styles are ready) */
+.tiptap ul[data-type="taskList"] {
+  list-style-type: none;
+  margin-left: 0;
+  padding-left: 0;
+}
+
+.tiptap ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.tiptap ul[data-type="taskList"] li > label {
+  flex: 0 0 auto;
+  margin-top: 0.125rem;
+}
+
+.tiptap ul[data-type="taskList"] li > div {
+  flex: 1;
+}
+
+.tiptap ul[data-type="taskList"] input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+  accent-color: currentColor;
+}
+
+/* Tables (same status as task lists) */
+.tiptap .tableWrapper {
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+
+.tiptap table {
+  border: 1px solid var(--color-border);
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
   margin: 0;
+  overflow: hidden;
+}
+
+.tiptap th,
+.tiptap td {
+  border: 1px solid var(--color-border);
+  min-width: 1em;
+  padding: 0.5rem 0.75rem;
+  vertical-align: top;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.tiptap th {
+  font-weight: 600;
+  text-align: left;
+  background-color: color-mix(in srgb, var(--color-border) 40%, transparent);
+}
+
+.tiptap .selectedCell {
+  background-color: color-mix(in srgb, var(--color-canary) 18%, transparent);
+}
+
+/* Empty-document placeholder */
+.tiptap p.is-editor-empty:first-child::before {
+  color: var(--color-muted);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
 }
 
 .tiptap .collaboration-cursor__caret {

@@ -21,17 +21,9 @@ const SAFE_ORIGIN_RE = /^https?:\/\/[a-z0-9.:[\]-]+$/i;
 export function mcpHelpHtml(origin: string): string {
   const safeOrigin = SAFE_ORIGIN_RE.test(origin) ? origin : DEFAULT_ORIGIN;
   const mcpUrl = `${safeOrigin}/mcp`;
+  const anonUrl = `${safeOrigin}/mcp/anonymous`;
   const mcpServersJson = JSON.stringify(
-    {
-      mcpServers: {
-        vapor: {
-          url: mcpUrl,
-          headers: {
-            Authorization: "Bearer <token>",
-          },
-        },
-      },
-    },
+    { mcpServers: { vapor: { url: mcpUrl } } },
     null,
     2,
   );
@@ -97,37 +89,34 @@ export function mcpHelpHtml(origin: string): string {
 </p>
 
 <p>
-  Connecting works with no token at all: the first tool call auto-enrolls an
-  anonymous agent (suggest + comment) named after your client. A token is only
-  needed for direct-write access or a stable identity across sessions — mint
-  one from the document's <strong>Invite agent</strong> dialog, shown once, so
-  copy it right away.
+  <strong>${mcpUrl}</strong> is the main door: signing in gives your agent a
+  stable identity and, if you grant it at consent, write access. Adding it in a
+  client pops a browser sign-in the first time. Prefer no account?
+  <strong>${anonUrl}</strong> connects with zero setup and can suggest and
+  comment.
 </p>
 
-<h2>Claude Code</h2>
+<h2>Claude Code — signed in</h2>
 <pre>claude mcp add --transport http vapor ${mcpUrl}</pre>
-<p>With a token, for write access or a stable identity:</p>
-<pre>claude mcp add --transport http vapor ${mcpUrl} --header "Authorization: Bearer &lt;token&gt;"</pre>
+<p>Your client walks you through Google sign-in in the browser, then remembers it.</p>
+
+<h2>Claude Code — anonymous</h2>
+<pre>claude mcp add --transport http vapor ${anonUrl}</pre>
 
 <h2>claude.ai</h2>
 <p>
-  Go to <strong>Settings → Connectors → Add custom connector</strong> and paste this URL:
+  Go to <strong>Settings → Connectors → Add custom connector</strong> and paste the
+  main URL — sign-in happens in the consent popup:
 </p>
 <pre>${mcpUrl}</pre>
-<p>
-  That works tokenless. For write access or a stable identity, claude.ai will also
-  take an <code>Authorization</code> header — use <code>Bearer &lt;token&gt;</code>
-  with your document's token.
-</p>
 
 <h2>Generic MCP client</h2>
 <pre>${mcpServersJson}</pre>
-<p class="muted">Omit the <code>headers</code> block entirely to connect tokenless.</p>
-
 <p class="muted">
-  Tokens are minted per document, from that document's <strong>Invite agent</strong> dialog —
-  there's no account or API key to set up separately.
+  Use <code>${anonUrl}</code> for tokenless access; the main URL follows the OAuth
+  flow your client discovers automatically.
 </p>
+
 </body>
 </html>
 `;

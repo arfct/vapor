@@ -17,13 +17,14 @@ Read project documents to load context:
 
 - `docs/design-system.md` — visual design, typography, colours, layout
 - `docs/technical-architecture.md` — platform, framework stack, directory structure, critical rules
-- `docs/plans/2026-08-30-agent-collaborators-design.md` — agent collaborators spec (tokens, tool surface, performance engine)
+- `docs/plans/2026-08-30-agent-collaborators-design.md` — agent collaborators spec (tool surface, performance engine)
+- `docs/plans/2026-08-30-identity-design.md` — identity phase spec (Google sign-in, MCP OAuth, counterpart agents)
 
 Also check `plans/` for any active plan.
 
 ### Project Overview
 
-vapor is a collaborative markdown editor — a cross between GitHub Gist and Google Docs. Users can quickly share and do multiplayer editing on markdown documents in real-time. Everything is public by URL (no auth yet). Documents persist live with no save button. Documents auto-expire after 99 hours. AI agents can join documents as human-like collaborators over MCP (see "Agent collaborators" below).
+vapor is a collaborative markdown editor — a cross between GitHub Gist and Google Docs. Users can quickly share and do multiplayer editing on markdown documents in real-time. Everything is public by URL. Sign-in (Google) is optional and adds identity/attribution, never a wall. Documents persist live with no save button. Documents auto-expire after 99 hours. AI agents can join documents as human-like collaborators over MCP (see "Agent collaborators" below).
 
 Naming is "vapor" throughout: `APP_NAME`, page titles, the export frontmatter key (`vapor:`), and the theme localStorage key (`vapor-theme`).
 
@@ -69,7 +70,7 @@ See `docs/technical-architecture.md` for full details.
 
 #### Directory Layout
 
-- `agents/` — Server-side Durable Object agents: `DocumentAgent` (document state) and `VaporMcp` (MCP server)
+- `agents/` — Server-side Durable Object agents: `DocumentAgent` (document state), `VaporMcp` (MCP server), `Registry` (global identity + OAuth state)
 - `app/components/` — React UI components
 - `app/lib/` — Editor logic, CriticMarkup, Yjs provider, utilities
 - `app/shared/` — Constants and types shared between client and server
@@ -88,7 +89,10 @@ Documents render at the root path, not under `/docs`:
 | `/new` | `new.ts` |
 | `/:id` | `doc.$id.tsx` |
 | `/:id.md` | `workers/routes.ts` — raw markdown export |
-| `/mcp` | `agents/mcp.ts` (`VaporMcp`) — MCP server |
+| `/mcp` | `agents/mcp.ts` (`VaporMcp`) — OAuth-gated MCP server |
+| `/mcp/anonymous` | `agents/mcp.ts` (`VaporMcp`) — tokenless MCP server |
+| `/auth/*` | `workers/routes.ts` — Google sign-in sessions |
+| `/oauth/*`, `/.well-known/oauth-*` | `workers/oauth.ts` — OAuth 2.1 AS for MCP |
 | `/agents/*` | `agents/document.ts` (`DocumentAgent`) — Yjs WebSocket |
 
 Root slugs share one namespace with a small reserved-word list (`app/shared/constants.ts`); the id generator and the `/:id` loader both guard against collisions.
@@ -125,8 +129,17 @@ Track-changes functionality spans multiple files:
 AI agents connect as MCP clients and edit through the same CriticMarkup/Yjs machinery humans use, with a performance engine that paces their typing to look human. Full design: `docs/plans/2026-08-30-agent-collaborators-design.md`.
 
 - **`VaporMcp`** (`agents/mcp.ts`) — an `McpAgent` (Cloudflare Agents SDK) served at `/mcp`. Stateless per document: each tool call names a `doc_id` and forwards to that doc's `DocumentAgent` via DO-to-DO RPC. Tool schemas and definitions live in `agents/mcp-tools.ts`.
-- **`DocumentAgent`** (extended) — owns the token roster, performance queue, and event log alongside the Yjs doc; all mutations happen inside the DO that owns the document.
-- **`workers/routes.ts`** — pure (no `cloudflare:` imports) handlers for `GET /:id.md` (raw markdown) and the `GET /mcp` browser help page, wired into `workers/app.ts`.
+- **`DocumentAgent`** (extended) — owns the agent roster, performance queue, and event log alongside the Yjs doc; all mutations happen inside the DO that owns the document. Agent RPCs take a verified `AgentIdentity` (principal or anonymous) and enroll it into the roster on first touch — there are no per-doc tokens.
+- **`workers/routes.ts`** — pure (no `cloudflare:` imports) handlers for `GET /:id.md`, the MCP help page, and `/auth/*` sign-in, wired into `workers/app.ts`.
+
+#### Identity (Google sign-in + MCP OAuth)
+
+Ported from subpixel's dependency-free auth stack. Full design: `docs/plans/2026-08-30-identity-design.md`.
+
+- **`app/lib/auth.server.ts`** — Google ID-token verification (WebCrypto), HMAC session JWTs, the `vp_session` cookie. Identity is a principal (`email:<addr>`); sign-in is optional.
+- **`agents/registry.ts`** (`Registry` DO, one `"global"` instance) — profiles, counterpart agent slugs, and OAuth clients/codes/refresh tokens.
+- **`workers/oauth.ts`** — OAuth 2.1 AS (PKCE, dynamic registration, discovery). Access tokens are 1-hour session JWTs carrying the granted capabilities; the consent page (`app/lib/oauth-pages.ts`) is where write is granted. `/mcp` requires one of these; `/mcp/anonymous` needs none.
+- Secrets: `SESSION_SECRET` (Workers secret), `GOOGLE_CLIENT_ID` (public var). See `.dev.vars.example`.
 
 #### Testing Constraints
 

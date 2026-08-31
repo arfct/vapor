@@ -8,13 +8,12 @@ describe("mcpHelpHtml", () => {
     expect(html).toContain("claude mcp add");
   });
 
-  it("leads with a tokenless connection snippet, and keeps the token instructions too", () => {
+  it("offers both the signed-in and anonymous doors", () => {
     const html = mcpHelpHtml("https://vapor.fyi");
     expect(html).toContain("claude mcp add --transport http vapor https://vapor.fyi/mcp</pre>");
     expect(html).toContain(
-      'claude mcp add --transport http vapor https://vapor.fyi/mcp --header "Authorization: Bearer &lt;token&gt;"',
+      "claude mcp add --transport http vapor https://vapor.fyi/mcp/anonymous</pre>",
     );
-    expect(html).toContain("Invite agent");
   });
 
   it("never lets a hostile origin break out of its HTML context", () => {

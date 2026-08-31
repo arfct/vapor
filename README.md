@@ -99,23 +99,25 @@ Agents join a document as collaborators that look and behave like people: a name
 
 ### Connecting
 
-No token needed to get started:
+Two doors. **`https://vapor.fyi/mcp`** is the main one — signing in gives the agent a stable identity (its own counterpart, owned by you) and, if you grant it at consent, `write` access:
 
 ```bash
 claude mcp add --transport http vapor https://vapor.fyi/mcp
 ```
 
-The first tool call auto-enrolls an anonymous agent (`suggest` + `comment`) named after your MCP client, reused for the rest of the session. For claude.ai, add a custom connector at Settings → Connectors → Add custom connector, pointing at `https://vapor.fyi/mcp` — no header required. Any other MCP client works the same way over streamable HTTP.
+Adding it runs an OAuth flow: the client opens a browser sign-in the first time, then remembers it. On claude.ai, add a custom connector at Settings → Connectors → Add custom connector pointing at the same URL — sign-in happens in the consent popup.
 
-A token is only needed for `write` access or a stable identity across sessions. From the doc's **Invite agent** dialog, or directly:
+Prefer no account? **`https://vapor.fyi/mcp/anonymous`** connects with zero setup and can `suggest` and `comment`:
 
 ```bash
-claude mcp add --transport http vapor https://vapor.fyi/mcp --header "Authorization: Bearer <token>"
+claude mcp add --transport http vapor https://vapor.fyi/mcp/anonymous
 ```
 
-### Tokens
+### Identity and capabilities
 
-Tokens are minted per document from the **Invite agent** dialog — anyone who can open the doc can invite an agent, the same public-by-URL trust model as the rest of vapor. A new token defaults to `suggest` + `comment` capabilities; `write` (direct edits, no track-changes) is an explicit grant. The token is shown once at creation; revoke and re-mint if it's lost.
+Sign-in (Google) is optional everywhere — anonymous editing, anonymous MCP, and public-by-URL documents are unchanged. What identity buys is attribution and a durable counterpart agent: presence and comments show your name, and your agent's roster entries are owned by you across every document.
+
+At consent you choose the agent's capabilities: **suggest + comment** (the default — tracked changes a human accepts or rejects) or **full write** (direct edits). Anonymous agents are always suggest + comment. Revoke an agent from a document via its **Agents** panel, or revoke the whole grant to sever the counterpart everywhere.
 
 ### Tools
 
@@ -127,7 +129,7 @@ Tokens are minted per document from the **Invite agent** dialog — anyone who c
 - `reply` — reply in a thread
 - `join` / `leave` — enter/exit presence
 - `await_events` — long-poll for mentions, thread replies, doc-changed digests
-- `create_document` — create a new doc and a token for it, no auth required
+- `create_document` — create a new doc; the caller is enrolled as its first agent
 
 ### Raw export
 

@@ -73,15 +73,14 @@ describe("ThreadPanel", () => {
     expect(props.onSelect).toHaveBeenCalledWith("t1");
   });
 
-  it("renders highlight context with text-base", () => {
+  it("does not repeat the highlighted phrase in the card", () => {
     const props = {
       ...defaultProps(),
       thread: makeThread({ highlightText: "Some highlighted text" }),
     };
-    const { getByText } = render(createElement(ThreadPanel, props));
+    const { queryByText } = render(createElement(ThreadPanel, props));
 
-    const highlight = getByText("Some highlighted text");
-    expect(highlight.className).toContain("text-base");
+    expect(queryByText("Some highlighted text")).toBeFalsy();
   });
 
   it("renders replies with author header and text", () => {

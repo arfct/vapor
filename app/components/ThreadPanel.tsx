@@ -13,10 +13,6 @@ function timeAgo(ts: number): string {
   return `${days}d ago`;
 }
 
-function truncate(text: string, max: number): string {
-  return text.length > max ? text.slice(0, max) + "…" : text;
-}
-
 function AuthorHeader({
   author,
   timestamp,
@@ -142,13 +138,6 @@ export default function ThreadPanel({
           </div>
         </div>
       </AuthorHeader>
-
-      {/* Highlight context */}
-      {thread.highlightText && (
-        <div className="cm-highlight mt-2 truncate px-1 text-base">
-          {truncate(thread.highlightText, 80)}
-        </div>
-      )}
 
       {/* Comment text */}
       <p className="mt-1.5 text-base">{thread.commentText}</p>

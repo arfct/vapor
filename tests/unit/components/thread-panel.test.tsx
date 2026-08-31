@@ -31,16 +31,13 @@ describe("ThreadPanel", () => {
     onDelete: vi.fn(),
   });
 
-  it("renders author name and comment text without color dot", () => {
+  it("renders author name, timestamp, and comment text", () => {
     const props = defaultProps();
-    const { getByText, container } = render(createElement(ThreadPanel, props));
+    const { getByText } = render(createElement(ThreadPanel, props));
 
     expect(getByText("Alice")).toBeTruthy();
+    expect(getByText("just now")).toBeTruthy();
     expect(getByText("Test comment")).toBeTruthy();
-
-    // No color dot span
-    const dots = container.querySelectorAll(".rounded-full");
-    expect(dots).toHaveLength(0);
   });
 
   it("applies bg-border/50 when active", () => {
@@ -76,18 +73,17 @@ describe("ThreadPanel", () => {
     expect(props.onSelect).toHaveBeenCalledWith("t1");
   });
 
-  it("renders highlight context with text-base", () => {
+  it("does not repeat the highlighted phrase in the card", () => {
     const props = {
       ...defaultProps(),
       thread: makeThread({ highlightText: "Some highlighted text" }),
     };
-    const { getByText } = render(createElement(ThreadPanel, props));
+    const { queryByText } = render(createElement(ThreadPanel, props));
 
-    const highlight = getByText("Some highlighted text");
-    expect(highlight.className).toContain("text-base");
+    expect(queryByText("Some highlighted text")).toBeFalsy();
   });
 
-  it("renders replies with vertical border line and no color dots", () => {
+  it("renders replies with author header and text", () => {
     const props = {
       ...defaultProps(),
       thread: makeThread({
@@ -101,38 +97,33 @@ describe("ThreadPanel", () => {
         ],
       }),
     };
-    const { getByText, container } = render(createElement(ThreadPanel, props));
+    const { getByText } = render(createElement(ThreadPanel, props));
 
     expect(getByText("Bob")).toBeTruthy();
     expect(getByText("A reply")).toBeTruthy();
-
-    // Replies container has border-l
-    const repliesContainer = container.querySelector(".border-l.border-border.pl-3");
-    expect(repliesContainer).toBeTruthy();
-
-    // No color dots
-    const dots = container.querySelectorAll(".rounded-full");
-    expect(dots).toHaveLength(0);
   });
 
-  it("renders action button bar with bordered styling", () => {
+  it("renders resolve and overflow icons in the header", () => {
     const props = defaultProps();
-    const { getByText } = render(createElement(ThreadPanel, props));
+    const { getByLabelText } = render(createElement(ThreadPanel, props));
 
-    const replyBtn = getByText("Reply");
-    const resolveBtn = getByText("Resolve");
-    const deleteBtn = getByText("Delete");
+    const resolveBtn = getByLabelText("Resolve");
+    const moreBtn = getByLabelText("More actions");
 
-    // Check button styling classes
-    expect(replyBtn.className).toContain("uppercase");
-    expect(replyBtn.className).toContain("tracking-wider");
-    expect(resolveBtn.className).toContain("text-green-600");
-    expect(deleteBtn.className).toContain("text-red-500");
+    expect(resolveBtn.querySelector(".material-symbols-outlined")).toBeTruthy();
+    expect(moreBtn.querySelector(".material-symbols-outlined")).toBeTruthy();
+  });
 
-    // Parent bar has border
-    const bar = replyBtn.parentElement!;
-    expect(bar.className).toContain("border");
-    expect(bar.className).toContain("border-border");
+  it("Delete lives in the overflow menu", () => {
+    const props = defaultProps();
+    const { getByLabelText, getByText, queryByText } = render(
+      createElement(ThreadPanel, props),
+    );
+
+    expect(queryByText("Delete")).toBeFalsy();
+    fireEvent.click(getByLabelText("More actions"));
+    fireEvent.click(getByText("Delete"));
+    expect(props.onDelete).toHaveBeenCalledWith("t1");
   });
 
   it("resolve button shows Reopen for resolved thread", () => {
@@ -140,30 +131,24 @@ describe("ThreadPanel", () => {
       ...defaultProps(),
       thread: makeThread({ resolved: true }),
     };
-    const { getByText } = render(createElement(ThreadPanel, props));
-    expect(getByText("Reopen")).toBeTruthy();
+    const { getByLabelText } = render(createElement(ThreadPanel, props));
+    expect(getByLabelText("Reopen")).toBeTruthy();
   });
 
-  it("action buttons call correct handlers", () => {
+  it("resolve calls onResolve", () => {
     const props = defaultProps();
-    const { getByText } = render(createElement(ThreadPanel, props));
+    const { getByLabelText } = render(createElement(ThreadPanel, props));
 
-    fireEvent.click(getByText("Resolve"));
+    fireEvent.click(getByLabelText("Resolve"));
     expect(props.onResolve).toHaveBeenCalledWith("t1");
-
-    fireEvent.click(getByText("Delete"));
-    expect(props.onDelete).toHaveBeenCalledWith("t1");
   });
 
-  it("reply input appears on Reply click and submits on Enter", () => {
+  it("reply pill is always visible and submits on Enter", () => {
     const props = defaultProps();
-    const { getByText, getByPlaceholderText } = render(
-      createElement(ThreadPanel, props),
-    );
+    const { getByPlaceholderText } = render(createElement(ThreadPanel, props));
 
-    fireEvent.click(getByText("Reply"));
     const input = getByPlaceholderText("Reply...");
-    expect(input).toBeTruthy();
+    expect(input.className).toContain("rounded-full");
 
     fireEvent.change(input, { target: { value: "My reply" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -172,9 +157,9 @@ describe("ThreadPanel", () => {
 
   it("action button clicks do not trigger thread selection", () => {
     const props = defaultProps();
-    const { getByText } = render(createElement(ThreadPanel, props));
+    const { getByLabelText } = render(createElement(ThreadPanel, props));
 
-    fireEvent.click(getByText("Resolve"));
+    fireEvent.click(getByLabelText("Resolve"));
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 });

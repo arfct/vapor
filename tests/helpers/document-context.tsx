@@ -50,6 +50,7 @@ export function createMockDocumentContext(
     editorInstance: null,
     markdown: "",
     mode: "edit",
+    setMode: vi.fn(),
     toggleMode: vi.fn(),
     showPreview: false,
     togglePreview: vi.fn(),

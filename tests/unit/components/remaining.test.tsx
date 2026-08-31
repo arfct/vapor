@@ -4,7 +4,6 @@ import { createElement } from "react";
 import { fireEvent } from "@testing-library/react";
 import { renderWithDocument } from "../../helpers/document-context";
 import CleanViewToggle from "~/components/CleanViewToggle";
-import SuggestionActions from "~/components/SuggestionActions";
 import ShareButton from "~/components/ShareButton";
 import ConnectionStatus from "~/components/ConnectionStatus";
 import Preview from "~/components/Preview";
@@ -23,19 +22,6 @@ describe("CleanViewToggle", () => {
     );
     fireEvent.click(getByRole("checkbox"));
     expect(contextValue.toggleCleanView).toHaveBeenCalledOnce();
-  });
-});
-
-describe("SuggestionActions", () => {
-  it("renders action buttons in suggest mode", () => {
-    const { getByText } = renderWithDocument(
-      createElement(SuggestionActions),
-      { context: { mode: "suggest" } },
-    );
-    expect(getByText("Accept")).toBeTruthy();
-    expect(getByText("Reject")).toBeTruthy();
-    expect(getByText("Accept all")).toBeTruthy();
-    expect(getByText("Reject all")).toBeTruthy();
   });
 });
 

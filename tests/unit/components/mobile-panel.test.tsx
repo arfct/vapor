@@ -18,32 +18,26 @@ describe("MobilePanel", () => {
   });
 
   it("clicking a tab shows corresponding content, clicking again collapses", () => {
+    const thread = {
+      id: "t1",
+      commentText: "A comment",
+      author: { name: "Alice", color: "#000", colorLight: "#ccc" },
+      createdAt: Date.now(),
+      resolved: false,
+      replies: [],
+    };
     const { getByText, queryByText } = renderWithDocument(
       createElement(MobilePanel, { className: "lg:hidden" }),
-      { context: { mode: "suggest" } },
+      { context: { threads: [thread] } },
     );
-
-    // Editing tab starts active, should show ModeToggle content
-    expect(queryByText("Suggest changes")).toBeTruthy();
 
     // Click Comments tab
     fireEvent.click(getByText("Comments"));
-    expect(queryByText("Comments (0)")).toBeTruthy();
+    expect(queryByText("A comment")).toBeTruthy();
 
     // Click Comments tab again to collapse
     fireEvent.click(getByText("Comments"));
-    expect(queryByText("Comments (0)")).toBeFalsy();
-  });
-
-  it("editing tab renders ModeToggle and SuggestionActions", () => {
-    const { getByText, getByLabelText } = renderWithDocument(
-      createElement(MobilePanel, { className: "lg:hidden" }),
-    );
-
-    // Editing tab is active by default
-    // ModeToggle shows "Edit mode" when mode is "edit"
-    expect(getByText("Edit mode")).toBeTruthy();
-    expect(getByLabelText("Toggle suggest mode")).toBeTruthy();
+    expect(queryByText("A comment")).toBeFalsy();
   });
 
   it("comments tab renders CommentInput and ThreadList", () => {
@@ -54,6 +48,5 @@ describe("MobilePanel", () => {
 
     fireEvent.click(getByText("Comments"));
     expect(queryByText("Comment")).toBeTruthy();
-    expect(queryByText("No comments yet")).toBeTruthy();
   });
 });

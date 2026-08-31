@@ -47,7 +47,7 @@ Switch from **Edit Mode** to **Suggest Changes** in the sidebar (or bottom panel
 
 Comments can be anchored to a {==good==}{>>Should we use a stronger word here?<<} span of text using highlights, or placed inline without a selection.
 
-Use the bubble menu to add a comment to a highlight or hit the `+ Add` button in the comments pane. {>>This paragraph needs a citation.<<} _(Comments can also be added without a highlight)_.
+Select some text and use the bubble menu to add a comment to it. {>>This paragraph needs a citation.<<} _(Comments can also be added without a highlight)_.
 
 Click on a highlighted region or comment to open the thread panel. Threads support replies and can be resolved when the discussion is complete.
 

@@ -286,6 +286,18 @@ export default function Editor({
     prevActiveRangeRef.current = range;
     const tr = editor.state.tr.setMeta(activeCommentHighlightKey, range);
     editor.view.dispatch(tr);
+
+    // Bring the highlighted phrase into view when a thread is selected.
+    // The dispatch above renders the active decoration synchronously.
+    if (range) {
+      let el: Element | null = editor.view.dom.querySelector(".cm-comment-active");
+      if (!el) {
+        const pos = Math.min(range.from, editor.state.doc.content.size);
+        const dom = editor.view.domAtPos(pos).node;
+        el = dom instanceof HTMLElement ? dom : dom.parentElement;
+      }
+      el?.scrollIntoView({ block: "center" });
+    }
   }, [editor, activeCommentRange]);
 
   // Update clean view state when prop changes

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { useParams } from "react-router";
 import type { AgentRosterEntry } from "~/shared/agent-protocol";
 
@@ -46,13 +46,11 @@ function SnippetRow({ label, text }: { label: string; text: string }) {
  * agents authenticate via OAuth (or the anonymous door) and enroll on first
  * touch.
  */
-export default function AgentsPanel() {
+export default function AgentsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const params = useParams();
   const docId = params.id ?? "";
-  const [open, setOpen] = useState(false);
   const [roster, setRoster] = useState<AgentRosterEntry[]>([]);
   const titleId = useId();
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const origin = typeof window !== "undefined" ? window.location.origin : "https://vapor.fyi";
 
   const loadRoster = useCallback(() => {
@@ -66,19 +64,14 @@ export default function AgentsPanel() {
     if (open) loadRoster();
   }, [open, loadRoster]);
 
-  const handleClose = useCallback(() => {
-    setOpen(false);
-    triggerRef.current?.focus();
-  }, []);
-
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") handleClose();
+      if (e.key === "Escape") onClose();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open, handleClose]);
+  }, [open, onClose]);
 
   async function handleRevoke(name: string) {
     await fetch(`/${docId}/agents`, {
@@ -90,7 +83,7 @@ export default function AgentsPanel() {
   }
 
   function handleOverlayClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (e.target === e.currentTarget) handleClose();
+    if (e.target === e.currentTarget) onClose();
   }
 
   const claudeCodeCommand = `claude mcp add --transport http vapor ${origin}/mcp`;
@@ -98,13 +91,6 @@ export default function AgentsPanel() {
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        onClick={() => setOpen(true)}
-        className="flex h-full cursor-pointer items-center gap-1 px-3 text-sm uppercase tracking-wider transition-colors hover:bg-border"
-      >
-        Agents
-      </button>
       {open && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -121,7 +107,7 @@ export default function AgentsPanel() {
                 Agents
               </h2>
               <button
-                onClick={handleClose}
+                onClick={onClose}
                 aria-label="Close"
                 className="cursor-pointer text-muted hover:text-ink"
               >

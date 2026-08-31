@@ -15,6 +15,7 @@ export function meta(_args: Route.MetaArgs) {
   return [
     { title: "vapor" },
     { name: "description", content: "Collaborative markdown editor" },
+    { property: "og:image", content: "https://vapor.fyi/logo-512.png" },
   ];
 }
 

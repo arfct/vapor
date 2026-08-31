@@ -13,6 +13,7 @@ import Fathom from "~/components/Fathom";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [
+  { rel: "icon", type: "image/svg+xml", href: "/logo.svg" },
   { rel: "icon", href: "/favicon.ico", sizes: "48x48" },
   { rel: "icon", type: "image/png", href: "/favicon-32.png", sizes: "32x32" },
   { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },

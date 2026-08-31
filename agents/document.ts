@@ -601,6 +601,11 @@ class DocumentAgent extends Agent {
         this.sql`UPDATE roster SET capabilities = ${caps} WHERE identity_id = ${identity.id}`;
         row.capabilities = caps;
       }
+      const label = identity.label ?? null;
+      if (label !== null && (row.label ?? null) !== label) {
+        this.sql`UPDATE roster SET label = ${label} WHERE identity_id = ${identity.id}`;
+        row.label = label;
+      }
       return { entry: rowToRosterEntry(row) };
     }
 

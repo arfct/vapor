@@ -6,6 +6,8 @@ export interface UserInfo {
   animal?: string;
   /** Stable identity key: the browser's anonymous uuid, or a principal after sign-in. */
   id?: string;
+  /** Avatar image URL for a signed-in user (from Google), if any. */
+  avatar?: string;
 }
 
 export type DocMode = "edit" | "suggest";

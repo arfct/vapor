@@ -4,7 +4,9 @@ import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
 import { YjsProvider } from "./yjs-provider";
 import { USER_COLOURS } from "~/shared/constants";
-import { getAnonIdentity } from "./anon-identity";
+import { getAnonIdentity, retireAnonId } from "./anon-identity";
+import { useSession } from "./useSession";
+import { reattributeThreads } from "./thread-reattribution";
 import type { UserInfo, DocMode } from "~/shared/types";
 
 function anonUserInfo(): UserInfo {
@@ -22,29 +24,38 @@ function anonUserInfo(): UserInfo {
 export function useYjsEditor(docId: string) {
   const doc = useMemo(() => new Y.Doc(), []);
   const awareness = useMemo(() => new Awareness(doc), [doc]);
-  const [user, setUser] = useState<UserInfo>(anonUserInfo);
+  const anon = useMemo(() => anonUserInfo(), []);
+  const session = useSession();
 
-  // If the viewer is signed in, present their real name instead of the
-  // anonymous animal. Sign-in is optional; anonymous users keep the animal.
+  // A signed-in viewer presents their real name and avatar; anonymous
+  // viewers keep the animal. Derived from the shared session so signing in
+  // mid-session updates presence and comment attribution without a reload.
+  const user = useMemo<UserInfo>(() => {
+    if (session?.signedIn && session.displayName) {
+      return {
+        ...anon,
+        name: session.displayName,
+        id: session.principal ?? anon.id,
+        animal: undefined,
+        avatar: session.avatar ?? undefined,
+      };
+    }
+    return anon;
+  }, [session, anon]);
+
+  // Keep the awareness (presence) user in sync when it changes — e.g. on
+  // sign-in — so remote clients see the new name/avatar live.
   useEffect(() => {
-    let cancelled = false;
-    fetch("/auth/me")
-      .then((r) => r.json())
-      .then((raw) => {
-        const s = raw as { signedIn?: boolean; displayName?: string; principal?: string };
-        if (cancelled || !s.signedIn || !s.displayName) return;
-        setUser((prev) => ({
-          ...prev,
-          name: s.displayName as string,
-          id: s.principal ?? prev.id,
-          animal: undefined,
-        }));
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    awareness.setLocalStateField("user", user);
+  }, [awareness, user]);
+
+  // On sign-in, retire this browser's anonymous id and re-attribute the
+  // comments it authored in this document to the signed-in identity.
+  useEffect(() => {
+    if (!session?.signedIn || !anon.id || !user.id || user.id === anon.id) return;
+    reattributeThreads(doc, anon.id, user);
+    retireAnonId();
+  }, [session, user, anon, doc]);
   const docState = useMemo(() => doc.getMap<string>("docState"), [doc]);
   const providerRef = useRef<YjsProvider | null>(null);
   const [synced, setSynced] = useState(false);

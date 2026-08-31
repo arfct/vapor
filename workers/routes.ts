@@ -130,10 +130,10 @@ export interface AuthDeps {
   upsertProfile: (
     principal: string,
     info: { displayName: string; avatar?: string },
-  ) => Promise<{ profile: { displayName: string; agentSlug: string | null } }>;
+  ) => Promise<{ profile: { displayName: string; agentSlug: string | null; avatar: string | null } }>;
   getProfile: (
     principal: string,
-  ) => Promise<{ profile: { displayName: string; agentSlug: string | null } | null }>;
+  ) => Promise<{ profile: { displayName: string; agentSlug: string | null; avatar: string | null } | null }>;
 }
 
 function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
@@ -167,6 +167,7 @@ export async function handleAuth(request: Request, deps: AuthDeps): Promise<Resp
       email: session.email,
       displayName: profile?.displayName ?? session.email,
       agentSlug: profile?.agentSlug ?? null,
+      avatar: profile?.avatar ?? null,
     });
   }
 

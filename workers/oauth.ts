@@ -70,6 +70,59 @@ function oauthError(status: number, error: string, description: string): Respons
   return Response.json({ error, error_description: description }, { status });
 }
 
+/**
+ * Resolves a `client_id` to a client record. Two shapes are supported:
+ *   - a DCR client id (opaque string) → looked up in the Registry;
+ *   - a Client ID Metadata Document URL (CIMD, an https URL) → the document
+ *     is fetched and its `redirect_uris`/`client_name` used directly, with
+ *     no stored registration. This is what "Use Anthropic's hosted client
+ *     metadata" needs. The document is cached via the Cache API.
+ * Returns null when the id is unknown or the metadata is unusable.
+ */
+async function resolveClient(
+  clientId: string,
+  deps: OAuthDeps,
+): Promise<OAuthClient | null> {
+  if (!clientId) return null;
+  if (!/^https:\/\//i.test(clientId)) {
+    const { client } = await deps.registry.getClient(clientId);
+    return client;
+  }
+
+  // CIMD: the client_id is itself the metadata URL.
+  const cache = typeof caches !== "undefined" ? (caches as CacheStorage & { default: Cache }).default : undefined;
+  const req = new Request(clientId, { headers: { Accept: "application/json" } });
+  let res = await cache?.match(req);
+  if (!res) {
+    try {
+      res = await fetch(req);
+    } catch {
+      return null;
+    }
+    if (!res.ok) return null;
+    if (cache) await cache.put(req, res.clone());
+  }
+
+  let meta: Record<string, unknown>;
+  try {
+    meta = (await res.json()) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  // The document must declare itself as this exact client_id and list valid
+  // redirect URIs — otherwise it can't be trusted to authorize a redirect.
+  if (typeof meta.client_id === "string" && meta.client_id !== clientId) return null;
+  const uris = meta.redirect_uris;
+  if (!Array.isArray(uris) || uris.length === 0 || !uris.every(validRedirectUri)) return null;
+
+  return {
+    clientId,
+    name: typeof meta.client_name === "string" ? meta.client_name.slice(0, MAX_CLIENT_NAME) : clientId,
+    redirectUris: uris as string[],
+    createdAt: 0,
+  };
+}
+
 function serverMetadata(origin: string) {
   return {
     issuer: origin,
@@ -83,6 +136,9 @@ function serverMetadata(origin: string) {
     token_endpoint_auth_methods_supported: ["none"],
     scopes_supported: [],
     service_documentation: `${origin}/mcp`,
+    // Accept a Client ID Metadata Document URL as the client_id (CIMD),
+    // in addition to dynamically-registered ids.
+    client_id_metadata_document_supported: true,
   };
 }
 
@@ -142,9 +198,7 @@ async function handleAuthorize(request: Request, deps: OAuthDeps): Promise<Respo
 
   const clientId = params.get("client_id") ?? "";
   const redirectUri = params.get("redirect_uri") ?? "";
-  const { client } = clientId
-    ? await deps.registry.getClient(clientId)
-    : { client: null };
+  const client = await resolveClient(clientId, deps);
   if (!client) {
     return consentResponse({ clientName: "unknown", email: null, params: {}, error: "unknown client_id" });
   }

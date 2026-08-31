@@ -27,14 +27,14 @@ describe("SignIn", () => {
     expect(await screen.findByText("Sign in")).toBeTruthy();
   });
 
-  it("shows the display name and Sign out when signed in", async () => {
+  it("shows the display name when signed in, in a sign-out button", async () => {
     vi.stubGlobal(
       "fetch",
       mockFetch({ "/auth/me": { signedIn: true, displayName: "Nicholas" } }),
     );
     render(createElement(SignIn));
-    expect(await screen.findByText("Nicholas")).toBeTruthy();
-    expect(screen.getByText("Sign out")).toBeTruthy();
+    const btn = await screen.findByTitle("Sign out");
+    expect(btn.textContent).toContain("Nicholas");
   });
 
   it("posts to /auth/logout on sign out", async () => {
@@ -44,7 +44,7 @@ describe("SignIn", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     render(createElement(SignIn));
-    fireEvent.click(await screen.findByText("Sign out"));
+    fireEvent.click(await screen.findByTitle("Sign out"));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith("/auth/logout", { method: "POST" }),
     );

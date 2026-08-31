@@ -180,7 +180,13 @@ function renderCaret(user: Record<string, unknown>) {
   const label = document.createElement("div");
   label.classList.add("collaboration-cursor__label");
   label.setAttribute("style", `background-color: ${user.color}`);
-  if (user.animal) {
+  if (user.avatar) {
+    const avatar = document.createElement("img");
+    avatar.classList.add("collaboration-cursor__avatar");
+    avatar.setAttribute("src", user.avatar as string);
+    avatar.setAttribute("alt", "");
+    label.insertBefore(avatar, null);
+  } else if (user.animal) {
     const animal = document.createElement("span");
     animal.classList.add("anon-animal", "collaboration-cursor__animal");
     animal.insertBefore(document.createTextNode(user.animal as string), null);

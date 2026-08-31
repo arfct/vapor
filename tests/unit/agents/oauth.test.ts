@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { handleOAuth, type OAuthRegistry } from "../../../workers/oauth";
 import { mintSessionToken, verifySessionToken, SESSION_COOKIE } from "../../../app/lib/auth.server";
 import type { AuthCode, OAuthClient, RefreshGrant } from "../../../agents/registry";
@@ -317,6 +317,69 @@ describe("oauth authorization server", () => {
       "suggest",
       "comment",
     ]);
+  });
+
+  it("accepts a CIMD url client_id by fetching its metadata document", async () => {
+    const registry = fakeRegistry();
+    const metadataUrl = "https://claude.ai/.well-known/mcp-client";
+    const stubbedFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : (input as Request).url ?? input.toString();
+      if (url === metadataUrl) {
+        return {
+          ok: true,
+          json: async () => ({ client_id: metadataUrl, client_name: "Claude", redirect_uris: [REDIRECT] }),
+          clone() {
+            return this as unknown as Response;
+          },
+        } as unknown as Response;
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", stubbedFetch);
+    try {
+      const { challenge } = await pkcePair();
+      const res = await handleOAuth(
+        new Request(
+          `https://vapor.fyi/oauth/authorize?client_id=${encodeURIComponent(metadataUrl)}&redirect_uri=${encodeURIComponent(REDIRECT)}&response_type=code&code_challenge=${challenge}&code_challenge_method=S256`,
+        ),
+        deps(registry),
+      );
+      // No stored registration needed: it reached the consent page (200),
+      // not the "unknown client_id" error (400).
+      expect(res?.status).toBe(200);
+      expect(stubbedFetch).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("rejects a CIMD document whose redirect_uris don't cover the request", async () => {
+    const registry = fakeRegistry();
+    const metadataUrl = "https://evil.example/meta";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ redirect_uris: ["https://elsewhere.example/cb"] }),
+        clone() {
+          return this as unknown as Response;
+        },
+      })),
+    );
+    try {
+      const res = await handleOAuth(
+        new Request(
+          `https://vapor.fyi/oauth/authorize?client_id=${encodeURIComponent(metadataUrl)}&redirect_uri=${encodeURIComponent(REDIRECT)}&response_type=code`,
+        ),
+        deps(registry),
+      );
+      // redirect_uri not in the document → treated as unknown client, 400,
+      // and it must NOT redirect.
+      expect(res?.status).toBe(400);
+      expect(res?.headers.get("Location")).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("revoke always returns 200", async () => {

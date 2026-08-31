@@ -1,9 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-
-interface Session {
-  signedIn: boolean;
-  displayName?: string;
-}
+import { useEffect, useRef, useState } from "react";
+import { useSession, notifyAuthChanged } from "~/lib/useSession";
 
 declare global {
   interface Window {
@@ -20,25 +16,17 @@ declare global {
 
 /**
  * Header sign-in affordance. Signed out: a "Sign in" button that opens a
- * popover and loads Google Identity Services on demand (never on every doc
- * view). Signed in: the display name plus sign-out. Optional everywhere —
- * anonymous users never see more than the button.
+ * popover and loads Google Identity Services on demand. Signed in: the
+ * avatar + display name plus sign-out. Optional everywhere.
+ *
+ * The button is a flush toolbar item (a direct sibling of the other header
+ * controls); the popover is fixed-position so it never widens the
+ * horizontally-scrolling header.
  */
 export default function SignIn() {
-  const [session, setSession] = useState<Session | null>(null);
+  const session = useSession();
   const [open, setOpen] = useState(false);
   const buttonHost = useRef<HTMLDivElement | null>(null);
-
-  const refresh = useCallback(() => {
-    fetch("/auth/me")
-      .then((r) => r.json())
-      .then((s) => setSession(s as Session))
-      .catch(() => setSession({ signedIn: false }));
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
 
   // Load GSI and render the Google button only when the popover opens.
   useEffect(() => {
@@ -46,7 +34,9 @@ export default function SignIn() {
     let cancelled = false;
 
     async function mount() {
-      const config = (await fetch("/auth/config").then((r) => r.json())) as { googleClientId?: string };
+      const config = (await fetch("/auth/config").then((r) => r.json())) as {
+        googleClientId?: string;
+      };
       if (cancelled || !config.googleClientId) return;
 
       const render = () => {
@@ -61,7 +51,7 @@ export default function SignIn() {
             });
             if (res.ok) {
               setOpen(false);
-              refresh();
+              notifyAuthChanged();
             }
           },
         });
@@ -82,37 +72,42 @@ export default function SignIn() {
     return () => {
       cancelled = true;
     };
-  }, [open, refresh]);
+  }, [open]);
 
   async function signOut() {
     await fetch("/auth/logout", { method: "POST" });
-    refresh();
+    notifyAuthChanged();
   }
 
   if (session?.signedIn) {
     return (
-      <div className="flex items-center gap-2 px-3">
-        <span className="text-sm">{session.displayName}</span>
-        <button onClick={signOut} className="cursor-pointer text-sm text-muted hover:text-ink">
-          Sign out
-        </button>
-      </div>
+      <button
+        onClick={signOut}
+        title="Sign out"
+        className="flex h-full shrink-0 cursor-pointer items-center gap-2 px-3 text-sm transition-colors hover:bg-border"
+      >
+        {session.avatar && <img className="author-avatar" src={session.avatar} alt="" />}
+        <span className="whitespace-nowrap">{session.displayName}</span>
+      </button>
     );
   }
 
   return (
-    <div className="relative flex items-center">
+    <>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex h-full cursor-pointer items-center px-3 text-sm uppercase tracking-wider transition-colors hover:bg-border"
+        className="flex h-full shrink-0 cursor-pointer items-center px-3 text-sm uppercase tracking-wider transition-colors hover:bg-border"
       >
         Sign in
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 border border-border bg-paper p-4 shadow-lg">
-          <div ref={buttonHost} />
-        </div>
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="fixed right-2 top-12 z-50 border border-border bg-paper p-4 shadow-lg">
+            <div ref={buttonHost} />
+          </div>
+        </>
       )}
-    </div>
+    </>
   );
 }

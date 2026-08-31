@@ -70,10 +70,14 @@ export default function ThreadPanel({
     >
       {/* Author + timestamp */}
       <div className="flex items-center gap-1.5">
-        {thread.author.animal && (
-          <span className="anon-animal text-sm" style={{ color: thread.author.color }}>
-            {thread.author.animal}
-          </span>
+        {thread.author.avatar ? (
+          <img className="author-avatar" src={thread.author.avatar} alt="" />
+        ) : (
+          thread.author.animal && (
+            <span className="anon-animal text-sm" style={{ color: thread.author.color }}>
+              {thread.author.animal}
+            </span>
+          )
         )}
         <span className="text-base font-medium">{thread.author.name}</span>
         <span className="text-sm text-muted">{timeAgo(thread.createdAt)}</span>
@@ -95,10 +99,14 @@ export default function ThreadPanel({
           {thread.replies.map((reply) => (
             <div key={reply.id}>
               <div className="flex items-center gap-1.5">
-                {reply.author.animal && (
-                  <span className="anon-animal text-sm" style={{ color: reply.author.color }}>
-                    {reply.author.animal}
-                  </span>
+                {reply.author.avatar ? (
+                  <img className="author-avatar" src={reply.author.avatar} alt="" />
+                ) : (
+                  reply.author.animal && (
+                    <span className="anon-animal text-sm" style={{ color: reply.author.color }}>
+                      {reply.author.animal}
+                    </span>
+                  )
                 )}
                 <span className="text-base font-medium">{reply.author.name}</span>
                 <span className="text-sm text-muted">

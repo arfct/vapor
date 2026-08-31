@@ -2,6 +2,10 @@ export interface UserInfo {
   name: string;
   color: string;
   colorLight: string;
+  /** Monochrome animal glyph for anonymous users (rendered in Noto Emoji, tinted with `color`). */
+  animal?: string;
+  /** Stable identity key: the browser's anonymous uuid, or a principal after sign-in. */
+  id?: string;
 }
 
 export type DocMode = "edit" | "suggest";

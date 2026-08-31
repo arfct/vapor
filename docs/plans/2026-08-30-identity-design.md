@@ -78,6 +78,16 @@ One standing agent identity per user:
 - The roster UI shows the owner; the caret badge is unchanged. Revoke in a doc severs that doc's entry only; the OAuth grant itself is revoked via `/oauth/revoke` or a future settings page.
 - Invariant: counterpart capabilities ≤ the grant's caps ≤ what any URL-holder could do anyway (all docs world-editable this phase), preserving the no-escalation argument.
 
+## Anonymous animals (added same day)
+
+Google-Docs-style anonymous identities, vapor-flavored:
+
+- Each browser gets a persistent anonymous identity in localStorage (`vapor-anon`): `{ id: <uuid>, animal: <emoji>, colorIndex }`, assigned on first visit and stable across docs and sessions.
+- The display name is "Anonymous <Animal>" and the glyph renders in the **Noto Emoji** font (the monochrome one, loaded from Google Fonts) so it can be tinted with `currentColor` — the animal literally wears the user's cursor color, in the presence stack and the caret label.
+- Awareness `user` state gains `animal` and `id` (the anon uuid — random, no fingerprinting value); comment authors gain `id` too.
+- **Sign-in rewrites the identity**: on sign-in the client switches awareness to the real displayName (principal as `id`), and for any doc it has open, re-attributes its own past comments — threads/replies whose `author.id` equals the stored anon id get rewritten to the signed-in name and principal. The anon id is then retired (kept in localStorage as `formerAnonId` for later doc visits to repeat the rewrite).
+- No server-side registry of anon ids — the rewrite is client-driven, per doc, on visit. Best-effort by design.
+
 ## Web sign-in
 
 - A **Sign in** affordance in the doc header (GSI button in a small popover; subpixel's `web/js/auth.js` is the reference). Optional forever.

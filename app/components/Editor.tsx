@@ -180,6 +180,12 @@ function renderCaret(user: Record<string, unknown>) {
   const label = document.createElement("div");
   label.classList.add("collaboration-cursor__label");
   label.setAttribute("style", `background-color: ${user.color}`);
+  if (user.animal) {
+    const animal = document.createElement("span");
+    animal.classList.add("anon-animal", "collaboration-cursor__animal");
+    animal.insertBefore(document.createTextNode(user.animal as string), null);
+    label.insertBefore(animal, null);
+  }
   label.insertBefore(document.createTextNode(user.name as string), null);
 
   if (user.isAgent) {

@@ -69,6 +69,18 @@ body {
   pointer-events: none;
 }
 
+/* Monochrome animal glyphs (Noto Emoji) — tinted via `color`. */
+.anon-animal {
+  font-family: "Noto Emoji", var(--font-sans);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.tiptap .collaboration-cursor__animal {
+  margin-right: 0.3em;
+  font-size: 0.9em;
+}
+
 .tiptap .collaboration-cursor__badge {
   margin-left: 0.3em;
   padding: 0 0.25em;

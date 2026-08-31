@@ -4,22 +4,25 @@ import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
 import { YjsProvider } from "./yjs-provider";
 import { USER_COLOURS } from "~/shared/constants";
+import { getAnonIdentity } from "./anon-identity";
 import type { UserInfo, DocMode } from "~/shared/types";
 
-function randomUserInfo(): UserInfo {
-  const idx = Math.floor(Math.random() * USER_COLOURS.length);
-  const c = USER_COLOURS[idx];
+function anonUserInfo(): UserInfo {
+  const anon = getAnonIdentity();
+  const c = USER_COLOURS[anon.colorIndex];
   return {
-    name: `User ${Math.floor(Math.random() * 1000)}`,
+    name: `Anonymous ${anon.animal.name}`,
     color: c.color,
     colorLight: c.light,
+    animal: anon.animal.glyph,
+    id: anon.id,
   };
 }
 
 export function useYjsEditor(docId: string) {
   const doc = useMemo(() => new Y.Doc(), []);
   const awareness = useMemo(() => new Awareness(doc), [doc]);
-  const user = useMemo(() => randomUserInfo(), []);
+  const user = useMemo(() => anonUserInfo(), []);
   const docState = useMemo(() => doc.getMap<string>("docState"), [doc]);
   const providerRef = useRef<YjsProvider | null>(null);
   const [synced, setSynced] = useState(false);

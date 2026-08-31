@@ -23,6 +23,12 @@ export const links: Route.LinksFunction = () => [
     rel: "stylesheet",
     href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&display=swap",
   },
+  {
+    // Monochrome emoji for anonymous-animal presence — glyphs inherit
+    // `color`, so animals can wear the user's cursor colour.
+    rel: "stylesheet",
+    href: "https://fonts.googleapis.com/css2?family=Noto+Emoji:wght@400;600&display=swap",
+  },
 ];
 
 const themeScript = `(function(){var t=localStorage.getItem('vapor-theme')||'auto';document.documentElement.setAttribute('data-theme',t)})()`;

@@ -12,6 +12,7 @@ import Preview from "~/components/Preview";
 import ShareButton from "~/components/ShareButton";
 import AgentsPanel from "~/components/AgentsPanel";
 import ModeMenu from "~/components/ModeMenu";
+import FormatToolbar from "~/components/FormatToolbar";
 import HeaderMenu from "~/components/HeaderMenu";
 import CommentInput from "~/components/CommentInput";
 import ThreadList from "~/components/ThreadList";
@@ -100,6 +101,9 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
               auto-deletes in {formatRemainingTime(createdAt)}
             </span>
           )}
+        </div>
+        <div className="shrink-0 border-l border-border">
+          <FormatToolbar />
         </div>
         <div className="shrink-0 border-l border-border">
           <ModeMenu />

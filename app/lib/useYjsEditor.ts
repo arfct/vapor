@@ -13,7 +13,7 @@ function anonUserInfo(): UserInfo {
   const anon = getAnonIdentity();
   const c = USER_COLOURS[anon.colorIndex];
   return {
-    name: `Anonymous ${anon.animal.name}`,
+    name: `${anon.adjective} ${anon.animal.name}`,
     color: c.color,
     colorLight: c.light,
     animal: anon.animal.glyph,

@@ -10,6 +10,27 @@ export interface AnonAnimal {
   name: string;
 }
 
+/**
+ * Adjectives paired with the animal — "Anonymous" is just one of the
+ * collection, so a visitor might be a Cowardly Lion or a Mysterious
+ * Octopus. Assigned once per browser, like the animal and colour.
+ */
+export const ANON_ADJECTIVES: readonly string[] = [
+  "Anonymous",
+  "Cowardly",
+  "Mysterious",
+  "Bashful",
+  "Curious",
+  "Sleepy",
+  "Dapper",
+  "Skeptical",
+  "Wandering",
+  "Punctual",
+  "Suspicious",
+  "Heroic",
+  "Melodramatic",
+] as const;
+
 export const ANON_ANIMALS: readonly AnonAnimal[] = [
   { glyph: "🐙", name: "Octopus" },
   { glyph: "🦊", name: "Fox" },

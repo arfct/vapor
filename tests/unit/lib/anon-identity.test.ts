@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from "vitest";
 import { getAnonIdentity, retireAnonId, formerAnonId } from "~/lib/anon-identity";
-import { ANON_ANIMALS } from "~/shared/anon-animals";
+import { ANON_ANIMALS, ANON_ADJECTIVES } from "~/shared/anon-animals";
 import { USER_COLOURS } from "~/shared/constants";
 
 describe("anon identity", () => {
@@ -15,9 +15,23 @@ describe("anon identity", () => {
     expect(second.id).toBe(first.id);
     expect(second.animal.glyph).toBe(first.animal.glyph);
     expect(second.colorIndex).toBe(first.colorIndex);
+    expect(second.adjective).toBe(first.adjective);
+    expect(ANON_ADJECTIVES).toContain(first.adjective);
     expect(ANON_ANIMALS.map((a) => a.glyph)).toContain(first.animal.glyph);
     expect(first.colorIndex).toBeGreaterThanOrEqual(0);
     expect(first.colorIndex).toBeLessThan(USER_COLOURS.length);
+  });
+
+  it("assigns an adjective to a pre-adjective stored identity, once", () => {
+    localStorage.setItem(
+      "vapor-anon",
+      JSON.stringify({ id: "legacy-id", animalIndex: 1, colorIndex: 2 }),
+    );
+    const first = getAnonIdentity();
+    expect(first.id).toBe("legacy-id");
+    expect(ANON_ADJECTIVES).toContain(first.adjective);
+    const second = getAnonIdentity();
+    expect(second.adjective).toBe(first.adjective);
   });
 
   it("survives corrupt storage by regenerating", () => {

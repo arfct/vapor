@@ -1,4 +1,4 @@
-import { ANON_ANIMALS } from "~/shared/anon-animals";
+import { ANON_ANIMALS, ANON_ADJECTIVES } from "~/shared/anon-animals";
 import { USER_COLOURS } from "~/shared/constants";
 import type { AnonAnimal } from "~/shared/anon-animals";
 
@@ -7,6 +7,7 @@ const FORMER_KEY = "vapor-former-anon-id";
 
 export interface AnonIdentity {
   id: string;
+  adjective: string;
   animal: AnonAnimal;
   colorIndex: number;
 }
@@ -15,6 +16,8 @@ interface StoredAnon {
   id: string;
   animalIndex: number;
   colorIndex: number;
+  /** Absent in identities stored before adjectives existed. */
+  adjectiveIndex?: number;
 }
 
 function randomIndex(bound: number): number {
@@ -24,6 +27,7 @@ function randomIndex(bound: number): number {
 function toIdentity(stored: StoredAnon): AnonIdentity {
   return {
     id: stored.id,
+    adjective: ANON_ADJECTIVES[(stored.adjectiveIndex ?? 0) % ANON_ADJECTIVES.length],
     animal: ANON_ANIMALS[stored.animalIndex % ANON_ANIMALS.length],
     colorIndex: stored.colorIndex % USER_COLOURS.length,
   };
@@ -43,6 +47,7 @@ export function getAnonIdentity(): AnonIdentity {
         : `anon-${Date.now()}-${randomIndex(1_000_000)}`,
     animalIndex: randomIndex(ANON_ANIMALS.length),
     colorIndex: randomIndex(USER_COLOURS.length),
+    adjectiveIndex: randomIndex(ANON_ADJECTIVES.length),
   };
 
   try {
@@ -54,6 +59,11 @@ export function getAnonIdentity(): AnonIdentity {
         typeof parsed.animalIndex === "number" &&
         typeof parsed.colorIndex === "number"
       ) {
+        // Identities stored before adjectives existed get one now, once.
+        if (typeof parsed.adjectiveIndex !== "number") {
+          parsed.adjectiveIndex = randomIndex(ANON_ADJECTIVES.length);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+        }
         return toIdentity(parsed as StoredAnon);
       }
     }

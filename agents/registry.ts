@@ -30,6 +30,7 @@ export interface OAuthClient {
 export interface AuthCode {
   clientId: string;
   principal: string;
+  email: string;
   caps: AgentCapability[];
   codeChallenge: string;
   redirectUri: string;
@@ -39,12 +40,18 @@ export interface AuthCode {
 export interface RefreshGrant {
   clientId: string;
   principal: string;
+  email: string;
   caps: AgentCapability[];
   exp: number;
 }
 
 const CODE_TTL_MS = 10 * 60 * 1000;
 const REFRESH_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
+async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 function randomToken(prefix: string): string {
   const bytes = new Uint8Array(32);
@@ -182,30 +189,40 @@ class Registry extends Agent {
     return { data };
   }
 
+  /** Refresh tokens are hashed at rest (subpixel convention): a Registry
+   *  dump never yields usable credentials. Callers hold the raw token. */
   async putRefresh(
     data: Omit<RefreshGrant, "exp">,
   ): Promise<{ token: string }> {
     const token = randomToken("var_");
-    this.kvPut(`rt:${token}`, { ...data, exp: Date.now() + REFRESH_TTL_MS } satisfies RefreshGrant);
+    this.kvPut(`rt:${await sha256Hex(token)}`, {
+      ...data,
+      exp: Date.now() + REFRESH_TTL_MS,
+    } satisfies RefreshGrant);
     return { token };
   }
 
-  /** Rotation: the old token is consumed; a fresh one is issued for the same grant. */
+  /** Rotation: the old (raw) token is consumed; a fresh one is issued for
+   *  the same grant. No family-replay revocation this phase. */
   async rotateRefresh(
     oldToken: string,
   ): Promise<{ token: string; data: RefreshGrant } | { error: { code: string; message: string } }> {
-    const data = this.kvGet<RefreshGrant>(`rt:${oldToken}`);
-    this.kvDelete(`rt:${oldToken}`);
+    const oldKey = `rt:${await sha256Hex(oldToken)}`;
+    const data = this.kvGet<RefreshGrant>(oldKey);
+    this.kvDelete(oldKey);
     if (!data || data.exp < Date.now()) {
       return { error: { code: "invalid_grant", message: "Refresh token is unknown or expired" } };
     }
     const token = randomToken("var_");
-    this.kvPut(`rt:${token}`, { ...data, exp: Date.now() + REFRESH_TTL_MS } satisfies RefreshGrant);
+    this.kvPut(`rt:${await sha256Hex(token)}`, {
+      ...data,
+      exp: Date.now() + REFRESH_TTL_MS,
+    } satisfies RefreshGrant);
     return { token, data };
   }
 
   async revokeRefresh(token: string): Promise<{ ok: true }> {
-    this.kvDelete(`rt:${token}`);
+    this.kvDelete(`rt:${await sha256Hex(token)}`);
     return { ok: true };
   }
 }

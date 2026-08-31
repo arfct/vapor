@@ -11,6 +11,7 @@ import {
   type MarkdownStub,
 } from "./routes";
 import { verifyGoogleIdToken } from "../app/lib/auth.server";
+import { handleOAuth } from "./oauth";
 import type Registry from "../agents/registry";
 
 export { default as DocumentAgent } from "../agents/document";
@@ -41,6 +42,22 @@ export default {
     const legacyDocResponse = redirectLegacyDocPath(request);
     if (legacyDocResponse) {
       return legacyDocResponse;
+    }
+
+    // /oauth/* + the OAuth discovery documents — the authorization server
+    // MCP clients use to connect with the user's identity.
+    if (url.pathname.startsWith("/oauth") || url.pathname.startsWith("/.well-known/oauth-")) {
+      const registry = (await getAgentByName(
+        env.Registry,
+        "global",
+      )) as unknown as Registry;
+      const oauthResponse = await handleOAuth(request, {
+        secret: env.SESSION_SECRET ?? "",
+        registry,
+      });
+      if (oauthResponse) {
+        return oauthResponse;
+      }
     }
 
     // /auth/* — Google sign-in sessions. Optional everywhere; only mints and

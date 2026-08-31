@@ -85,6 +85,7 @@ describe("Registry", () => {
     const { code } = await reg.putCode({
       clientId: "c1",
       principal: "email:a@x.com",
+      email: "a@x.com",
       caps: ["suggest", "comment"],
       codeChallenge: "challenge",
       redirectUri: "https://client/cb",
@@ -100,8 +101,11 @@ describe("Registry", () => {
     const { token } = await reg.putRefresh({
       clientId: "c1",
       principal: "email:a@x.com",
+      email: "a@x.com",
       caps: ["suggest", "comment", "write"],
     });
+    // hashed at rest: the raw token never appears as a storage key
+    expect([...kvStore.keys()].some((k) => k.includes(token))).toBe(false);
     const rotated = await reg.rotateRefresh(token);
     expect("token" in rotated && rotated.data.caps).toContain("write");
     expect(await reg.rotateRefresh(token)).toMatchObject({ error: { code: "invalid_grant" } });

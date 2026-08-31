@@ -25,7 +25,8 @@ Recommended order: **1 → 2 → 3 → 4**, then roadmap items from 5 as separat
 ## Ground rules for all plans in this series
 
 - **vapor's collaboration model wins.** The source app is single-user with debounced saves; vapor is Yjs-CRDT multiplayer with agents as peers. Anything in the source built around save/sync (debounce, conflict states, background refetch) is *not* imported — Yjs already solves it.
-- **Markdown stays the interchange format.** `/:id.md`, agent RPCs, and exports keep speaking markdown regardless of how the editor renders.
+- **Markdown stays the interchange format.** `/:id.md`, agent RPCs, and exports keep speaking markdown regardless of how the editor renders. The schema stays *markdown-complete* — every node and mark has a canonical GFM + CriticMarkup form (which is why underline doesn't make the trip).
+- **Blocks are addressed by persistent id, verified by hash.** Plan 3 introduces immutable block ids for agent addressing (content hashes demote to staleness checks) — the same ids that make a future database cold store's `blocks` projection possible. The DO + Yjs pair remains the live source of truth; any future database is a derived projection, never a write path.
 - **Existing documents may break.** Documents expire after 99 hours, so there is no migration burden worth engineering for; a schema change that renders pre-change docs oddly for their remaining lifetime is acceptable (same call as the `vpr_` token retirement).
 - **Suggest mode and comments must survive every step.** CriticMarkup marks, thread anchoring, and the agent tool surface are vapor's differentiators; each plan lists them as explicit regression surfaces.
 - Each plan below is written to be executed via `superpowers:writing-plans` → implementation when picked up; the documents here fix scope, decisions, and sequencing, not step-by-step TDD scripts.

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useDocument } from "~/lib/DocumentContext";
 import { hasSuggestionMarkup, processAllRanges } from "~/lib/suggestion-actions";
+import { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from "~/components/ui/menu";
 import Icon from "~/components/Icon";
 
 function ChevronDown() {
@@ -13,9 +13,9 @@ function ChevronDown() {
 }
 
 /**
- * Header menu for the editing mode. Edit and Suggest switch modes, Preview
- * toggles the rendered view; Accept all / Reject all apply to every
- * pending suggestion.
+ * Header menu for the editing mode. Edit and Suggest switch modes, Markdown
+ * toggles the source view; Accept all / Reject all apply to every pending
+ * suggestion.
  */
 export default function ModeMenu() {
   const { editorInstance: editor, mode, setMode, showPreview, togglePreview } = useDocument();
@@ -31,72 +31,65 @@ export default function ModeMenu() {
     };
   }, [editor]);
 
-  const itemClass =
-    "flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm outline-none data-[highlighted]:bg-border data-[disabled]:cursor-default data-[disabled]:text-muted/40";
+  const itemClass = "gap-2";
 
   return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
+    <Menu>
+      <MenuTrigger>
         <button
           className="flex h-full cursor-pointer items-center gap-1 px-3 text-sm uppercase tracking-wider transition-colors hover:bg-border"
           aria-label="Editing mode"
         >
-          {showPreview ? "Preview" : mode === "suggest" ? "Suggest" : "Edit"}
+          {showPreview ? "Markdown" : mode === "suggest" ? "Suggest" : "Edit"}
           <ChevronDown />
         </button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          className="min-w-40 border border-border bg-paper py-1"
-          align="end"
-          sideOffset={4}
+      </MenuTrigger>
+      <MenuContent align="end">
+        <MenuItem
+          className={itemClass}
+          onClick={() => {
+            setMode("edit");
+            if (showPreview) togglePreview();
+          }}
         >
-          <DropdownMenu.Item
-            onSelect={() => {
-              setMode("edit");
-              if (showPreview) togglePreview();
-            }}
-            className={itemClass}
-          >
-            <Icon name="edit" />
-            <span>Edit</span>
-            {mode === "edit" && !showPreview && <span className="ml-auto text-muted">{"✓"}</span>}
-          </DropdownMenu.Item>
-          <DropdownMenu.Item
-            onSelect={() => {
-              setMode("suggest");
-              if (showPreview) togglePreview();
-            }}
-            className={itemClass}
-          >
-            <Icon name="rate_review" />
-            <span>Suggest</span>
-            {mode === "suggest" && !showPreview && <span className="ml-auto text-muted">{"✓"}</span>}
-          </DropdownMenu.Item>
-          <DropdownMenu.Item onSelect={togglePreview} className={itemClass}>
-            <Icon name="visibility" />
-            <span>Preview</span>
-            {showPreview && <span className="ml-auto text-muted">{"✓"}</span>}
-          </DropdownMenu.Item>
-          <DropdownMenu.Separator className="my-1 border-t border-border" />
-          <DropdownMenu.Item
-            disabled={!hasSuggestions}
-            onSelect={() => editor && processAllRanges(editor, true)}
-            className={itemClass}
-          >
-            <Icon name="done_all" />
-            <span>Accept all</span>
-          </DropdownMenu.Item>
-          <DropdownMenu.Item
-            disabled={!hasSuggestions}
-            onSelect={() => editor && processAllRanges(editor, false)}
-            className={itemClass}
-          >
-            <Icon name="remove_done" />
-            <span>Reject all</span>
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+          <Icon name="edit" />
+          <span>Edit</span>
+          {mode === "edit" && !showPreview && <span className="ml-auto pl-3 text-muted">{"✓"}</span>}
+        </MenuItem>
+        <MenuItem
+          className={itemClass}
+          onClick={() => {
+            setMode("suggest");
+            if (showPreview) togglePreview();
+          }}
+        >
+          <Icon name="rate_review" />
+          <span>Suggest</span>
+          {mode === "suggest" && !showPreview && <span className="ml-auto pl-3 text-muted">{"✓"}</span>}
+        </MenuItem>
+        <MenuItem className={itemClass} onClick={togglePreview}>
+          <Icon name="visibility" />
+          <span>Markdown</span>
+          {showPreview && <span className="ml-auto pl-3 text-muted">{"✓"}</span>}
+        </MenuItem>
+        <MenuSeparator />
+        <MenuItem
+          className={itemClass}
+          disabled={!hasSuggestions}
+          onClick={() => editor && processAllRanges(editor, true)}
+        >
+          <Icon name="done_all" />
+          <span>Accept all</span>
+        </MenuItem>
+        <MenuItem
+          className={itemClass}
+          disabled={!hasSuggestions}
+          onClick={() => editor && processAllRanges(editor, false)}
+        >
+          <Icon name="remove_done" />
+          <span>Reject all</span>
+        </MenuItem>
+      </MenuContent>
+    </Menu>
   );
 }

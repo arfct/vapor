@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { serializeThreads } from "~/lib/thread-serialization";
 import { useDocument } from "~/lib/DocumentContext";
+import { Menu, MenuTrigger, MenuContent, MenuItem } from "~/components/ui/menu";
 
 export default function ShareButton() {
   const { docId, markdown, threads } = useDocument();
@@ -25,8 +25,8 @@ export default function ShareButton() {
   }, [docId, markdown, threads]);
 
   return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
+    <Menu>
+      <MenuTrigger>
         <button
           className="flex h-full cursor-pointer items-center gap-1 px-3 text-sm uppercase tracking-wider transition-colors hover:bg-border"
           aria-label="Share options"
@@ -36,27 +36,11 @@ export default function ShareButton() {
             <polyline points="6 9 12 15 18 9" />
           </svg>
         </button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          className="min-w-40 border border-border bg-paper py-1"
-          align="end"
-          sideOffset={4}
-        >
-          <DropdownMenu.Item
-            onSelect={handleCopy}
-            className="block w-full cursor-pointer px-3 py-1.5 text-left text-sm outline-none data-[highlighted]:bg-border"
-          >
-            {copied ? "\u2713 Copied" : "Copy link"}
-          </DropdownMenu.Item>
-          <DropdownMenu.Item
-            onSelect={handleDownload}
-            className="block w-full cursor-pointer px-3 py-1.5 text-left text-sm outline-none data-[highlighted]:bg-border"
-          >
-            Download
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+      </MenuTrigger>
+      <MenuContent align="end">
+        <MenuItem onClick={handleCopy}>{copied ? "✓ Copied" : "Copy link"}</MenuItem>
+        <MenuItem onClick={handleDownload}>Download</MenuItem>
+      </MenuContent>
+    </Menu>
   );
 }

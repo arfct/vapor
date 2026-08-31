@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, Link } from "react-router";
 import type { Route } from "./+types/home";
 import { APP_NAME, generateDocumentId } from "~/shared/constants";
 import { deserializeThreads } from "~/lib/thread-serialization";
@@ -13,7 +13,7 @@ export function loader({ request }: Route.LoaderArgs) {
 
 export function meta(_args: Route.MetaArgs) {
   return [
-    { title: "mist" },
+    { title: "vapor" },
     { name: "description", content: "Collaborative markdown editor" },
   ];
 }
@@ -40,7 +40,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: body, threads, onboarding }),
     });
-    navigate(`/docs/${id}`);
+    navigate(`/${id}`);
   }
 
   const handleUpload = useCallback(
@@ -56,7 +56,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         body: JSON.stringify({ content: body, threads }),
       });
 
-      navigate(`/docs/${id}`);
+      navigate(`/${id}`);
     },
     [navigate],
   );
@@ -165,7 +165,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <span className="whitespace-nowrap">Work in progress.</span> Bugs and
           feedback on{" "}
           <a
-            href="https://github.com/inanimate-tech/mist"
+            href="https://github.com/arfct/vapor"
             target="_blank"
             rel="noopener noreferrer"
             className="text-ink transition-colors hover:text-coral"
@@ -174,8 +174,14 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           </a>
           .
         </span>
-        <span className="font-mono font-light uppercase tracking-wider text-ink">
-          MIT licensed
+        <span className="whitespace-nowrap">
+          <Link to="/privacy" className="text-ink transition-colors hover:text-coral">
+            Privacy
+          </Link>
+          {" · "}
+          <Link to="/terms" className="text-ink transition-colors hover:text-coral">
+            Terms
+          </Link>
         </span>
       </footer>
     </>

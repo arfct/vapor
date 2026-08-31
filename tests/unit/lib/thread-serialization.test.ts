@@ -31,7 +31,7 @@ describe("serializeThreads", () => {
     const result = serializeThreads(md, threads);
 
     expect(result).toMatch(/^---\n/);
-    expect(result).toContain("mist:");
+    expect(result).toContain("vapor:");
     expect(result).toContain("threads:");
     expect(result).toContain("comment: This needs work");
     expect(result).toContain("author: Jane");
@@ -76,14 +76,14 @@ describe("serializeThreads", () => {
     expect(result).toContain("highlight: important section");
   });
 
-  it("existing frontmatter preserved (non-mist keys kept)", () => {
+  it("existing frontmatter preserved (non-vapor keys kept)", () => {
     const md = "---\ntitle: My Doc\ntags:\n  - draft\n---\n\nSome text {>>A comment<<}";
     const threads = [makeThread({ commentText: "A comment" })];
     const result = serializeThreads(md, threads);
     expect(result).toContain("title: My Doc");
     expect(result).toContain("tags:");
     expect(result).toContain("- draft");
-    expect(result).toContain("mist:");
+    expect(result).toContain("vapor:");
     expect(result).toContain("comment: A comment");
   });
 
@@ -116,9 +116,9 @@ describe("serializeThreads", () => {
     );
     // Should produce valid YAML — re-parse to verify
     const parsed = parseFrontmatter(result);
-    const mistThreads = (parsed.mist as { threads: unknown[] }).threads;
-    expect(mistThreads).toHaveLength(1);
-    expect((mistThreads[0] as { comment: string }).comment).toBe(
+    const vaporThreads = (parsed.vapor as { threads: unknown[] }).threads;
+    expect(vaporThreads).toHaveLength(1);
+    expect((vaporThreads[0] as { comment: string }).comment).toBe(
       'Contains: colon, # hash, "quotes"',
     );
   });
@@ -127,7 +127,7 @@ describe("serializeThreads", () => {
 describe("deserializeThreads", () => {
   it("frontmatter with one thread → ThreadData parsed", () => {
     const md = `---
-mist:
+vapor:
   threads:
     - comment: "This needs work"
       author: Jane
@@ -149,7 +149,7 @@ Some text {>>This needs work<<}`;
 
   it("frontmatter with replies → replies array restored", () => {
     const md = `---
-mist:
+vapor:
   threads:
     - comment: "Fix this"
       author: Jane
@@ -171,7 +171,7 @@ Text {>>Fix this<<}`;
     expect(threads[0].replies[0].text).toBe("Done");
   });
 
-  it("missing mist.threads key → empty threads array", () => {
+  it("missing vapor.threads key → empty threads array", () => {
     const md = `---
 title: My Doc
 ---
@@ -191,7 +191,7 @@ Some text`;
 
   it("thread with highlight → highlightText populated", () => {
     const md = `---
-mist:
+vapor:
   threads:
     - comment: "Needs detail"
       highlight: "The intro"
@@ -210,7 +210,7 @@ mist:
 
   it("malformed YAML → graceful error handling", () => {
     const md = `---
-mist: {{{invalid
+vapor: {{{invalid
 ---
 
 Some text`;
@@ -220,9 +220,9 @@ Some text`;
     expect(body).toBe("Some text");
   });
 
-  it("frontmatter with extra unknown keys under mist → preserved on roundtrip", () => {
+  it("frontmatter with extra unknown keys under vapor → preserved on roundtrip", () => {
     const md = `---
-mist:
+vapor:
   version: 2
   threads:
     - comment: "Note"
@@ -319,7 +319,7 @@ describe("roundtrip", () => {
     expect(threads[0].replies[0].author.name).toBe("Bob");
   });
 
-  it("roundtrip preserves non-mist frontmatter keys", () => {
+  it("roundtrip preserves non-vapor frontmatter keys", () => {
     const md = "---\ntitle: My Doc\n---\n\nText {>>Comment<<}";
     const { body } = deserializeThreads(md);
     const threads = [makeThread({ commentText: "Comment" })];

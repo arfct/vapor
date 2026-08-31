@@ -1,20 +1,32 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	// Set CLOUDFLARE_ACCOUNT_ID env var or add your account_id here
-	"name": "mist",
+	"name": "vapor",
 	"compatibility_date": "2025-04-04",
 	"compatibility_flags": ["nodejs_compat"],
 	"main": "./workers/app.ts",
 	"observability": {
 		"enabled": true
 	},
+	"routes": [
+		{ "pattern": "vapor.fyi", "custom_domain": true },
+		{ "pattern": "vpr.fyi", "custom_domain": true },
+		{ "pattern": "vaporware.fyi", "custom_domain": true }
+	],
 	"durable_objects": {
 		"bindings": [
-			{ "name": "DocumentAgent", "class_name": "DocumentAgent" }
+			{ "name": "DocumentAgent", "class_name": "DocumentAgent" },
+			{ "name": "VaporMcp", "class_name": "VaporMcp" },
+			{ "name": "Registry", "class_name": "Registry" }
 		]
 	},
 	"migrations": [
-		{ "tag": "v1", "new_sqlite_classes": ["DocumentAgent"] }
+		{ "tag": "v1", "new_sqlite_classes": ["DocumentAgent"] },
+		{ "tag": "v2", "new_sqlite_classes": ["VaporMcp"] },
+		{ "tag": "v3", "new_sqlite_classes": ["Registry"] }
 	],
+	"vars": {
+		"GOOGLE_CLIENT_ID": "12054056676-thqs6nurgk15kjl9mtdju83r45nhigdd.apps.googleusercontent.com"
+	},
 	"keep_vars": true
 }

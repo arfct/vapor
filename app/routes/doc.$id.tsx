@@ -1,7 +1,8 @@
 import { data, Link } from "react-router";
-import type { Route } from "./+types/docs.$id";
+import type { Route } from "./+types/doc.$id";
 import { getAgentByName } from "agents";
 import { isValidDocumentId, DOCUMENT_TTL_MS } from "~/shared/constants";
+import { isReservedSlug } from "~/shared/agent-protocol";
 import { getCloudflare } from "~/lib/cloudflare.server";
 import { useYjsEditor } from "~/lib/useYjsEditor";
 import { DocumentProvider, useDocument } from "~/lib/DocumentContext";
@@ -10,21 +11,29 @@ import Preview from "~/components/Preview";
 import PreviewToggle from "~/components/PreviewToggle";
 import ConnectionStatus from "~/components/ConnectionStatus";
 import ShareButton from "~/components/ShareButton";
+import AgentsPanel from "~/components/AgentsPanel";
 import ModeToggle from "~/components/ModeToggle";
 import CleanViewToggle from "~/components/CleanViewToggle";
 import SuggestionActions from "~/components/SuggestionActions";
 import CommentInput from "~/components/CommentInput";
 import ThreadList from "~/components/ThreadList";
 import ThemeSelector from "~/components/ThemeSelector";
+import SignIn from "~/components/SignIn";
 import MobilePanel from "~/components/MobilePanel";
 import OnboardingBanner from "~/components/OnboardingBanner";
 
 export function meta(_args: Route.MetaArgs) {
-  return [{ title: "mist" }];
+  return [{ title: "vapor" }];
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const id = params.id;
+  // Documents share the root namespace with a handful of reserved slugs
+  // (/new, /mcp, /.well-known/…). Refuse them here explicitly rather than
+  // relying on isValidDocumentId's shape check to exclude them by accident.
+  if (isReservedSlug(id)) {
+    throw data(null, { status: 404 });
+  }
   if (!isValidDocumentId(id)) {
     throw data(null, { status: 404 });
   }
@@ -87,7 +96,7 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
           to="/"
           className="flex items-center bg-ink px-4 py-2 font-medium text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
         >
-          mist
+          vapor
         </Link>
         <div className="flex grow shrink-0 items-center px-4">
           <span className="font-mono font-bold">{id}</span>
@@ -102,6 +111,12 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
         </div>
         <div className="shrink-0 border-l border-border">
           <ShareButton />
+        </div>
+        <div className="shrink-0 border-l border-border">
+          <AgentsPanel />
+        </div>
+        <div className="shrink-0 border-l border-border">
+          <SignIn />
         </div>
         <div className="flex shrink-0 items-center border-l border-border">
           <ThemeSelector />

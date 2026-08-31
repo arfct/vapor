@@ -4,22 +4,58 @@ import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
 import { YjsProvider } from "./yjs-provider";
 import { USER_COLOURS } from "~/shared/constants";
+import { getAnonIdentity, retireAnonId } from "./anon-identity";
+import { useSession } from "./useSession";
+import { reattributeThreads } from "./thread-reattribution";
 import type { UserInfo, DocMode } from "~/shared/types";
 
-function randomUserInfo(): UserInfo {
-  const idx = Math.floor(Math.random() * USER_COLOURS.length);
-  const c = USER_COLOURS[idx];
+function anonUserInfo(): UserInfo {
+  const anon = getAnonIdentity();
+  const c = USER_COLOURS[anon.colorIndex];
   return {
-    name: `User ${Math.floor(Math.random() * 1000)}`,
+    name: `${anon.adjective} ${anon.animal.name}`,
     color: c.color,
     colorLight: c.light,
+    animal: anon.animal.glyph,
+    id: anon.id,
   };
 }
 
 export function useYjsEditor(docId: string) {
   const doc = useMemo(() => new Y.Doc(), []);
   const awareness = useMemo(() => new Awareness(doc), [doc]);
-  const user = useMemo(() => randomUserInfo(), []);
+  const anon = useMemo(() => anonUserInfo(), []);
+  const session = useSession();
+
+  // A signed-in viewer presents their real name and avatar; anonymous
+  // viewers keep the animal. Derived from the shared session so signing in
+  // mid-session updates presence and comment attribution without a reload.
+  const user = useMemo<UserInfo>(() => {
+    if (session?.signedIn && session.displayName) {
+      return {
+        ...anon,
+        name: session.displayName,
+        id: session.principal ?? anon.id,
+        animal: undefined,
+        avatar: session.avatar ?? undefined,
+      };
+    }
+    return anon;
+  }, [session, anon]);
+
+  // Keep the awareness (presence) user in sync when it changes — e.g. on
+  // sign-in — so remote clients see the new name/avatar live.
+  useEffect(() => {
+    awareness.setLocalStateField("user", user);
+  }, [awareness, user]);
+
+  // On sign-in, retire this browser's anonymous id and re-attribute the
+  // comments it authored in this document to the signed-in identity.
+  useEffect(() => {
+    if (!session?.signedIn || !anon.id || !user.id || user.id === anon.id) return;
+    reattributeThreads(doc, anon.id, user);
+    retireAnonId();
+  }, [session, user, anon, doc]);
   const docState = useMemo(() => doc.getMap<string>("docState"), [doc]);
   const providerRef = useRef<YjsProvider | null>(null);
   const [synced, setSynced] = useState(false);

@@ -69,6 +69,46 @@ body {
   pointer-events: none;
 }
 
+/* Monochrome animal glyphs (Noto Emoji) — tinted via `color`. */
+.anon-animal {
+  font-family: "Noto Emoji", var(--font-sans);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.tiptap .collaboration-cursor__animal {
+  margin-right: 0.3em;
+  font-size: 0.9em;
+}
+
+.tiptap .collaboration-cursor__avatar {
+  width: 1em;
+  height: 1em;
+  border-radius: 50%;
+  margin-right: 0.3em;
+  vertical-align: -0.15em;
+  object-fit: cover;
+}
+
+/* Avatar / animal chip shown beside a comment author name. */
+.author-avatar {
+  width: 1.1em;
+  height: 1.1em;
+  border-radius: 50%;
+  object-fit: cover;
+  vertical-align: -0.2em;
+}
+
+.tiptap .collaboration-cursor__badge {
+  margin-left: 0.3em;
+  padding: 0 0.25em;
+  font-size: 0.65em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 2px;
+  background-color: rgb(255 255 255 / 35%);
+}
+
 /* Markdown decoration classes */
 .md-bold {
   font-weight: 700;

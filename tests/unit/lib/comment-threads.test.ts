@@ -99,3 +99,15 @@ describe("findOrphanedThreads", () => {
     expect(orphans).toHaveLength(2);
   });
 });
+
+describe("threadIdForComment (duplicate-thread regression)", () => {
+  it("is deterministic across clients for the same comment mark", async () => {
+    const { threadIdForComment } = await import("~/lib/useThreads");
+    const a = threadIdForComment({ commentText: "hi!", highlightText: "visiting" });
+    const b = threadIdForComment({ commentText: "hi!", highlightText: "visiting" });
+    expect(a).toBe(b);
+    expect(a).toMatch(/^t-[0-9a-f]{8}$/);
+    // Different comments get different keys.
+    expect(threadIdForComment({ commentText: "nice", highlightText: "fled" })).not.toBe(a);
+  });
+});

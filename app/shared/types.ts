@@ -2,6 +2,12 @@ export interface UserInfo {
   name: string;
   color: string;
   colorLight: string;
+  /** Monochrome animal glyph for anonymous users (rendered in Noto Emoji, tinted with `color`). */
+  animal?: string;
+  /** Stable identity key: the browser's anonymous uuid, or a principal after sign-in. */
+  id?: string;
+  /** Avatar image URL for a signed-in user (from Google), if any. */
+  avatar?: string;
 }
 
 export type DocMode = "edit" | "suggest";

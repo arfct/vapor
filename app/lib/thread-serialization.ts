@@ -65,11 +65,11 @@ export function serializeThreads(
   });
 
   const fm: Record<string, unknown> = { ...existing };
-  const existingMist =
-    fm.mist && typeof fm.mist === "object"
-      ? (fm.mist as Record<string, unknown>)
+  const existingVapor =
+    fm.vapor && typeof fm.vapor === "object"
+      ? (fm.vapor as Record<string, unknown>)
       : {};
-  fm.mist = { ...existingMist, threads: serialized };
+  fm.vapor = { ...existingVapor, threads: serialized };
 
   const yamlStr = stringify(fm, { lineWidth: 0 });
   return `---\n${yamlStr}---\n\n${body}`;
@@ -83,13 +83,13 @@ export function deserializeThreads(markdown: string): {
   const body = stripFrontmatter(markdown);
   const fm = parseFrontmatter(markdown);
 
-  const mist = fm.mist as Record<string, unknown> | undefined;
-  const onboarding = mist?.onboarding === true;
-  if (!mist || !Array.isArray(mist.threads)) {
+  const vapor = fm.vapor as Record<string, unknown> | undefined;
+  const onboarding = vapor?.onboarding === true;
+  if (!vapor || !Array.isArray(vapor.threads)) {
     return { body, threads: [], onboarding };
   }
 
-  const threads: ThreadData[] = mist.threads.map(
+  const threads: ThreadData[] = vapor.threads.map(
     (raw: SerializedThread, i: number) => ({
       id: `imported-${i}`,
       commentText: raw.comment ?? "",

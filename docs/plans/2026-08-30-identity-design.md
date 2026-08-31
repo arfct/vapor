@@ -43,12 +43,12 @@ Reserved-slug list gains `auth`, `oauth`, `.well-known` (already covered), `sett
 
 ## The two MCP doors
 
-MCP clients discover OAuth via a 401 challenge — but vapor's `/mcp` must never 401, because anonymous access is a feature. So identity gets its own door:
+Identity is the default; anonymity is the explicitly chosen door:
 
-- **`/mcp`** — unchanged. Tokenless → anonymous agent; bearer → per-doc token. Never challenges.
-- **`/mcp/me`** — identical tool surface, but requires an OAuth access token: unauthenticated requests get `401` + `WWW-Authenticate` with the resource-metadata URL, which is what makes Claude Code and claude.ai run the consent flow automatically. The token's `principal` flows into `VaporMcp` props.
+- **`/mcp`** — the primary endpoint, now credential-bearing. Accepts either an OAuth access token (identity path) or an existing per-doc `vpr_` bearer token (Invite-agent flow, unchanged — a request carrying any credential is never challenged). A request with **no** credential gets `401` + `WWW-Authenticate` with the resource-metadata URL — which is exactly what makes Claude Code and claude.ai run the browser consent flow automatically. Adding `https://vapor.fyi/mcp` now means signing in.
+- **`/mcp/anonymous`** — identical tool surface, never challenges. Tokenless → auto-enrolled anonymous agent (current behavior, relocated). The zero-friction door for people who don't want an account, and the connector URL the help page offers second, not first.
 
-Adding `https://vapor.fyi/mcp` stays the zero-friction door; adding `https://vapor.fyi/mcp/me` gets a browser consent pop and a durable identity. The `/mcp` help page explains both.
+Migration note: tokenless clients already connected to `/mcp` will start receiving the OAuth challenge and be walked into consent — the intended nudge. Per-doc-token clients are unaffected. The `/mcp` help page and README lead with the signed-in door and mention `/mcp/anonymous` as the alternative.
 
 ## Consent and capabilities
 
@@ -86,4 +86,4 @@ ACLs/private docs, doc ownership enforcement, handle claiming UI, settings page,
 
 - **Unit**: session JWT round-trip + expiry + tamper rejection; Google ID-token verification against a fixture JWKS (subpixel's test approach); slug uniquification; OAuth code/PKCE verifier checks; consent-cap encoding.
 - **Integration**: Registry DO profile round-trip via the mock-Agent pattern; `/mcp/me` 401-challenge shape; grant → counterpart enrollment → roster owner set; anonymous `/mcp` completely unaffected (regression).
-- **Live acceptance**: add `vapor.fyi/mcp/me` in Claude Code → browser consent → suggest lands as `<agentSlug>` owned by the signed-in principal; sign in on the web → presence shows displayName.
+- **Live acceptance**: add `vapor.fyi/mcp` in Claude Code → browser consent → suggest lands as `<agentSlug>` owned by the signed-in principal; `vapor.fyi/mcp/anonymous` still connects with zero configuration; sign in on the web → presence shows displayName.

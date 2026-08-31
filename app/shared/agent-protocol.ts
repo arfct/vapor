@@ -19,6 +19,21 @@ export interface DocBlock extends BlockAnchor {
   text: string;            // markdown w/ critic delimiters
 }
 
+/**
+ * A caller's verified identity, as established upstream (session cookie or
+ * OAuth bearer token) and passed down to DocumentAgent/VaporMcp — the single
+ * source of truth for both MCP doors. `kind: "anonymous"` covers tokenless
+ * `/mcp/anonymous` callers (DEFAULT_CAPABILITIES, no owner); `kind:
+ * "principal"` covers signed-in/OAuth callers (caps from the OAuth grant).
+ */
+export interface AgentIdentity {
+  kind: "principal" | "anonymous";
+  id: string; // principal ("email:…") or anonymous session key
+  name: string; // roster/display slug (agentSlug or slugified clientInfo)
+  owner: string | null; // principal for kind=principal, null for anonymous
+  caps: AgentCapability[];
+}
+
 export interface AgentError {
   code: AgentErrorCode;
   message: string;
@@ -57,6 +72,9 @@ export const RESERVED_SLUGS = [
   "favicon.ico",
   "robots.txt",
   ".well-known",
+  "auth",
+  "oauth",
+  "settings",
 ];
 
 /** Whether a root slug is reserved (case-insensitive — URLs aren't). */

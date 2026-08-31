@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   blockHash, formatAnchor, parseAnchor, findMentions, AGENT_NAME_RE,
   RESERVED_SLUGS, isReservedSlug, slugifyAgentName,
+  type AgentIdentity,
 } from "~/shared/agent-protocol";
 
 describe("blockHash", () => {
@@ -47,6 +48,7 @@ describe("reserved slugs", () => {
       expect.arrayContaining([
         "new", "mcp", "agents", "api", "assets", "demo",
         "favicon.ico", "robots.txt", ".well-known",
+        "auth", "oauth", "settings",
       ]),
     );
   });
@@ -57,9 +59,28 @@ describe("reserved slugs", () => {
     expect(isReservedSlug("Robots.txt")).toBe(true);
   });
 
+  it("reserves the identity-phase routes (auth, oauth, settings)", () => {
+    expect(isReservedSlug("auth")).toBe(true);
+    expect(isReservedSlug("oauth")).toBe(true);
+    expect(isReservedSlug("settings")).toBe(true);
+  });
+
   it("does not match ordinary document ids", () => {
     expect(isReservedSlug("abcd1234")).toBe(false);
     expect(isReservedSlug("newx1234")).toBe(false);
+  });
+});
+
+describe("AgentIdentity", () => {
+  it("accepts the verified-identity shape from both doors", () => {
+    const identity: AgentIdentity = {
+      kind: "principal",
+      id: "email:foo@bar.com",
+      name: "foo-bar",
+      owner: "email:foo@bar.com",
+      caps: ["comment", "suggest"],
+    };
+    expect(identity.kind).toBe("principal");
   });
 });
 

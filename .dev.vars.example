@@ -1,3 +1,9 @@
 # Fathom analytics (optional — omit to disable)
 VITE_FATHOM_SITE_ID=
 VITE_FATHOM_DOMAINS=
+
+# Identity (optional — omit to keep sign-in disabled). SESSION_SECRET signs
+# session JWTs (Workers secret in prod, `openssl rand -base64 32` locally);
+# GOOGLE_CLIENT_ID is the public Google OAuth client id for GSI sign-in.
+SESSION_SECRET=
+GOOGLE_CLIENT_ID=

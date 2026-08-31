@@ -32,7 +32,7 @@ export interface AgentIdentity {
   kind: "principal" | "anonymous";
   id: string; // principal ("email:…") or anonymous session key
   name: string; // roster slug (agentSlug or slugified clientInfo) — used for @mentions
-  /** Human-facing attribution, e.g. "Nicholas Jitkoff's Agent". Falls back to name. */
+  /** Human-facing attribution, e.g. "Ada Lovelace's Agent". Falls back to name. */
   label?: string;
   owner: string | null; // principal for kind=principal, null for anonymous
   caps: AgentCapability[];

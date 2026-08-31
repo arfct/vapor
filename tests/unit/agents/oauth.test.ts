@@ -148,7 +148,7 @@ describe("oauth authorization server", () => {
     const clientId = await registeredClient(registry);
     const { verifier, challenge } = await pkcePair();
     const session = await mintSessionToken(
-      { principal: "email:nicholas@artifact.com", email: "nicholas@artifact.com" },
+      { principal: "email:ada@example.com", email: "ada@example.com" },
       SECRET,
     );
 
@@ -191,7 +191,7 @@ describe("oauth authorization server", () => {
     const tokens = (await tokenRes?.json()) as Record<string, string>;
     expect(tokens.token_type).toBe("Bearer");
     const claims = await verifySessionToken(tokens.access_token, SECRET);
-    expect(claims?.principal).toBe("email:nicholas@artifact.com");
+    expect(claims?.principal).toBe("email:ada@example.com");
     expect(claims?.caps).toEqual(["suggest", "comment", "write"]);
 
     // refresh rotation

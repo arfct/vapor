@@ -240,15 +240,15 @@ describe("handleAuth", () => {
       secret: "test-secret",
       googleClientId: "client-123",
       verifyGoogle: vi.fn(async () => ({
-        email: "Nicholas@Artifact.com",
-        name: "Nicholas",
+        email: "Ada@Example.com",
+        name: "Ada",
         picture: "https://p/x.png",
       })),
       upsertProfile: vi.fn(async () => ({
-        profile: { displayName: "Nicholas", agentSlug: null },
+        profile: { displayName: "Ada", agentSlug: null },
       })),
       getProfile: vi.fn(async () => ({
-        profile: { displayName: "Nicholas", agentSlug: "nicholas" },
+        profile: { displayName: "Ada", agentSlug: "ada" },
       })),
       ...overrides,
     };
@@ -281,8 +281,8 @@ describe("handleAuth", () => {
     expect(cookie).toContain("SameSite=Lax");
     expect(cookie).toContain("Secure");
     expect(d.upsertProfile).toHaveBeenCalledWith(
-      "email:nicholas@artifact.com",
-      expect.objectContaining({ displayName: "Nicholas" }),
+      "email:ada@example.com",
+      expect.objectContaining({ displayName: "Ada" }),
     );
   });
 
@@ -314,8 +314,8 @@ describe("handleAuth", () => {
     );
     const body = (await res?.json()) as Record<string, unknown>;
     expect(body.signedIn).toBe(true);
-    expect(body.principal).toBe("email:nicholas@artifact.com");
-    expect(body.agentSlug).toBe("nicholas");
+    expect(body.principal).toBe("email:ada@example.com");
+    expect(body.agentSlug).toBe("ada");
   });
 
   it("logout clears the cookie", async () => {

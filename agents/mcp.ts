@@ -68,7 +68,7 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
           "slug" in ensured ? ensured.slug : slugifyAgentName(auth.email.split("@")[0] ?? "agent");
         const { profile } = await registry.getProfile(auth.principal);
         const ownerName = profile?.displayName ?? auth.email.split("@")[0] ?? "Someone";
-        // First name only: "Nicholas's Agent", not the full display name.
+        // First name only: "Ada's Agent", not the full display name.
         const firstName = ownerName.trim().split(/\s+/)[0] || "Someone";
         this.agentLabel = `${firstName}'s Agent`;
       }

@@ -52,7 +52,7 @@ Migration note: this is a deliberate breaking change for existing `/mcp` clients
 
 ## Per-doc tokens retire
 
-User-facing `vpr_` tokens are removed — they were the identity stopgap, and OAuth replaces them (Nicholas approved the break: no users to migrate).
+User-facing `vpr_` tokens are removed — they were the identity stopgap, and OAuth replaces them (break approved by the maintainer: no users to migrate).
 
 - **Invite agent dialog** shrinks to what it should have been: connection instructions (the two doors) plus the roster with revoke. No minting, no one-time token screen, no capability switches — capabilities now live on the OAuth grant.
 - **Write capability** is granted at consent time, per user, instead of per doc. Per-doc revoke survives via the roster (severing that doc's enrollment); revoking the grant itself kills the counterpart everywhere.

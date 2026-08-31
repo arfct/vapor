@@ -46,31 +46,31 @@ describe("Registry", () => {
 
   it("upserts and reads a profile, preserving uid and slug on update", async () => {
     const reg = makeRegistry();
-    const { profile } = await reg.upsertProfile("email:nicholas@artifact.com", {
-      displayName: "Nicholas J",
+    const { profile } = await reg.upsertProfile("email:ada@example.com", {
+      displayName: "Ada L",
     });
     expect(profile.uid).toBeTruthy();
     expect(profile.agentSlug).toBeNull();
 
-    const slug = await reg.ensureAgentSlug("email:nicholas@artifact.com");
-    expect(slug).toEqual({ slug: "nicholas-j" });
+    const slug = await reg.ensureAgentSlug("email:ada@example.com");
+    expect(slug).toEqual({ slug: "ada-l" });
 
-    const updated = await reg.upsertProfile("email:nicholas@artifact.com", {
-      displayName: "Nicholas",
+    const updated = await reg.upsertProfile("email:ada@example.com", {
+      displayName: "Ada",
       avatar: "https://example.com/a.png",
     });
     expect(updated.profile.uid).toBe(profile.uid);
-    expect(updated.profile.agentSlug).toBe("nicholas-j");
+    expect(updated.profile.agentSlug).toBe("ada-l");
     expect(updated.profile.avatar).toBe("https://example.com/a.png");
   });
 
   it("uniquifies agent slugs globally and keeps them stable", async () => {
     const reg = makeRegistry();
-    await reg.upsertProfile("email:a@x.com", { displayName: "Nicholas J" });
-    await reg.upsertProfile("email:b@x.com", { displayName: "Nicholas J" });
-    expect(await reg.ensureAgentSlug("email:a@x.com")).toEqual({ slug: "nicholas-j" });
-    expect(await reg.ensureAgentSlug("email:b@x.com")).toEqual({ slug: "nicholas-j-2" });
-    expect(await reg.ensureAgentSlug("email:a@x.com")).toEqual({ slug: "nicholas-j" });
+    await reg.upsertProfile("email:a@x.com", { displayName: "Ada L" });
+    await reg.upsertProfile("email:b@x.com", { displayName: "Ada L" });
+    expect(await reg.ensureAgentSlug("email:a@x.com")).toEqual({ slug: "ada-l" });
+    expect(await reg.ensureAgentSlug("email:b@x.com")).toEqual({ slug: "ada-l-2" });
+    expect(await reg.ensureAgentSlug("email:a@x.com")).toEqual({ slug: "ada-l" });
   });
 
   it("ensureAgentSlug without a profile errors", async () => {

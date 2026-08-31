@@ -650,6 +650,9 @@ describe("DocumentAgent", () => {
       const a = connectYjsClient();
       a.doc.getText("default").insert(0, "persisted data");
       cleanup(a);
+      // Persistence is debounced (1s quiet edge); production flushes when
+      // the last connection closes — invoke that flush directly here.
+      (agent as unknown as { flushDocState: () => void }).flushDocState();
       mockConnectionMap.clear();
 
       // Simulate DO restart: new agent instance, same SQL store
@@ -1869,7 +1872,7 @@ describe("DocumentAgent", () => {
       await vi.advanceTimersByTimeAsync(50);
       const result = await promise;
 
-      expect(result).toEqual({ events: [], cursor: 0 });
+      expect(result).toEqual({ events: [], cursor: 0, retryAfterMs: 30_000 });
     });
 
     it("excludes already-seen events once the cursor advances past them", async () => {
@@ -1890,7 +1893,7 @@ describe("DocumentAgent", () => {
       await vi.advanceTimersByTimeAsync(50);
       const second = await secondPromise;
 
-      expect(second).toEqual({ events: [], cursor });
+      expect(second).toEqual({ events: [], cursor, retryAfterMs: 30_000 });
       cleanup(client);
     });
 

@@ -249,7 +249,7 @@ export const TOOLS: ToolDef[] = [
   docTool({
     name: "await_events",
     description:
-      "Long-poll for document events (mentions, thread replies, change digests) after a cursor. Returns as soon as anything is waiting, or empty when the timeout elapses.",
+      "Poll for document events (mentions, thread replies, change digests) after a cursor. Returns as soon as anything is waiting, or empty when the timeout (capped at 15s) elapses. An empty result includes retryAfterMs — wait at least that long before polling again; hot-looping this tool keeps the document's server pinned.",
     schema: {
       since_cursor: z
         .number()

@@ -3,6 +3,7 @@ import { useAgent } from "agents/react";
 import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
 import { YjsProvider } from "./yjs-provider";
+import { useIdleSleep } from "./useIdleSleep";
 import { USER_COLOURS } from "~/shared/constants";
 import { getAnonIdentity, retireAnonId } from "./anon-identity";
 import { useSession } from "./useSession";
@@ -67,6 +68,29 @@ export function useYjsEditor(docId: string) {
     name: docId,
   });
 
+  // Sleeping tabs: an idle or hidden tab disconnects so it stops pinning
+  // the document's Durable Object; waking reconnects and resyncs. The
+  // socket is a PartySocket — close() stops its auto-reconnect, and
+  // reconnect() re-opens through the same object, so the provider's
+  // persistent listeners carry across the nap.
+  const asleep = useIdleSleep();
+  useEffect(() => {
+    if (!socket) return;
+    const ps = socket as unknown as {
+      close: () => void;
+      reconnect: () => void;
+      readyState: number;
+    };
+    if (asleep) {
+      ps.close();
+    } else if (
+      ps.readyState === WebSocket.CLOSED ||
+      ps.readyState === WebSocket.CLOSING
+    ) {
+      ps.reconnect();
+    }
+  }, [asleep, socket]);
+
   // Observe docState Y.Map for mode and onboarding changes from other clients
   useEffect(() => {
     const observer = () => {
@@ -106,5 +130,5 @@ export function useYjsEditor(docId: string) {
     };
   }, [socket, doc, awareness]);
 
-  return { doc, awareness, socket, synced, user, mode, setMode, docState, isOnboarding };
+  return { doc, awareness, socket, synced, asleep, user, mode, setMode, docState, isOnboarding };
 }

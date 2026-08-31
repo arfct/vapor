@@ -10,8 +10,8 @@ import {
   redirectLegacyDocPath,
   type MarkdownStub,
 } from "./routes";
-import { verifyGoogleIdToken } from "../app/lib/auth.server";
-import { handleOAuth } from "./oauth";
+import { verifyGoogleIdToken, verifySessionToken } from "../app/lib/auth.server";
+import { handleOAuth, OAUTH_CORS } from "./oauth";
 import type Registry from "../agents/registry";
 
 export { default as DocumentAgent } from "../agents/document";
@@ -24,6 +24,7 @@ const requestHandler = createRequestHandler(
 );
 
 const mcpHandler = VaporMcp.serve("/mcp", { binding: "VaporMcp" });
+const anonMcpHandler = VaporMcp.serve("/mcp/anonymous", { binding: "VaporMcp" });
 
 export default {
   async fetch(request, env, ctx) {
@@ -98,12 +99,42 @@ export default {
       return markdownResponse;
     }
 
-    // The MCP server lives at /mcp (streamable HTTP). The bearer token rides
-    // along as props so the VaporMcp DO can pass it to DocumentAgent RPCs.
+    // The MCP server has two doors. /mcp/anonymous never challenges:
+    // tokenless sessions run as per-session anonymous identities.
+    if (url.pathname === "/mcp/anonymous" || url.pathname.startsWith("/mcp/anonymous/")) {
+      const props: VaporMcpProps = { auth: null, origin: url.origin };
+      const mcpCtx: ExecutionContext<VaporMcpProps> = {
+        props,
+        waitUntil: (promise) => ctx.waitUntil(promise),
+        passThroughOnException: () => ctx.passThroughOnException(),
+      };
+      return anonMcpHandler.fetch(request, env, mcpCtx);
+    }
+
+    // /mcp is the identity door: it accepts exactly one credential type — a
+    // vapor OAuth access token (session JWT). A bare or invalid request gets
+    // the 401 challenge that drives MCP clients into the consent flow.
     if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) {
-      const auth = request.headers.get("Authorization");
+      const header = request.headers.get("Authorization");
+      const bearer = header?.match(/^Bearer\s+(.+)$/i)?.[1] ?? null;
+      const claims = bearer
+        ? await verifySessionToken(bearer, env.SESSION_SECRET ?? "")
+        : null;
+      if (!claims) {
+        return new Response(
+          JSON.stringify({ error: "unauthorized", error_description: "OAuth access token required" }),
+          {
+            status: 401,
+            headers: {
+              "Content-Type": "application/json",
+              "WWW-Authenticate": `Bearer resource_metadata="${url.origin}/.well-known/oauth-protected-resource/mcp"`,
+              ...OAUTH_CORS,
+            },
+          },
+        );
+      }
       const props: VaporMcpProps = {
-        bearer: auth?.startsWith("Bearer ") ? auth.slice(7) : null,
+        auth: { principal: claims.principal, email: claims.email, caps: claims.caps },
         origin: url.origin,
       };
       // ExecutionContext.props is readonly, so hand the MCP handler its own

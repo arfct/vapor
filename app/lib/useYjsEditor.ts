@@ -22,7 +22,29 @@ function anonUserInfo(): UserInfo {
 export function useYjsEditor(docId: string) {
   const doc = useMemo(() => new Y.Doc(), []);
   const awareness = useMemo(() => new Awareness(doc), [doc]);
-  const user = useMemo(() => anonUserInfo(), []);
+  const [user, setUser] = useState<UserInfo>(anonUserInfo);
+
+  // If the viewer is signed in, present their real name instead of the
+  // anonymous animal. Sign-in is optional; anonymous users keep the animal.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/auth/me")
+      .then((r) => r.json())
+      .then((raw) => {
+        const s = raw as { signedIn?: boolean; displayName?: string; principal?: string };
+        if (cancelled || !s.signedIn || !s.displayName) return;
+        setUser((prev) => ({
+          ...prev,
+          name: s.displayName as string,
+          id: s.principal ?? prev.id,
+          animal: undefined,
+        }));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const docState = useMemo(() => doc.getMap<string>("docState"), [doc]);
   const providerRef = useRef<YjsProvider | null>(null);
   const [synced, setSynced] = useState(false);

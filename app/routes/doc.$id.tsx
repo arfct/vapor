@@ -11,13 +11,14 @@ import Preview from "~/components/Preview";
 import PreviewToggle from "~/components/PreviewToggle";
 import ConnectionStatus from "~/components/ConnectionStatus";
 import ShareButton from "~/components/ShareButton";
-import InviteAgentDialog from "~/components/InviteAgentDialog";
+import AgentsPanel from "~/components/AgentsPanel";
 import ModeToggle from "~/components/ModeToggle";
 import CleanViewToggle from "~/components/CleanViewToggle";
 import SuggestionActions from "~/components/SuggestionActions";
 import CommentInput from "~/components/CommentInput";
 import ThreadList from "~/components/ThreadList";
 import ThemeSelector from "~/components/ThemeSelector";
+import SignIn from "~/components/SignIn";
 import MobilePanel from "~/components/MobilePanel";
 import OnboardingBanner from "~/components/OnboardingBanner";
 
@@ -112,7 +113,10 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
           <ShareButton />
         </div>
         <div className="shrink-0 border-l border-border">
-          <InviteAgentDialog />
+          <AgentsPanel />
+        </div>
+        <div className="shrink-0 border-l border-border">
+          <SignIn />
         </div>
         <div className="flex shrink-0 items-center border-l border-border">
           <ThemeSelector />

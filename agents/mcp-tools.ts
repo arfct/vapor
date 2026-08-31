@@ -4,38 +4,30 @@
  *
  * This module deliberately imports nothing from the `agents` package (which
  * uses `cloudflare:` protocol imports) so it stays unit-testable in plain
- * Vitest. `agents/mcp.ts` supplies the real stubs and bearer token.
+ * Vitest. `agents/mcp.ts` supplies the real stubs and verified identity.
  */
 import { z } from "zod";
 import { isValidDocumentId } from "../app/shared/constants";
-import { slugifyAgentName, type AgentError, type AgentRosterEntry } from "../app/shared/agent-protocol";
+import { slugifyAgentName, type AgentError, type AgentIdentity } from "../app/shared/agent-protocol";
 
 /** The subset of the DocumentAgent RPC surface the tools call. */
 export interface DocStub {
-  agentRead(token: string): Promise<unknown>;
-  agentInsert(token: string, args: unknown): Promise<unknown>;
-  agentReplace(token: string, args: unknown): Promise<unknown>;
-  agentSuggest(token: string, args: unknown): Promise<unknown>;
-  agentComment(token: string, args: unknown): Promise<unknown>;
-  agentReply(token: string, args: unknown): Promise<unknown>;
-  agentJoin(token: string, status?: string): Promise<unknown>;
-  agentLeave(token: string): Promise<unknown>;
-  agentAwaitEvents(token: string, args: unknown): Promise<unknown>;
-  /**
-   * Mints an anonymous roster entry (DEFAULT_CAPABILITIES, owner null) for a
-   * tokenless MCP session, retrying with `-2`, `-3`, … on a name collision.
-   * Used only by the anonymous-mode wrapper in agents/mcp-anonymous.ts.
-   */
-  enrollAnonymousAgent(
-    baseName: string,
-  ): Promise<{ token: string; entry: AgentRosterEntry } | { error: AgentError }>;
+  agentRead(identity: AgentIdentity): Promise<unknown>;
+  agentInsert(identity: AgentIdentity, args: unknown): Promise<unknown>;
+  agentReplace(identity: AgentIdentity, args: unknown): Promise<unknown>;
+  agentSuggest(identity: AgentIdentity, args: unknown): Promise<unknown>;
+  agentComment(identity: AgentIdentity, args: unknown): Promise<unknown>;
+  agentReply(identity: AgentIdentity, args: unknown): Promise<unknown>;
+  agentJoin(identity: AgentIdentity, status?: string): Promise<unknown>;
+  agentLeave(identity: AgentIdentity): Promise<unknown>;
+  agentAwaitEvents(identity: AgentIdentity, args: unknown): Promise<unknown>;
 }
 
 export interface ToolDeps {
   /** Resolves a document id to its DocumentAgent stub. */
   getStub(docId: string): Promise<DocStub>;
-  /** The bearer token presented on the MCP request. */
-  token: string;
+  /** The verified identity of the caller (principal or anonymous session). */
+  identity: AgentIdentity;
 }
 
 /** A zod raw shape, as `McpServer.registerTool` accepts for `inputSchema`. */
@@ -77,13 +69,11 @@ export function validateNewDocumentMarkdown(
 }
 
 /**
- * The base agent name create_document mints its fresh token under, derived
+ * The base agent name create_document enrolls its creator under, derived
  * from the connecting MCP client's declared name — the same rule the
- * anonymous tool path uses (agents/mcp-anonymous.ts) for the same reason:
+ * anonymous identity path uses for the same reason:
  * "agent" for every client made every doc's first collaborator look
- * identical, with no way to tell which client created it. Since the
- * document is brand new, there's no roster to collide with, so (unlike
- * enrollAnonymousAgent) no retry-with-suffix loop is needed. Lives here
+ * identical, with no way to tell which client created it. Lives here
  * (rather than inline in agents/mcp.ts, which can't be imported in plain
  * Vitest) so the naming rule is unit-testable directly.
  */
@@ -106,7 +96,7 @@ function docTool(spec: {
   name: string;
   description: string;
   schema: ToolSchema;
-  call(stub: DocStub, token: string, args: Record<string, unknown>): Promise<unknown>;
+  call(stub: DocStub, identity: AgentIdentity, args: Record<string, unknown>): Promise<unknown>;
 }): ToolDef {
   return {
     name: spec.name,
@@ -118,7 +108,7 @@ function docTool(spec: {
         return errorResult("doc_not_found", `Not a valid document id: ${String(id)}`);
       }
       const stub = await deps.getStub(id);
-      return spec.call(stub, deps.token, args);
+      return spec.call(stub, deps.identity, args);
     },
   };
 }
@@ -129,7 +119,7 @@ export const TOOLS: ToolDef[] = [
     description:
       "Read a vapor document: its full markdown, per-block anchors for editing, who is present, and open comment threads.",
     schema: {},
-    call: (stub, token) => stub.agentRead(token),
+    call: (stub, identity) => stub.agentRead(identity),
   }),
 
   docTool({
@@ -142,8 +132,8 @@ export const TOOLS: ToolDef[] = [
       markdown: z.string().describe("The markdown to insert."),
       pace,
     },
-    call: (stub, token, args) =>
-      stub.agentInsert(token, {
+    call: (stub, identity, args) =>
+      stub.agentInsert(identity, {
         anchor: args.anchor as string | undefined,
         where: args.where as "before" | "after" | "append",
         markdown: args.markdown as string,
@@ -164,8 +154,8 @@ export const TOOLS: ToolDef[] = [
       markdown: z.string().describe("The markdown that replaces the range."),
       pace,
     },
-    call: (stub, token, args) =>
-      stub.agentReplace(token, {
+    call: (stub, identity, args) =>
+      stub.agentReplace(identity, {
         from: args.from_anchor as string,
         to: args.to_anchor as string | undefined,
         markdown: args.markdown as string,
@@ -183,8 +173,8 @@ export const TOOLS: ToolDef[] = [
       replacement: z.string().describe("The suggested replacement text (empty string to delete)."),
       pace,
     },
-    call: (stub, token, args) =>
-      stub.agentSuggest(token, {
+    call: (stub, identity, args) =>
+      stub.agentSuggest(identity, {
         anchor: args.anchor as string,
         find: args.find as string,
         replacement: args.replacement as string,
@@ -201,8 +191,8 @@ export const TOOLS: ToolDef[] = [
       quote: z.string().optional().describe("The text within the block the comment refers to."),
       text: z.string().describe("The comment body."),
     },
-    call: (stub, token, args) =>
-      stub.agentComment(token, {
+    call: (stub, identity, args) =>
+      stub.agentComment(identity, {
         anchor: args.anchor as string,
         quote: args.quote as string | undefined,
         text: args.text as string,
@@ -216,8 +206,8 @@ export const TOOLS: ToolDef[] = [
       thread_id: z.string().describe("The thread id, as returned by comment or read_document."),
       text: z.string().describe("The reply body."),
     },
-    call: (stub, token, args) =>
-      stub.agentReply(token, {
+    call: (stub, identity, args) =>
+      stub.agentReply(identity, {
         threadId: args.thread_id as string,
         text: args.text as string,
       }),
@@ -230,14 +220,14 @@ export const TOOLS: ToolDef[] = [
     schema: {
       status: z.string().optional().describe('A short activity string, e.g. "drafting intro".'),
     },
-    call: (stub, token, args) => stub.agentJoin(token, args.status as string | undefined),
+    call: (stub, identity, args) => stub.agentJoin(identity, args.status as string | undefined),
   }),
 
   docTool({
     name: "leave",
-    description: "Remove this agent's presence from the document. The token stays valid.",
+    description: "Remove this agent's presence from the document.",
     schema: {},
-    call: (stub, token) => stub.agentLeave(token),
+    call: (stub, identity) => stub.agentLeave(identity),
   }),
 
   docTool({
@@ -254,9 +244,9 @@ export const TOOLS: ToolDef[] = [
         .optional()
         .describe("How long to wait for an event, in seconds (max 50)."),
     },
-    call: (stub, token, args) => {
+    call: (stub, identity, args) => {
       const timeoutS = args.timeout_s as number | undefined;
-      return stub.agentAwaitEvents(token, {
+      return stub.agentAwaitEvents(identity, {
         cursor: args.since_cursor as number | undefined,
         timeoutMs: timeoutS === undefined ? undefined : timeoutS * 1000,
       });

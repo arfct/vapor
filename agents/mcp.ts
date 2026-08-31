@@ -1,14 +1,15 @@
 /**
- * The MCP server vapor exposes at /mcp. Each tool is backed by a
- * `DocumentAgent` agent* RPC; the bearer token from the HTTP request arrives
- * as `props.bearer` (set in workers/app.ts) and is passed straight through —
- * the DocumentAgent is the only thing that validates it.
+ * The MCP server vapor exposes on two doors (routed in workers/app.ts):
  *
- * A session with no bearer token isn't turned away: it operates in
- * anonymous mode instead (see agents/mcp-anonymous.ts and the "Anonymous
- * agents" section of docs/plans/2026-08-30-agent-collaborators-design.md).
- * The per-(session, doc) identity it auto-enrolls lives in this DO's
- * persisted `state`, so reconnects and replayed calls reuse it.
+ *   /mcp            — OAuth-authenticated. The worker verifies the access
+ *                     token (a vapor session JWT) and passes the claims in
+ *                     props.auth; bare requests get the 401 challenge that
+ *                     drives MCP clients into the consent flow.
+ *   /mcp/anonymous  — tokenless. props.auth is null and every call runs as
+ *                     a per-session anonymous identity (suggest + comment).
+ *
+ * Either way, each tool call is executed under an AgentIdentity that
+ * DocumentAgent enrolls into the document's roster on first touch.
  */
 import { McpAgent } from "agents/mcp";
 import { getAgentByName } from "agents";
@@ -20,14 +21,19 @@ import {
   createDocumentAgentName,
   type DocStub,
 } from "./mcp-tools";
-import { runAnonymousTool, type AnonymousAgentState } from "./mcp-anonymous";
 import { generateDocumentId } from "../app/shared/constants";
-import { slugifyAgentName } from "../app/shared/agent-protocol";
+import {
+  slugifyAgentName,
+  DEFAULT_CAPABILITIES,
+  type AgentCapability,
+  type AgentIdentity,
+} from "../app/shared/agent-protocol";
 import { deserializeThreads } from "../app/lib/thread-serialization";
+import type Registry from "./registry";
 
 export interface VaporMcpProps extends Record<string, unknown> {
-  /** The Authorization: Bearer token, or null when none was presented. */
-  bearer: string | null;
+  /** Verified OAuth claims (set by workers/app.ts), or null on the anonymous door. */
+  auth: { principal: string; email: string; caps?: AgentCapability[] } | null;
   /** Origin of the MCP request, used to build document URLs. */
   origin?: string;
 }
@@ -39,11 +45,46 @@ function jsonContent(result: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
 }
 
-export class VaporMcp extends McpAgent<Env, AnonymousAgentState, VaporMcpProps> {
+export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps> {
   server = new McpServer({ name: "vapor", version: "1.0.0" });
 
-  /** Per-doc anonymous identities this session has auto-enrolled, keyed by doc_id. */
-  initialState: AnonymousAgentState = {};
+  /** Session-cached counterpart slug for the principal path. */
+  private agentSlug: string | null = null;
+
+  /**
+   * The identity every tool call runs under. Principals get their global
+   * counterpart slug from the Registry (cached per session); anonymous
+   * sessions get a stable per-session id and a clientInfo-derived name.
+   */
+  private async identity(): Promise<AgentIdentity> {
+    const auth = this.props?.auth ?? null;
+    if (auth) {
+      if (!this.agentSlug) {
+        const registry = (await getAgentByName(this.env.Registry, "global")) as unknown as Registry;
+        const ensured = await registry.ensureAgentSlug(auth.principal);
+        this.agentSlug =
+          "slug" in ensured ? ensured.slug : slugifyAgentName(auth.email.split("@")[0] ?? "agent");
+      }
+      return {
+        kind: "principal",
+        id: auth.principal,
+        name: this.agentSlug,
+        owner: auth.principal,
+        caps: auth.caps ?? [...DEFAULT_CAPABILITIES],
+      };
+    }
+
+    const clientInfo = this.server.server.getClientVersion();
+    return {
+      kind: "anonymous",
+      // this.name is the per-session DO instance name (stable across
+      // reconnects of the same MCP session).
+      id: `anon:${this.name}`,
+      name: slugifyAgentName(clientInfo?.name ?? "agent"),
+      owner: null,
+      caps: [...DEFAULT_CAPABILITIES],
+    };
+  }
 
   async init() {
     const getStub = (docId: string) =>
@@ -54,38 +95,20 @@ export class VaporMcp extends McpAgent<Env, AnonymousAgentState, VaporMcpProps> 
         tool.name,
         { description: tool.description, inputSchema: tool.schema },
         async (args: Record<string, unknown>) => {
-          const token = this.props?.bearer ?? null;
-
-          if (token) {
-            const result = await tool.run({ getStub, token }, args);
-            return jsonContent(result);
-          }
-
-          // No bearer: run in anonymous mode, auto-enrolling (and reusing)
-          // an agent identity per document for the lifetime of this
-          // session. The client's declared name seeds the agent's name.
-          const clientInfo = this.server.server.getClientVersion();
-          const baseName = slugifyAgentName(clientInfo?.name ?? "agent");
-          const result = await runAnonymousTool({
-            tool,
-            args,
-            getStub,
-            baseName,
-            state: this.state,
-            setState: (next) => this.setState(next),
-          });
+          const identity = await this.identity();
+          const result = await tool.run({ getStub, identity }, args);
           return jsonContent(result);
         },
       );
     }
 
-    // create_document needs env and no token, so it lives here rather than in
-    // the (deliberately dependency-free) tool table.
+    // create_document needs env access, so it lives here rather than in the
+    // (deliberately dependency-free) tool table.
     this.server.registerTool(
       "create_document",
       {
         description:
-          "Create a new vapor document, optionally with starting markdown. Returns its id, URL, and a fresh agent token for it (suggest + comment capabilities).",
+          "Create a new vapor document, optionally with starting markdown. Returns its id and URL; the calling identity is enrolled as the document's first agent.",
         inputSchema: {
           markdown: z.string().optional().describe("Optional starting markdown for the document."),
         },
@@ -113,22 +136,18 @@ export class VaporMcp extends McpAgent<Env, AnonymousAgentState, VaporMcpProps> 
           });
         }
 
-        // Same clientInfo-derived naming as the anonymous tool path, for the
-        // same reason: the doc is brand new, so there's no roster to
-        // collide with and no retry loop is needed.
-        const clientInfo = this.server.server.getClientVersion();
-        const minted = await stub.mintAgentToken({ name: createDocumentAgentName(clientInfo?.name) });
-        if ("error" in minted) return jsonContent(minted);
-
-        // create_document is tokenless for everyone, but an anonymous
-        // session should keep using this same minted token for follow-up
-        // tool calls on the new doc rather than enrolling a second agent.
-        if (!this.props?.bearer) {
-          this.setState({ ...this.state, [id]: { token: minted.token, name: minted.entry.name } });
-        }
+        // Enroll the creator on the fresh doc so it appears in the roster
+        // immediately. Anonymous identities keep their session name; for a
+        // brand-new doc there is nothing to collide with.
+        const identity = await this.identity();
+        const creatorName =
+          identity.kind === "anonymous"
+            ? createDocumentAgentName(this.server.server.getClientVersion()?.name)
+            : identity.name;
+        await (stub as unknown as DocStub).agentJoin({ ...identity, name: creatorName });
 
         const origin = this.props?.origin ?? DEFAULT_ORIGIN;
-        return jsonContent({ id, url: `${origin}/${id}`, token: minted.token });
+        return jsonContent({ id, url: `${origin}/${id}` });
       },
     );
   }

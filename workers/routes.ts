@@ -71,7 +71,7 @@ export function handleMcpHelp(request: Request): Response | null {
   if (request.method !== "GET") return null;
 
   const url = new URL(request.url);
-  if (url.pathname !== "/mcp") return null;
+  if (url.pathname !== "/mcp" && url.pathname !== "/mcp/anonymous") return null;
 
   const accept = request.headers.get("Accept") ?? "";
   if (!accept.includes("text/html")) return null;

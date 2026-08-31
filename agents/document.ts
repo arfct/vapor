@@ -6,17 +6,15 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import { MSG_SYNC, MSG_AWARENESS, DOCUMENT_TTL_MS, DOC_FORMAT_VERSION, USER_COLOURS } from "../app/shared/constants";
-import type { AgentCapability, AgentRosterEntry, AgentError, Pace } from "../app/shared/agent-protocol";
+import type { AgentIdentity, AgentCapability, AgentRosterEntry, AgentError, Pace } from "../app/shared/agent-protocol";
 import {
   AGENT_NAME_RE,
-  DEFAULT_CAPABILITIES,
   formatAnchor,
   findMentions,
   MAX_AGENTS_PER_DOC,
   RATE_LIMIT_MUTATIONS_PER_MIN,
   RATE_LIMIT_CHARS_PER_HOUR,
 } from "../app/shared/agent-protocol";
-import { generateAgentToken, hashToken } from "../app/lib/agent-tokens";
 import {
   getBlocks,
   yDocToMarkdown,
@@ -42,17 +40,6 @@ interface EventRow {
 
 /** How long an agent can go without a join/performance before its presence is auto-removed. */
 const AGENT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
-
-/**
- * Upper bound on name-collision retries in enrollAnonymousAgent (base,
- * base-2, base-3, …). Comfortably above MAX_AGENTS_PER_DOC so a full roster
- * of same-named clients still gets a shot at every suffix before the cap
- * itself (not exhausted attempts) is what stops enrollment. The `+ 8` is
- * just headroom — a token or two may get revoked and re-minted with the
- * same base name between attempts, so a margin past the cap avoids a
- * spurious failure right at the boundary; it isn't tied to any other limit.
- */
-const MAX_ANONYMOUS_NAME_ATTEMPTS = MAX_AGENTS_PER_DOC + 8;
 
 /**
  * Durable Objects SQLite accepts Uint8Array for BLOB columns via the
@@ -94,8 +81,8 @@ interface PerformanceRow {
   created_at: number;
 }
 
-interface AgentTokenRow {
-  token_hash: string;
+interface RosterRow {
+  identity_id: string;
   name: string;
   color: string;
   owner: string | null;
@@ -112,7 +99,7 @@ interface MutationLogEntry {
   chars: number;
 }
 
-function rowToRosterEntry(row: AgentTokenRow): AgentRosterEntry {
+function rowToRosterEntry(row: RosterRow): AgentRosterEntry {
   return {
     name: row.name,
     color: row.color,
@@ -176,8 +163,8 @@ class DocumentAgent extends Agent {
       )
     `;
     this.sql`
-      CREATE TABLE IF NOT EXISTS agent_tokens (
-        token_hash TEXT PRIMARY KEY,
+      CREATE TABLE IF NOT EXISTS roster (
+        identity_id TEXT PRIMARY KEY,
         name TEXT UNIQUE,
         color TEXT,
         owner TEXT,
@@ -442,10 +429,10 @@ class DocumentAgent extends Agent {
   override readonly alarm = async (): Promise<void> => {
     // Auto-delete: remove all document data
     this.sql`DELETE FROM doc_state`;
-    // Revoke every minted agent token along with the document — a token
-    // must not stay valid against whatever content lands at this doc id
-    // if it's recreated after expiry.
-    this.sql`DELETE FROM agent_tokens`;
+    // The roster dies with the document — an enrollment must not persist
+    // against whatever content lands at this doc id if it's recreated
+    // after expiry.
+    this.sql`DELETE FROM roster`;
     // Any queued performances belong to a document that no longer exists.
     this.sql`DELETE FROM performances`;
     this.performanceQueue = [];
@@ -585,116 +572,80 @@ class DocumentAgent extends Agent {
   }
 
   /**
-   * Mints a new agent token for this document, assigning it a slug name,
-   * a roster color (round-robin over USER_COLOURS), and a set of
-   * capabilities. Only the SHA-256 hash of the token is stored.
+   * Finds or creates this identity's roster entry. Rows are keyed by the
+   * verified identity id (a principal or an anonymous session id), so
+   * enrollment is idempotent per identity. The requested name gets a
+   * `-2`, `-3`, … suffix when a DIFFERENT identity already holds it.
+   * Capabilities on the row mirror the latest grant (they are display
+   * data — authorisation always checks the verified identity itself).
    */
-  async mintAgentToken(opts: {
-    name: string;
-    owner?: string;
-    capabilities?: AgentCapability[];
-  }): Promise<{ token: string; entry: AgentRosterEntry } | { error: AgentError }> {
+  private ensureRosterEntry(
+    identity: AgentIdentity,
+  ): { entry: AgentRosterEntry } | { error: AgentError } {
     this.ensureInitialised();
 
     if (!this.docExists()) {
       return { error: { code: "doc_not_found", message: "Document does not exist" } };
     }
 
-    if (!AGENT_NAME_RE.test(opts.name)) {
-      return {
-        error: { code: "invalid_name", message: `Invalid agent name: ${opts.name}` },
-      };
-    }
-
-    const existing = this.sql<{ name: string }>`
-      SELECT name FROM agent_tokens WHERE name = ${opts.name}
+    const existing = this.sql<RosterRow>`
+      SELECT * FROM roster WHERE identity_id = ${identity.id}
     `;
     if (existing.length > 0) {
-      return {
-        error: { code: "invalid_name", message: `Agent name already taken: ${opts.name}` },
-      };
+      const row = existing[0];
+      const caps = JSON.stringify(identity.caps);
+      if (row.capabilities !== caps) {
+        this.sql`UPDATE roster SET capabilities = ${caps} WHERE identity_id = ${identity.id}`;
+        row.capabilities = caps;
+      }
+      return { entry: rowToRosterEntry(row) };
     }
 
-    const roster = this.sql<{ name: string }>`SELECT name FROM agent_tokens`;
-    // A document is a public, unauthenticated URL: without a ceiling, anyone
-    // who can reach the invite endpoint can grow the roster without bound.
+    const roster = this.sql<{ name: string }>`SELECT name FROM roster`;
+    // A document is a public, unauthenticated URL: without a ceiling,
+    // anything that can reach it could grow the roster without bound.
     if (roster.length >= MAX_AGENTS_PER_DOC) {
       return {
         error: {
           code: "rate_limited",
-          message: `This document already has the maximum of ${MAX_AGENTS_PER_DOC} agents. Revoke one before inviting another.`,
+          message: `This document already has the maximum of ${MAX_AGENTS_PER_DOC} agents. Revoke one first.`,
         },
       };
     }
+
+    const base = AGENT_NAME_RE.test(identity.name) ? identity.name : "agent";
+    const taken = new Set(roster.map((r) => r.name));
+    let name = base;
+    for (let n = 2; taken.has(name); n++) {
+      const suffix = `-${n}`;
+      name = base.length + suffix.length > 32
+        ? `${base.slice(0, 32 - suffix.length).replace(/-+$/, "")}${suffix}`
+        : `${base}${suffix}`;
+    }
+
     const color = USER_COLOURS[roster.length % USER_COLOURS.length].color;
-
-    const token = generateAgentToken();
-    const tokenHash = await hashToken(token);
-    const capabilities = opts.capabilities ?? DEFAULT_CAPABILITIES;
-    const owner = opts.owner ?? null;
     const createdAt = Date.now();
-
     this.sql`
-      INSERT INTO agent_tokens (token_hash, name, color, owner, capabilities, created_at, last_seen_at)
-      VALUES (${tokenHash}, ${opts.name}, ${color}, ${owner}, ${JSON.stringify(capabilities)}, ${createdAt}, ${null})
+      INSERT INTO roster (identity_id, name, color, owner, capabilities, created_at, last_seen_at)
+      VALUES (${identity.id}, ${name}, ${color}, ${identity.owner}, ${JSON.stringify(identity.caps)}, ${createdAt}, ${null})
     `;
-
     return {
-      token,
       entry: {
-        name: opts.name,
+        name,
         color,
-        owner,
-        capabilities,
+        owner: identity.owner,
+        capabilities: identity.caps,
         createdAt,
         lastSeenAt: null,
       },
     };
   }
 
-  /**
-   * Mints an anonymous roster entry for a tokenless MCP session:
-   * DEFAULT_CAPABILITIES, owner null, name derived from `baseName` (already
-   * slugified by the caller). On a name collision, retries with `-2`,
-   * `-3`, … up to MAX_ANONYMOUS_NAME_ATTEMPTS. The MAX_AGENTS_PER_DOC cap
-   * still applies and is surfaced as-is (mintAgentToken's `rate_limited`).
-   */
-  async enrollAnonymousAgent(
-    baseName: string,
-  ): Promise<{ token: string; entry: AgentRosterEntry } | { error: AgentError }> {
-    this.ensureInitialised();
-
-    const base = AGENT_NAME_RE.test(baseName) ? baseName : "agent";
-    let lastError: AgentError = {
-      code: "rate_limited",
-      message: "Could not find an available anonymous agent name",
-    };
-
-    for (let attempt = 0; attempt < MAX_ANONYMOUS_NAME_ATTEMPTS; attempt++) {
-      const suffix = attempt === 0 ? "" : `-${attempt + 1}`;
-      let candidate = `${base}${suffix}`;
-      if (candidate.length > 32) {
-        candidate = `${base.slice(0, 32 - suffix.length).replace(/-+$/, "")}${suffix}`;
-      }
-      if (!AGENT_NAME_RE.test(candidate)) continue;
-
-      const minted = await this.mintAgentToken({ name: candidate, capabilities: DEFAULT_CAPABILITIES });
-      if (!("error" in minted)) return minted;
-
-      lastError = minted.error;
-      // Only a name collision is worth retrying under a new suffix; the
-      // roster cap or a doc-existence failure won't clear up by renaming.
-      if (minted.error.code !== "invalid_name") return minted;
-    }
-
-    return { error: lastError };
-  }
-
   /** Lists all agents minted for this document, oldest first. */
   async getAgentRoster(): Promise<AgentRosterEntry[]> {
     this.ensureInitialised();
-    const rows = this.sql<AgentTokenRow>`
-      SELECT * FROM agent_tokens ORDER BY created_at ASC
+    const rows = this.sql<RosterRow>`
+      SELECT * FROM roster ORDER BY created_at ASC
     `;
     return rows.map(rowToRosterEntry);
   }
@@ -705,7 +656,7 @@ class DocumentAgent extends Agent {
    * body is itself fully synchronous SQL access).
    */
   private getRosterNamesSync(): string[] {
-    const rows = this.sql<{ name: string }>`SELECT name FROM agent_tokens`;
+    const rows = this.sql<{ name: string }>`SELECT name FROM roster`;
     return rows.map((r) => r.name);
   }
 
@@ -782,13 +733,13 @@ class DocumentAgent extends Agent {
    * Only a valid token is required — read is implied.
    */
   async agentAwaitEvents(
-    token: string,
+    identity: AgentIdentity,
     args: { cursor?: number; timeoutMs?: number },
   ): Promise<
     | { events: { seq: number; type: DocEventType; payload: unknown }[]; cursor: number }
     | { error: AgentError }
   > {
-    const verified = await this.verifyAgentToken(token);
+    const verified = await this.verifyIdentity(identity);
     if ("error" in verified) return verified;
 
     const cursor = args.cursor ?? 0;
@@ -850,51 +801,51 @@ class DocumentAgent extends Agent {
   }
 
   /** Revokes an agent's token by name. Idempotent. */
-  async revokeAgentToken(name: string): Promise<{ ok: true } | { error: AgentError }> {
+  async revokeAgentEntry(name: string): Promise<{ ok: true } | { error: AgentError }> {
     this.ensureInitialised();
-    this.sql`DELETE FROM agent_tokens WHERE name = ${name}`;
+    this.sql`DELETE FROM roster WHERE name = ${name}`;
+    this.clearAgentIdleTimer(name);
+    this.setAgentPresence(name, null);
     return { ok: true };
   }
 
   /**
-   * Verifies a presented agent token, optionally checking it carries a
-   * needed capability. `read` is implied by any valid token and is never
-   * stored in `capabilities`, so omit `needs` to check validity only.
-   * Updates `last_seen_at` on success. Used internally by every
-   * agent-facing RPC method.
+   * Validates a caller-supplied identity (already authenticated upstream by
+   * VaporMcp — DocumentAgent trusts its DO-RPC callers) and resolves it to
+   * this document's roster entry, enrolling on first touch. `read` is
+   * implied by any valid identity; pass `needs` to require a capability.
+   * Updates `last_seen_at` on success.
    */
-  private async verifyAgentToken(
-    token: string,
+  private async verifyIdentity(
+    identity: AgentIdentity,
     needs?: AgentCapability,
   ): Promise<{ entry: AgentRosterEntry } | { error: AgentError }> {
-    this.ensureInitialised();
-
-    const tokenHash = await hashToken(token);
-    const rows = this.sql<AgentTokenRow>`
-      SELECT * FROM agent_tokens WHERE token_hash = ${tokenHash}
-    `;
-    if (rows.length === 0) {
-      return { error: { code: "invalid_token", message: "Invalid or unknown agent token" } };
+    if (
+      !identity ||
+      (identity.kind !== "principal" && identity.kind !== "anonymous") ||
+      typeof identity.id !== "string" ||
+      identity.id.length === 0 ||
+      typeof identity.name !== "string" ||
+      !Array.isArray(identity.caps)
+    ) {
+      return { error: { code: "invalid_token", message: "Malformed agent identity" } };
     }
 
-    const row = rows[0];
+    const enrolled = this.ensureRosterEntry(identity);
+    if ("error" in enrolled) return enrolled;
 
-    // last_seen_at tracks presence, not authorisation: an agent that
-    // presented a valid token has been seen, whether or not the call it was
-    // making turns out to need a capability it lacks. Update before the
-    // capability check, so a denied call still keeps the agent in the
-    // presence list rather than making it look idle.
+    // last_seen_at tracks presence, not authorisation: update before the
+    // capability check so a denied call still counts as "seen".
     const now = Date.now();
-    this.sql`UPDATE agent_tokens SET last_seen_at = ${now} WHERE token_hash = ${tokenHash}`;
+    this.sql`UPDATE roster SET last_seen_at = ${now} WHERE identity_id = ${identity.id}`;
 
-    const capabilities = JSON.parse(row.capabilities) as AgentCapability[];
-    if (needs && !capabilities.includes(needs)) {
+    if (needs && !identity.caps.includes(needs)) {
       return {
         error: { code: "capability_denied", message: `Agent lacks capability: ${needs}` },
       };
     }
 
-    return { entry: rowToRosterEntry({ ...row, last_seen_at: now }) };
+    return { entry: { ...enrolled.entry, lastSeenAt: now } };
   }
 
   /**
@@ -905,10 +856,9 @@ class DocumentAgent extends Agent {
    * hour. On success, records this attempt. The log is pruned to the last
    * hour on every check regardless of outcome.
    */
-  private async checkRateLimit(token: string, chars: number): Promise<{ error: AgentError } | null> {
-    const tokenHash = await hashToken(token);
+  private async checkRateLimit(identityId: string, chars: number): Promise<{ error: AgentError } | null> {
     const rows = this.sql<{ recent_mutations: string | null }>`
-      SELECT recent_mutations FROM agent_tokens WHERE token_hash = ${tokenHash}
+      SELECT recent_mutations FROM roster WHERE identity_id = ${identityId}
     `;
 
     const now = Date.now();
@@ -934,12 +884,12 @@ class DocumentAgent extends Agent {
     const totalChars = pruned.reduce((sum, e) => sum + e.chars, 0);
 
     if (recentCount >= RATE_LIMIT_MUTATIONS_PER_MIN || totalChars + chars > RATE_LIMIT_CHARS_PER_HOUR) {
-      this.sql`UPDATE agent_tokens SET recent_mutations = ${JSON.stringify(pruned)} WHERE token_hash = ${tokenHash}`;
+      this.sql`UPDATE roster SET recent_mutations = ${JSON.stringify(pruned)} WHERE identity_id = ${identityId}`;
       return { error: { code: "rate_limited", message: "Agent mutation rate limit exceeded" } };
     }
 
     pruned.push({ at: now, chars });
-    this.sql`UPDATE agent_tokens SET recent_mutations = ${JSON.stringify(pruned)} WHERE token_hash = ${tokenHash}`;
+    this.sql`UPDATE roster SET recent_mutations = ${JSON.stringify(pruned)} WHERE identity_id = ${identityId}`;
     return null;
   }
 
@@ -948,7 +898,7 @@ class DocumentAgent extends Agent {
    * presence (humans from awareness, agents from the roster), and comment
    * threads. Any valid token can read; no capability is required.
    */
-  async agentRead(token: string): Promise<
+  async agentRead(identity: AgentIdentity): Promise<
     | {
         markdown: string;
         blocks: { anchor: string; text: string }[];
@@ -957,7 +907,7 @@ class DocumentAgent extends Agent {
       }
     | { error: AgentError }
   > {
-    const verified = await this.verifyAgentToken(token);
+    const verified = await this.verifyIdentity(identity);
     if ("error" in verified) return verified;
 
     const { doc, awareness } = this.ensureInitialised();
@@ -1018,10 +968,10 @@ class DocumentAgent extends Agent {
    * before or after it. Requires `write`.
    */
   async agentInsert(
-    token: string,
+    identity: AgentIdentity,
     args: { anchor?: string; where: "before" | "after" | "append"; markdown: string; pace?: Pace },
   ): Promise<{ ok: true } | { error: AgentError }> {
-    const verified = await this.verifyAgentToken(token, "write");
+    const verified = await this.verifyIdentity(identity, "write");
     if ("error" in verified) return verified;
 
     // Validate before charging the rate limit — a malformed call shouldn't
@@ -1032,7 +982,7 @@ class DocumentAgent extends Agent {
       };
     }
 
-    const rateLimited = await this.checkRateLimit(token, args.markdown.length);
+    const rateLimited = await this.checkRateLimit(identity.id, args.markdown.length);
     if (rateLimited) return rateLimited;
 
     return this.dispatchMutation(verified.entry.name, args.pace, {
@@ -1048,10 +998,10 @@ class DocumentAgent extends Agent {
    * with new markdown, in one transaction. Requires `write`.
    */
   async agentReplace(
-    token: string,
+    identity: AgentIdentity,
     args: { from: string; to?: string; markdown: string; pace?: Pace },
   ): Promise<{ ok: true } | { error: AgentError }> {
-    const verified = await this.verifyAgentToken(token, "write");
+    const verified = await this.verifyIdentity(identity, "write");
     if ("error" in verified) return verified;
 
     // Validate before charging the rate limit — see agentInsert.
@@ -1061,7 +1011,7 @@ class DocumentAgent extends Agent {
       };
     }
 
-    const rateLimited = await this.checkRateLimit(token, args.markdown.length);
+    const rateLimited = await this.checkRateLimit(identity.id, args.markdown.length);
     if (rateLimited) return rateLimited;
 
     return this.dispatchMutation(verified.entry.name, args.pace, {
@@ -1080,13 +1030,13 @@ class DocumentAgent extends Agent {
    * `suggest`.
    */
   async agentSuggest(
-    token: string,
+    identity: AgentIdentity,
     args: { anchor: string; find: string; replacement: string; pace?: Pace },
   ): Promise<{ ok: true } | { error: AgentError }> {
-    const verified = await this.verifyAgentToken(token, "suggest");
+    const verified = await this.verifyIdentity(identity, "suggest");
     if ("error" in verified) return verified;
 
-    const rateLimited = await this.checkRateLimit(token, args.find.length + args.replacement.length);
+    const rateLimited = await this.checkRateLimit(identity.id, args.find.length + args.replacement.length);
     if (rateLimited) return rateLimited;
 
     return this.dispatchMutation(verified.entry.name, args.pace, {
@@ -1105,13 +1055,13 @@ class DocumentAgent extends Agent {
    * (app/lib/comment-threads.ts / useThreads.ts). Requires `comment`.
    */
   async agentComment(
-    token: string,
+    identity: AgentIdentity,
     args: { anchor: string; quote?: string; text: string },
   ): Promise<{ threadId: string } | { error: AgentError }> {
-    const verified = await this.verifyAgentToken(token, "comment");
+    const verified = await this.verifyIdentity(identity, "comment");
     if ("error" in verified) return verified;
 
-    const rateLimited = await this.checkRateLimit(token, args.text.length);
+    const rateLimited = await this.checkRateLimit(identity.id, args.text.length);
     if (rateLimited) return rateLimited;
 
     const { doc } = this.ensureInitialised();
@@ -1144,13 +1094,13 @@ class DocumentAgent extends Agent {
    * thread returns `thread_not_found`.
    */
   async agentReply(
-    token: string,
+    identity: AgentIdentity,
     args: { threadId: string; text: string },
   ): Promise<{ ok: true } | { error: AgentError }> {
-    const verified = await this.verifyAgentToken(token, "comment");
+    const verified = await this.verifyIdentity(identity, "comment");
     if ("error" in verified) return verified;
 
-    const rateLimited = await this.checkRateLimit(token, args.text.length);
+    const rateLimited = await this.checkRateLimit(identity.id, args.text.length);
     if (rateLimited) return rateLimited;
 
     const { doc } = this.ensureInitialised();
@@ -1193,8 +1143,8 @@ class DocumentAgent extends Agent {
    * once it performs a mutation, as a caret) and (re)starts its 5-minute
    * idle timer. Any valid token may join — presence is not a capability.
    */
-  async agentJoin(token: string, status?: string): Promise<{ ok: true } | { error: AgentError }> {
-    const verified = await this.verifyAgentToken(token);
+  async agentJoin(identity: AgentIdentity, status?: string): Promise<{ ok: true } | { error: AgentError }> {
+    const verified = await this.verifyIdentity(identity);
     if ("error" in verified) return verified;
 
     const { name, color } = verified.entry;
@@ -1212,8 +1162,8 @@ class DocumentAgent extends Agent {
    * cancels its idle timer. The agent's token stays valid — leaving is
    * purely an awareness-visibility signal, not a revocation.
    */
-  async agentLeave(token: string): Promise<{ ok: true } | { error: AgentError }> {
-    const verified = await this.verifyAgentToken(token);
+  async agentLeave(identity: AgentIdentity): Promise<{ ok: true } | { error: AgentError }> {
+    const verified = await this.verifyIdentity(identity);
     if ("error" in verified) return verified;
 
     this.clearAgentIdleTimer(verified.entry.name);
@@ -1591,7 +1541,7 @@ class DocumentAgent extends Agent {
     let user = existing?.state?.user;
     if (!user) {
       const rows = this.sql<{ name: string; color: string }>`
-        SELECT name, color FROM agent_tokens WHERE name = ${agentName}
+        SELECT name, color FROM roster WHERE name = ${agentName}
       `;
       if (rows.length === 0) return; // unknown agent — nothing sane to show
       user = { name: rows[0].name, color: rows[0].color, isAgent: true };

@@ -15,7 +15,7 @@ import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
 import { DOCUMENT_TTL_MS, DOC_FORMAT_VERSION } from "~/shared/constants";
 import { YjsProvider } from "~/lib/yjs-provider";
-import { MAX_AGENTS_PER_DOC, type AgentCapability } from "~/shared/agent-protocol";
+import { MAX_AGENTS_PER_DOC, type AgentCapability, type AgentIdentity } from "~/shared/agent-protocol";
 import { yDocToMarkdown } from "~/lib/y-markdown";
 
 /* ------------------------------------------------------------------ */
@@ -27,7 +27,7 @@ let mockConnectionMap: Map<string, MockConnection>;
 let mockSetAlarm: ReturnType<typeof vi.fn>;
 /**
  * Generic in-memory table store for tables other than `doc_state`
- * (currently `agent_tokens`; later tasks add `performances`/`events`).
+ * (currently `roster`, `performances`, `events`).
  * Keyed by table name -> array of row objects. Query-shaped, not a real
  * SQL engine: it pattern-matches the exact INSERT/SELECT/UPDATE/DELETE
  * forms the DO code uses, mirroring the `doc_state` fake above.
@@ -127,7 +127,7 @@ vi.mock("agents", () => ({
             // and the DO code actually supplies values for.
             const constrained: Record<string, string> = {
               performances: "id",
-              agent_tokens: "name",
+              roster: "name",
             };
             const uniqueCol = constrained[table];
             if (uniqueCol && rows.some((r) => r[uniqueCol] === row[uniqueCol])) {
@@ -300,6 +300,25 @@ describe("DocumentAgent", () => {
   }
 
   /**
+   * Builds a verified `AgentIdentity` to pass as the first argument to any
+   * agent RPC. Enrollment is implicit — the first RPC call for a given
+   * `id` creates its roster row (name from `name`, owner from `owner`,
+   * capabilities from `caps`). Distinct `id` values are what separate
+   * roster entries; give collaborating "agents" in the same test distinct
+   * ids even when they share a display `name`.
+   */
+  function identity(over: Partial<AgentIdentity> = {}): AgentIdentity {
+    return {
+      kind: "principal",
+      id: "email:a@x.com",
+      name: "scribe",
+      owner: "email:a@x.com",
+      caps: ["suggest", "comment", "write"],
+      ...over,
+    };
+  }
+
+  /**
    * Create a new DocumentAgent backed by its own fresh, isolated SQL store
    * — simulating a distinct document (distinct Durable Object instance)
    * rather than the single `agent` from `beforeEach`. See the MockAgent
@@ -363,16 +382,15 @@ describe("DocumentAgent", () => {
 
   /**
    * Waits for a call under test to register its (faked) setTimeout before
-   * vi.advanceTimersByTimeAsync() runs. agentAwaitEvents does real,
-   * un-faked async work (crypto.subtle.digest inside verifyAgentToken)
-   * *before* parking on a setTimeout — advancing fake time too early would
-   * race ahead of that registration and hang forever, since no further
-   * real time ever passes to let the crypto step catch up. Polls
-   * vi.getTimerCount() via real (un-faked) setImmediate ticks rather than
-   * a fixed number of flushes, so it's robust regardless of how many real
-   * event-loop turns the crypto call actually needs (which varies under
-   * system load) — capped so a genuine bug still fails fast instead of
-   * hanging.
+   * vi.advanceTimersByTimeAsync() runs. agentAwaitEvents awaits
+   * verifyIdentity (and its own readPast query) before parking on a
+   * setTimeout — advancing fake time too early would race ahead of that
+   * registration and hang forever, since no further real time ever passes
+   * to let the pending microtasks catch up. Polls vi.getTimerCount() via
+   * real (un-faked) setImmediate ticks rather than a fixed number of
+   * flushes, so it's robust regardless of how many real event-loop turns
+   * that chain actually needs (which varies under system load) — capped
+   * so a genuine bug still fails fast instead of hanging.
    */
   async function waitForTimerRegistered(): Promise<void> {
     for (let i = 0; i < 200 && vi.getTimerCount() === 0; i++) {
@@ -692,13 +710,12 @@ describe("DocumentAgent", () => {
           body: JSON.stringify({ content: "# Title\n\nBody." }),
         }),
       );
-      const minted = await agent.mintAgentToken({ name: "scribe", capabilities: ["write"] });
-      const token = (minted as { token: string }).token;
+      const id = identity({ caps: ["write"] });
 
       const client = connectYjsClient(agent);
       expect(yDocToMarkdown(client.doc)).toBe("# Title\n\nBody.");
 
-      const result = await agent.agentInsert(token, {
+      const result = await agent.agentInsert(id, {
         where: "append",
         markdown: "Agent wrote this.",
         pace: "instant",
@@ -721,15 +738,14 @@ describe("DocumentAgent", () => {
             body: JSON.stringify({ content: "# Title\n\nBody." }),
           }),
         );
-        const minted = await agent.mintAgentToken({ name: "scribe", capabilities: ["write"] });
-        const token = (minted as { token: string }).token;
+        const id = identity({ caps: ["write"] });
 
         const client = connectYjsClient(agent);
         // A connected human is required for a non-instant pace to queue
         // rather than apply immediately.
         createConnection();
 
-        const result = await agent.agentInsert(token, {
+        const result = await agent.agentInsert(id, {
           where: "append",
           markdown: "Typed live to the client.",
           pace: "natural",
@@ -778,90 +794,106 @@ describe("DocumentAgent", () => {
   });
 
   /* ================================================================ */
-  /*  Agent token roster                                               */
+  /*  Agent identity roster (implicit enrollment)                      */
   /* ================================================================ */
 
   describe("agent roster", () => {
-    /** verifyAgentToken is private on DocumentAgent; cast to call it from tests. */
-    function asVerifier(a: InstanceType<typeof DocumentAgent>) {
-      return a as unknown as {
-        verifyAgentToken(
-          token: string,
-          needs?: string,
-        ): Promise<{ entry: unknown } | { error: { code: string } }>;
-      };
-    }
-
-    it("mints, lists, verifies capability, revokes", async () => {
+    it("enrolls a new identity on its first RPC call and lists it", async () => {
       await agent.onRequest(new Request("https://do/", { method: "POST" }));
 
-      const minted = await agent.mintAgentToken({ name: "scribe" });
-      expect("token" in minted && minted.token).toMatch(/^vpr_/);
+      const id = identity({ caps: ["suggest", "comment"] });
+      expect(await agent.agentJoin(id)).toEqual({ ok: true });
       expect((await agent.getAgentRoster())[0]).toMatchObject({
         name: "scribe",
         capabilities: ["suggest", "comment"],
       });
 
       // Default grant lacks write.
-      const v = await asVerifier(agent).verifyAgentToken(
-        (minted as { token: string }).token,
-        "write",
-      );
-      expect(v).toMatchObject({ error: { code: "capability_denied" } });
+      const denied = await agent.agentInsert(id, { where: "append", markdown: "x" });
+      expect(denied).toMatchObject({ error: { code: "capability_denied" } });
 
-      await agent.revokeAgentToken("scribe");
+      await agent.revokeAgentEntry("scribe");
       expect(await agent.getAgentRoster()).toHaveLength(0);
     });
 
-    it("rejects bad names and duplicates", async () => {
+    it("enrolls distinct identities into distinct roster rows, oldest first", async () => {
       await agent.onRequest(new Request("https://do/", { method: "POST" }));
 
-      expect(await agent.mintAgentToken({ name: "Bad Name" })).toMatchObject({
-        error: { code: "invalid_name" },
-      });
+      for (let i = 0; i < 3; i++) {
+        await agent.agentJoin(identity({ id: `email:agent-${i}@x.com`, name: `agent-${i}` }));
+      }
 
-      await agent.mintAgentToken({ name: "scribe" });
-      expect(await agent.mintAgentToken({ name: "scribe" })).toMatchObject({
-        error: { code: "invalid_name" },
-      });
+      const roster = await agent.getAgentRoster();
+      expect(roster.map((r) => r.name)).toEqual(["agent-0", "agent-1", "agent-2"]);
+    });
+
+    it("suffixes a name collision from a different identity id with -2, -3, …", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+
+      await agent.agentJoin(identity({ id: "email:a@x.com", name: "claude-code" }));
+      const second = await agent.agentJoin(identity({ id: "email:b@x.com", name: "claude-code" }));
+      const third = await agent.agentJoin(identity({ id: "email:c@x.com", name: "claude-code" }));
+      expect(second).toEqual({ ok: true });
+      expect(third).toEqual({ ok: true });
+
+      const roster = await agent.getAgentRoster();
+      expect(roster.map((r) => r.name)).toEqual(["claude-code", "claude-code-2", "claude-code-3"]);
+    });
+
+    it("reuses the same roster row on repeat calls from the same identity id", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+
+      const id = identity({ id: "email:a@x.com", name: "claude-code" });
+      await agent.agentJoin(id);
+      await agent.agentJoin(id);
+
+      expect(await agent.getAgentRoster()).toHaveLength(1);
+    });
+
+    it("falls back to the 'agent' base name when the identity name fails AGENT_NAME_RE", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+
+      await agent.agentJoin(identity({ name: "Bad Name" }));
+      expect((await agent.getAgentRoster())[0].name).toBe("agent");
     });
 
     it("caps the roster at MAX_AGENTS_PER_DOC", async () => {
       await agent.onRequest(new Request("https://do/", { method: "POST" }));
 
       for (let i = 0; i < MAX_AGENTS_PER_DOC; i++) {
-        expect(await agent.mintAgentToken({ name: `agent-${i}` })).toHaveProperty("token");
+        const id = identity({ id: `email:agent-${i}@x.com`, name: `agent-${i}` });
+        expect(await agent.agentJoin(id)).toEqual({ ok: true });
       }
 
-      expect(await agent.mintAgentToken({ name: "one-too-many" })).toMatchObject({
+      const oneTooMany = identity({ id: "email:one-too-many@x.com", name: "one-too-many" });
+      expect(await agent.agentJoin(oneTooMany)).toMatchObject({
         error: { code: "rate_limited", message: expect.stringContaining("maximum") },
       });
       expect(await agent.getAgentRoster()).toHaveLength(MAX_AGENTS_PER_DOC);
 
       // Revoking frees a slot.
-      await agent.revokeAgentToken("agent-0");
-      expect(await agent.mintAgentToken({ name: "one-too-many" })).toHaveProperty("token");
+      await agent.revokeAgentEntry("agent-0");
+      expect(await agent.agentJoin(oneTooMany)).toEqual({ ok: true });
     });
 
-    it("returns doc_not_found when minting before the doc exists", async () => {
-      expect(await agent.mintAgentToken({ name: "scribe" })).toMatchObject({
+    it("returns doc_not_found when enrolling before the doc exists", async () => {
+      expect(await agent.agentJoin(identity())).toMatchObject({
         error: { code: "doc_not_found" },
       });
     });
 
-    it("returns invalid_token for an unknown token", async () => {
+    it("returns invalid_token for a malformed identity", async () => {
       await agent.onRequest(new Request("https://do/", { method: "POST" }));
-      const v = await asVerifier(agent).verifyAgentToken("vpr_nonexistent");
+      const v = await agent.agentJoin({} as never);
       expect(v).toMatchObject({ error: { code: "invalid_token" } });
     });
 
     it("verifies a granted capability and updates lastSeenAt", async () => {
       await agent.onRequest(new Request("https://do/", { method: "POST" }));
-      const minted = await agent.mintAgentToken({ name: "scribe" });
-      const token = (minted as { token: string }).token;
+      const id = identity({ caps: ["suggest", "comment"] });
 
-      const v = await asVerifier(agent).verifyAgentToken(token, "suggest");
-      expect(v).toMatchObject({ entry: { name: "scribe" } });
+      const read = await agent.agentRead(id);
+      expect("markdown" in read).toBe(true);
 
       const [entry] = await agent.getAgentRoster();
       expect(entry.lastSeenAt).not.toBeNull();
@@ -869,12 +901,11 @@ describe("DocumentAgent", () => {
 
     it("updates lastSeenAt even when the capability check denies the call", async () => {
       await agent.onRequest(new Request("https://do/", { method: "POST" }));
-      const minted = await agent.mintAgentToken({ name: "scribe" }); // no write
-      const token = (minted as { token: string }).token;
-      expect((await agent.getAgentRoster())[0].lastSeenAt).toBeNull();
+      const id = identity({ caps: ["suggest", "comment"] }); // no write
+      expect(await agent.getAgentRoster()).toHaveLength(0);
 
-      const v = await asVerifier(agent).verifyAgentToken(token, "write");
-      expect(v).toMatchObject({ error: { code: "capability_denied" } });
+      const denied = await agent.agentInsert(id, { where: "append", markdown: "x" });
+      expect(denied).toMatchObject({ error: { code: "capability_denied" } });
 
       // The agent was here — a denied call is still a sighting, and presence
       // is derived from lastSeenAt.
@@ -883,73 +914,48 @@ describe("DocumentAgent", () => {
 
     it("assigns roster colors round-robin by roster size", async () => {
       await agent.onRequest(new Request("https://do/", { method: "POST" }));
-      await agent.mintAgentToken({ name: "first" });
-      await agent.mintAgentToken({ name: "second" });
+      await agent.agentJoin(identity({ id: "email:first@x.com", name: "first" }));
+      await agent.agentJoin(identity({ id: "email:second@x.com", name: "second" }));
 
       const roster = await agent.getAgentRoster();
       expect(roster[0].color).not.toBe(roster[1].color);
     });
 
-    it("clears the roster and invalidates tokens on doc expiry (alarm)", async () => {
+    it("enrolls an anonymous identity with owner null and its given capabilities", async () => {
       await agent.onRequest(new Request("https://do/", { method: "POST" }));
-      const minted = await agent.mintAgentToken({ name: "scribe" });
-      const token = (minted as { token: string }).token;
+
+      const anon = identity({
+        kind: "anonymous",
+        id: "anon:session-1",
+        name: "claude-code",
+        owner: null,
+        caps: ["suggest", "comment"],
+      });
+      expect(await agent.agentJoin(anon)).toEqual({ ok: true });
+
+      const roster = await agent.getAgentRoster();
+      expect(roster).toHaveLength(1);
+      expect(roster[0]).toMatchObject({
+        name: "claude-code",
+        owner: null,
+        capabilities: ["suggest", "comment"],
+      });
+    });
+
+    it("clears the roster on doc expiry (alarm), and a subsequent RPC re-enrolls fresh", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+      const id = identity();
+      await agent.agentJoin(id);
 
       await agent.alarm();
 
       expect(await agent.getAgentRoster()).toEqual([]);
-      const v = await asVerifier(agent).verifyAgentToken(token);
-      expect(v).toMatchObject({ error: { code: "invalid_token" } });
-    });
-  });
 
-  describe("enrollAnonymousAgent", () => {
-    it("mints suggest+comment with owner null, using the given base name", async () => {
+      // The document itself is gone too, so a bare re-enrollment attempt
+      // still needs a fresh doc before it can succeed.
       await agent.onRequest(new Request("https://do/", { method: "POST" }));
-
-      const enrolled = await agent.enrollAnonymousAgent("claude-code");
-      expect("token" in enrolled && enrolled.token).toMatch(/^vpr_/);
-      expect(enrolled).toMatchObject({
-        entry: {
-          name: "claude-code",
-          owner: null,
-          capabilities: ["suggest", "comment"],
-        },
-      });
-
-      const roster = await agent.getAgentRoster();
-      expect(roster).toHaveLength(1);
-      expect(roster[0]).toMatchObject({ name: "claude-code", owner: null });
-    });
-
-    it("retries with -2, -3, … on a name collision", async () => {
-      await agent.onRequest(new Request("https://do/", { method: "POST" }));
-
-      await agent.mintAgentToken({ name: "claude-code" });
-      const second = await agent.enrollAnonymousAgent("claude-code");
-      expect(second).toMatchObject({ entry: { name: "claude-code-2" } });
-
-      const third = await agent.enrollAnonymousAgent("claude-code");
-      expect(third).toMatchObject({ entry: { name: "claude-code-3" } });
-    });
-
-    it("returns rate_limited once the roster is at MAX_AGENTS_PER_DOC, without renaming forever", async () => {
-      await agent.onRequest(new Request("https://do/", { method: "POST" }));
-
-      for (let i = 0; i < MAX_AGENTS_PER_DOC; i++) {
-        expect(await agent.mintAgentToken({ name: `agent-${i}` })).toHaveProperty("token");
-      }
-
-      const enrolled = await agent.enrollAnonymousAgent("agent");
-      expect(enrolled).toMatchObject({
-        error: { code: "rate_limited", message: expect.stringContaining("maximum") },
-      });
-      expect(await agent.getAgentRoster()).toHaveLength(MAX_AGENTS_PER_DOC);
-    });
-
-    it("falls back to the doc_not_found error when the doc doesn't exist yet", async () => {
-      const enrolled = await agent.enrollAnonymousAgent("claude-code");
-      expect(enrolled).toMatchObject({ error: { code: "doc_not_found" } });
+      expect(await agent.agentJoin(id)).toEqual({ ok: true });
+      expect(await agent.getAgentRoster()).toHaveLength(1);
     });
   });
 
@@ -958,24 +964,24 @@ describe("DocumentAgent", () => {
   /* ================================================================ */
 
   describe("agent mutations", () => {
-    async function setup(caps?: AgentCapability[]) {
+    async function setup(caps: AgentCapability[] = ["suggest", "comment"]) {
       const agent = makeAgent();
       await agent.onRequest(new Request("https://do/", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: "# Title\n\nBody." }),
       }));
-      const m = await agent.mintAgentToken({ name: "scribe", capabilities: caps });
-      return { agent, token: (m as { token: string }).token };
+      const id = identity({ caps });
+      return { agent, id };
     }
 
     it("reads markdown with anchors", async () => {
-      const { agent, token } = await setup();
-      const r = await agent.agentRead(token);
+      const { agent, id } = await setup();
+      const r = await agent.agentRead(id);
       expect("markdown" in r && r.markdown).toBe("# Title\n\nBody.");
       expect("blocks" in r && r.blocks[0].anchor).toMatch(/^b0-[0-9a-f]{8}$/);
     });
 
-    it("exportMarkdown returns the document's markdown with no token", async () => {
+    it("exportMarkdown returns the document's markdown with no identity", async () => {
       const { agent } = await setup();
       const r = await agent.exportMarkdown();
       expect(r).toEqual({ markdown: "# Title\n\nBody." });
@@ -988,52 +994,52 @@ describe("DocumentAgent", () => {
     });
 
     it("denies write without capability, allows with it", async () => {
-      const { agent, token } = await setup();                       // default: no write
-      const denied = await agent.agentInsert(token, { where: "append", markdown: "More." });
+      const { agent, id } = await setup();                       // default: no write
+      const denied = await agent.agentInsert(id, { where: "append", markdown: "More." });
       expect(denied).toMatchObject({ error: { code: "capability_denied" } });
-      const { agent: a2, token: t2 } = await setup(["write"]);
-      await a2.agentInsert(t2, { where: "append", markdown: "More." });
-      const r = await a2.agentRead(t2);
+      const { agent: a2, id: id2 } = await setup(["write"]);
+      await a2.agentInsert(id2, { where: "append", markdown: "More." });
+      const r = await a2.agentRead(id2);
       expect("markdown" in r && r.markdown).toContain("More.");
     });
 
     it("suggest lays critic marks", async () => {
-      const { agent, token } = await setup();
-      const read = await agent.agentRead(token);
+      const { agent, id } = await setup(["suggest"]);
+      const read = await agent.agentRead(id);
       const anchor = ("blocks" in read ? read.blocks : [])[2].anchor;   // "Body."
-      await agent.agentSuggest(token, { anchor, find: "Body.", replacement: "Better body." });
-      const after = await agent.agentRead(token);
+      await agent.agentSuggest(id, { anchor, find: "Body.", replacement: "Better body." });
+      const after = await agent.agentRead(id);
       expect("markdown" in after && after.markdown).toContain("{--Body.--}{++Better body.++}");
     });
 
     it("rejects a missing anchor without spending the rate-limit budget", async () => {
-      const { agent, token } = await setup(["write"]);
+      const { agent, id } = await setup(["write"]);
 
-      const result = await agent.agentInsert(token, { where: "after", markdown: "Orphan." });
+      const result = await agent.agentInsert(id, { where: "after", markdown: "Orphan." });
       expect(result).toMatchObject({ error: { code: "stale_anchor" } });
 
-      const row = (mockTables.get("agent_tokens") ?? []).find((r) => r.name === "scribe")!;
+      const row = (mockTables.get("roster") ?? []).find((r) => r.name === "scribe")!;
       expect(row.recent_mutations ?? null).toBeNull();
     });
 
     it("stale anchor errors after concurrent edit", async () => {
-      const { agent, token } = await setup(["write"]);
-      const read = await agent.agentRead(token);
+      const { agent, id } = await setup(["write"]);
+      const read = await agent.agentRead(id);
       const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
-      await agent.agentReplace(token, { from: anchor, markdown: "# New title" });
-      const stale = await agent.agentReplace(token, { from: anchor, markdown: "# Again" });
+      await agent.agentReplace(id, { from: anchor, markdown: "# New title" });
+      const stale = await agent.agentReplace(id, { from: anchor, markdown: "# Again" });
       expect(stale).toMatchObject({ error: { code: "stale_anchor" } });
     });
 
     it("rejects an inverted range when to resolves before from", async () => {
-      const { agent, token } = await setup(["write"]);
+      const { agent, id } = await setup(["write"]);
       // Append two blocks with identical text ("Same") so they share a
       // content hash. resolveAnchor's nearest-index heuristic then lets us
       // pick out either occurrence by fabricating an anchor whose *stated*
       // index is far from one occurrence and close to the other.
-      await agent.agentInsert(token, { where: "append", markdown: "Same\nOther\nSame\nEnd" });
+      await agent.agentInsert(id, { where: "append", markdown: "Same\nOther\nSame\nEnd" });
 
-      const before = await agent.agentRead(token);
+      const before = await agent.agentRead(id);
       const beforeMarkdown = "markdown" in before ? before.markdown : "";
       const blocks = "blocks" in before ? before.blocks : [];
       const sameBlocks = blocks.filter((b) => b.text === "Same");
@@ -1045,10 +1051,10 @@ describe("DocumentAgent", () => {
       // "to" resolves to the earlier occurrence (nearest to stated index 0).
       const toAnchor = `b0-${hash}`;
 
-      const result = await agent.agentReplace(token, { from: fromAnchor, to: toAnchor, markdown: "Nope" });
+      const result = await agent.agentReplace(id, { from: fromAnchor, to: toAnchor, markdown: "Nope" });
       expect(result).toMatchObject({ error: { code: "stale_anchor" } });
 
-      const after = await agent.agentRead(token);
+      const after = await agent.agentRead(id);
       expect("markdown" in after && after.markdown).toBe(beforeMarkdown);
     });
 
@@ -1062,41 +1068,41 @@ describe("DocumentAgent", () => {
       });
 
       it("applies instantly when there are no human connections, even at natural pace", async () => {
-        const { agent, token } = await setup(["write"]);
-        const result = await agent.agentInsert(token, {
+        const { agent, id } = await setup(["write"]);
+        const result = await agent.agentInsert(id, {
           where: "append",
           markdown: "Typed live.",
           pace: "natural",
         });
         expect(result).toEqual({ ok: true });
 
-        const read = await agent.agentRead(token);
+        const read = await agent.agentRead(id);
         expect("markdown" in read && read.markdown).toContain("Typed live.");
       });
 
       it("applies instantly regardless of pace when pace is 'instant'", async () => {
-        const { agent, token } = await setup(["write"]);
+        const { agent, id } = await setup(["write"]);
         createConnection();
-        const result = await agent.agentInsert(token, {
+        const result = await agent.agentInsert(id, {
           where: "append",
           markdown: "Pasted in.",
           pace: "instant",
         });
         expect(result).toEqual({ ok: true });
 
-        const read = await agent.agentRead(token);
+        const read = await agent.agentRead(id);
         expect("markdown" in read && read.markdown).toContain("Pasted in.");
       });
 
       it("enqueues and types out a natural-pace insert while a human is connected", async () => {
         vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-        const { agent, token } = await setup(["write"]);
+        const { agent, id } = await setup(["write"]);
         createConnection();
 
         // No punctuation, so no sentence pauses — keeps the timing math
         // below simple. 78 chars.
         const fullText = "abcdefghijklmnopqrstuvwxyz".repeat(3);
-        const result = await agent.agentInsert(token, {
+        const result = await agent.agentInsert(id, {
           where: "append",
           markdown: fullText,
           pace: "natural",
@@ -1107,7 +1113,7 @@ describe("DocumentAgent", () => {
         // before agentInsert resolves, but nothing has been typed into it
         // yet — the first character requires the first tick's delay to
         // elapse.
-        const beforeAnyTick = await agent.agentRead(token);
+        const beforeAnyTick = await agent.agentRead(id);
         const blocksBefore = "blocks" in beforeAnyTick ? beforeAnyTick.blocks : [];
         expect(blocksBefore[3]?.text ?? "").toBe("");
 
@@ -1117,7 +1123,7 @@ describe("DocumentAgent", () => {
         // 390ms) — so this is genuinely partial, not a fluke of timing.
         await vi.advanceTimersByTimeAsync(100);
 
-        const afterFirstTick = await agent.agentRead(token);
+        const afterFirstTick = await agent.agentRead(id);
         const partialBlock = ("blocks" in afterFirstTick ? afterFirstTick.blocks : [])[3];
         const partialLength = partialBlock?.text.length ?? 0;
         expect(partialLength).toBeGreaterThan(0);
@@ -1125,20 +1131,20 @@ describe("DocumentAgent", () => {
 
         await vi.runAllTimersAsync();
 
-        const after = await agent.agentRead(token);
+        const after = await agent.agentRead(id);
         expect("markdown" in after && after.markdown).toContain(fullText);
       });
 
       it("applies a leftover queued mutation instantly on restart (eviction recovery)", async () => {
         vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-        const { agent, token } = await setup(["write"]);
+        const { agent, id } = await setup(["write"]);
         createConnection();
 
         // Busy the runner with a slow first mutation so the second one's
         // turn never comes — its row is claimed (and deleted) the instant
         // its own typing starts, which happens synchronously as part of
         // *this* call.
-        await agent.agentInsert(token, {
+        await agent.agentInsert(id, {
           where: "append",
           markdown: "abcdefghijklmnopqrstuvwxyz".repeat(3),
           pace: "natural",
@@ -1147,7 +1153,7 @@ describe("DocumentAgent", () => {
         // This second mutation is still sitting behind the first in the
         // queue, completely untouched — pre-first-write, so its row is
         // still fully intact in `performances`.
-        await agent.agentInsert(token, {
+        await agent.agentInsert(id, {
           where: "append",
           markdown: "Recovered text.",
           pace: "natural",
@@ -1158,21 +1164,20 @@ describe("DocumentAgent", () => {
         // advancing time (so the busy first mutation never finishes, and
         // the second mutation's row is never touched by the runner).
         const agent2 = new DocumentAgent({} as never, {} as never);
-        const read = await agent2.agentRead(token);
+        const read = await agent2.agentRead(id);
         expect("markdown" in read && read.markdown).toContain("Recovered text.");
       });
 
       it("keeps both texts present exactly once, in sane positions, despite a concurrent instant append", async () => {
         vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-        const { agent, token } = await setup(["write"]);
+        const { agent, id } = await setup(["write"]);
         createConnection();
 
-        const minted2 = await agent.mintAgentToken({ name: "bot2", capabilities: ["write"] });
-        const token2 = (minted2 as { token: string }).token;
+        const id2 = identity({ id: "email:bot2@x.com", name: "bot2", caps: ["write"] });
 
         // Starts typing "Slow typed line" at natural pace — claims its
         // block slot synchronously, before any ticks fire.
-        const pacedResult = await agent.agentInsert(token, {
+        const pacedResult = await agent.agentInsert(id, {
           where: "append",
           markdown: "Slow typed line",
           pace: "natural",
@@ -1181,7 +1186,7 @@ describe("DocumentAgent", () => {
 
         // A second agent's instant append lands while the first is still
         // mid-typing.
-        const instantResult = await agent.agentInsert(token2, {
+        const instantResult = await agent.agentInsert(id2, {
           where: "append",
           markdown: "Instant line",
           pace: "instant",
@@ -1190,7 +1195,7 @@ describe("DocumentAgent", () => {
 
         await vi.runAllTimersAsync();
 
-        const after = await agent.agentRead(token);
+        const after = await agent.agentRead(id);
         const markdown = "markdown" in after ? after.markdown : "";
         const blocks = "blocks" in after ? after.blocks : [];
         const texts = blocks.map((b) => b.text);
@@ -1204,20 +1209,19 @@ describe("DocumentAgent", () => {
 
       it("keeps an anchored typed insert on the correct side of its anchor despite a concurrent instant insert before it", async () => {
         vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-        const { agent, token } = await setup(["write"]);
+        const { agent, id } = await setup(["write"]);
         createConnection();
 
-        const minted2 = await agent.mintAgentToken({ name: "bot2", capabilities: ["write"] });
-        const token2 = (minted2 as { token: string }).token;
+        const id2 = identity({ id: "email:bot2@x.com", name: "bot2", caps: ["write"] });
 
-        const before = await agent.agentRead(token);
+        const before = await agent.agentRead(id);
         const anchor0 = ("blocks" in before ? before.blocks : [])[0].anchor; // "# Title"
 
         // Starts typing "Slow typed line" right after the title, at
         // natural pace. This claims its slot (right after block 0)
         // synchronously, before any ticks fire — the block index it
         // resolved to is only valid up to that point.
-        const pacedResult = await agent.agentInsert(token, {
+        const pacedResult = await agent.agentInsert(id, {
           where: "after",
           anchor: anchor0,
           markdown: "Slow typed line",
@@ -1230,7 +1234,7 @@ describe("DocumentAgent", () => {
         // its originally-resolved raw index instead of tracking the
         // paragraph itself, this would land the typed text *before* the
         // title it was supposed to follow.
-        const instantResult = await agent.agentInsert(token2, {
+        const instantResult = await agent.agentInsert(id2, {
           where: "before",
           anchor: anchor0,
           markdown: "Preamble",
@@ -1240,7 +1244,7 @@ describe("DocumentAgent", () => {
 
         await vi.runAllTimersAsync();
 
-        const after = await agent.agentRead(token);
+        const after = await agent.agentRead(id);
         const markdown = "markdown" in after ? after.markdown : "";
         const blocks = "blocks" in after ? after.blocks : [];
         const texts = blocks.map((b) => b.text);
@@ -1259,21 +1263,21 @@ describe("DocumentAgent", () => {
 
       it("drops a queued mutation whose anchor goes stale before its turn", async () => {
         vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-        const { agent, token } = await setup(["write"]);
+        const { agent, id } = await setup(["write"]);
         createConnection();
 
-        const before = await agent.agentRead(token);
+        const before = await agent.agentRead(id);
         const anchor0 = ("blocks" in before ? before.blocks : [])[0].anchor; // "# Title"
 
         // Busy the runner with a slow natural-pace insert.
-        await agent.agentInsert(token, {
+        await agent.agentInsert(id, {
           where: "append",
           markdown: "Long enough text to take a few typing ticks.",
           pace: "natural",
         });
 
         // Queue a replace behind it, targeting the still-fresh anchor0.
-        const queuedReplace = agent.agentReplace(token, {
+        const queuedReplace = agent.agentReplace(id, {
           from: anchor0,
           markdown: "Replaced!",
           pace: "natural",
@@ -1282,7 +1286,7 @@ describe("DocumentAgent", () => {
 
         // An instant edit invalidates anchor0 before the queued replace
         // gets its turn.
-        const instantEdit = await agent.agentReplace(token, {
+        const instantEdit = await agent.agentReplace(id, {
           from: anchor0,
           markdown: "Changed first!",
           pace: "instant",
@@ -1291,7 +1295,7 @@ describe("DocumentAgent", () => {
 
         await vi.runAllTimersAsync();
 
-        const after = await agent.agentRead(token);
+        const after = await agent.agentRead(id);
         const markdown = "markdown" in after ? after.markdown : "";
         expect(markdown).toContain("Changed first!");
         expect(markdown).not.toContain("Replaced!");
@@ -1323,10 +1327,10 @@ describe("DocumentAgent", () => {
       });
 
       it("agentInsert returns unsupported_markup and leaves the document untouched", async () => {
-        const { agent, token } = await setup(["write"]);
-        const before = await agent.agentRead(token);
+        const { agent, id } = await setup(["write"]);
+        const before = await agent.agentRead(id);
 
-        const result = await agent.agentInsert(token, {
+        const result = await agent.agentInsert(id, {
           where: "append",
           markdown: SUBSTITUTION,
           pace: "instant",
@@ -1335,19 +1339,19 @@ describe("DocumentAgent", () => {
         expect(result).toMatchObject({
           error: { code: "unsupported_markup", message: expect.stringContaining("substitution") },
         });
-        const after = await agent.agentRead(token);
+        const after = await agent.agentRead(id);
         expect("markdown" in after && after.markdown).toBe(
           "markdown" in before ? before.markdown : "",
         );
       });
 
       it("agentReplace returns unsupported_markup without deleting the blocks it would replace", async () => {
-        const { agent, token } = await setup(["write"]);
-        const before = await agent.agentRead(token);
+        const { agent, id } = await setup(["write"]);
+        const before = await agent.agentRead(id);
         const beforeMarkdown = "markdown" in before ? before.markdown : "";
         const anchor = ("blocks" in before ? before.blocks : [])[0].anchor;
 
-        const result = await agent.agentReplace(token, {
+        const result = await agent.agentReplace(id, {
           from: anchor,
           markdown: SUBSTITUTION,
           pace: "instant",
@@ -1357,15 +1361,15 @@ describe("DocumentAgent", () => {
         // The data-loss case: deleteBlocks and insertMarkdownBlocks used to
         // share one transaction, and Yjs cannot roll a transaction back, so
         // a parse failure between them committed the delete.
-        const after = await agent.agentRead(token);
+        const after = await agent.agentRead(id);
         expect("markdown" in after && after.markdown).toBe(beforeMarkdown);
       });
 
       it("rejects unsupported markup at any pace, without queueing it", async () => {
-        const { agent, token } = await setup(["write"]);
+        const { agent, id } = await setup(["write"]);
         createConnection();
 
-        const result = await agent.agentInsert(token, {
+        const result = await agent.agentInsert(id, {
           where: "append",
           markdown: SUBSTITUTION,
           pace: "natural",
@@ -1377,7 +1381,7 @@ describe("DocumentAgent", () => {
 
       it("drains the queue past a queued mutation with unsupported markup", async () => {
         vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-        const { agent, token } = await setup(["write"]);
+        const { agent, id } = await setup(["write"]);
         createConnection();
 
         asQueue(agent).enqueuePerformance("scribe", "fast", {
@@ -1385,7 +1389,7 @@ describe("DocumentAgent", () => {
           where: "append",
           markdown: SUBSTITUTION,
         });
-        await agent.agentInsert(token, {
+        await agent.agentInsert(id, {
           where: "append",
           markdown: "Good text.",
           pace: "fast",
@@ -1393,7 +1397,7 @@ describe("DocumentAgent", () => {
 
         await vi.runAllTimersAsync();
 
-        const after = await agent.agentRead(token);
+        const after = await agent.agentRead(id);
         const markdown = "markdown" in after ? after.markdown : "";
         expect(markdown).toContain("Good text.");
         expect(markdown).not.toContain("~>");
@@ -1403,7 +1407,7 @@ describe("DocumentAgent", () => {
 
       it("does not wedge the queue when a queued mutation throws", async () => {
         vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-        const { agent, token } = await setup(["write"]);
+        const { agent, id } = await setup(["write"]);
         createConnection();
 
         // A payload no code path can apply: `markdown` isn't a string, so
@@ -1420,19 +1424,19 @@ describe("DocumentAgent", () => {
         expect(asQueue(agent).isPerforming).toBe(false);
         expect(mockTables.get("performances") ?? []).toEqual([]);
 
-        await agent.agentInsert(token, {
+        await agent.agentInsert(id, {
           where: "append",
           markdown: "Still working.",
           pace: "fast",
         });
         await vi.runAllTimersAsync();
 
-        const after = await agent.agentRead(token);
+        const after = await agent.agentRead(id);
         expect("markdown" in after && after.markdown).toContain("Still working.");
       });
 
       it("recovers from a poisoned leftover performance row on restart", async () => {
-        const { agent, token } = await setup(["write"]);
+        const { agent, id } = await setup(["write"]);
 
         // An eviction mid-queue leaves rows behind. This one can't be
         // applied at all — a throw here used to abort ensureInitialised with
@@ -1444,7 +1448,7 @@ describe("DocumentAgent", () => {
         ]);
 
         const agent2 = new DocumentAgent({} as never, {} as never);
-        const read = await agent2.agentRead(token);
+        const read = await agent2.agentRead(id);
         expect("markdown" in read).toBe(true);
         expect(mockTables.get("performances") ?? []).toEqual([]);
 
@@ -1453,11 +1457,11 @@ describe("DocumentAgent", () => {
         const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
         const ytext = para.get(0) as Y.XmlText;
         ytext.insert(ytext.length, " ping @scribe");
-        const events = await agent2.agentAwaitEvents(token, {});
+        const events = await agent2.agentAwaitEvents(id, {});
         expect(("events" in events ? events.events : []).some((e) => e.type === "mention")).toBe(true);
 
         // And the reused performance id no longer collides with a survivor.
-        const queued = await agent2.agentInsert(token, {
+        const queued = await agent2.agentInsert(id, {
           where: "append",
           markdown: "After recovery.",
           pace: "natural",
@@ -1474,36 +1478,37 @@ describe("DocumentAgent", () => {
 
     describe("corrupt stored state", () => {
       it("agentRead skips an unparseable thread rather than throwing", async () => {
-        const { agent, token } = await setup(["comment"]);
-        const read = await agent.agentRead(token);
+        const { agent, id } = await setup(["comment"]);
+        const read = await agent.agentRead(id);
         const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
-        await agent.agentComment(token, { anchor, text: "fine" });
+        await agent.agentComment(id, { anchor, text: "fine" });
 
         const client = connectYjsClient(agent);
         client.doc.getMap<string>("threads").set("broken", "{ not json");
 
-        const after = await agent.agentRead(token);
+        const after = await agent.agentRead(id);
         expect("threads" in after && after.threads).toHaveLength(1);
         expect("threads" in after && after.threads[0].commentText).toBe("fine");
         cleanup(client);
       });
 
       it("agentReply returns thread_not_found for an unparseable thread", async () => {
-        const { agent, token } = await setup(["comment"]);
+        const { agent, id } = await setup(["comment"]);
         const client = connectYjsClient(agent);
         client.doc.getMap<string>("threads").set("broken", "{ not json");
 
-        const result = await agent.agentReply(token, { threadId: "broken", text: "hi" });
+        const result = await agent.agentReply(id, { threadId: "broken", text: "hi" });
         expect(result).toMatchObject({ error: { code: "thread_not_found" } });
         cleanup(client);
       });
 
       it("treats an unparseable rate-limit log as empty and rewrites it", async () => {
-        const { agent, token } = await setup(["write"]);
-        const row = (mockTables.get("agent_tokens") ?? []).find((r) => r.name === "scribe")!;
+        const { agent, id } = await setup(["write"]);
+        await agent.agentJoin(id); // enroll first — the roster row doesn't exist until an RPC lands
+        const row = (mockTables.get("roster") ?? []).find((r) => r.name === "scribe")!;
         row.recent_mutations = "{ not json";
 
-        const result = await agent.agentInsert(token, {
+        const result = await agent.agentInsert(id, {
           where: "append",
           markdown: "Fine.",
           pace: "instant",
@@ -1524,14 +1529,14 @@ describe("DocumentAgent", () => {
       vi.useRealTimers();
     });
 
-    async function setup(caps?: AgentCapability[]) {
+    async function setup(caps: AgentCapability[] = ["suggest", "comment"]) {
       const agent = makeAgent();
       await agent.onRequest(new Request("https://do/", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: "# Title\n\nBody." }),
       }));
-      const m = await agent.mintAgentToken({ name: "scribe", capabilities: caps });
-      return { agent, token: (m as { token: string }).token };
+      const id = identity({ caps });
+      return { agent, id };
     }
 
     /** Finds the (at most one) agent presence state among a client's awareness states. */
@@ -1542,11 +1547,11 @@ describe("DocumentAgent", () => {
     }
 
     it("broadcasts a presence state every connected client can decode", async () => {
-      const { agent, token } = await setup();
+      const { agent, id } = await setup();
       const a = connectYjsClient(agent);
       const b = connectYjsClient(agent);
 
-      const result = await agent.agentJoin(token, "typing");
+      const result = await agent.agentJoin(id, "typing");
       expect(result).toEqual({ ok: true });
 
       for (const client of [a, b]) {
@@ -1559,8 +1564,8 @@ describe("DocumentAgent", () => {
     });
 
     it("replays current agent presence to a client that connects after join", async () => {
-      const { agent, token } = await setup();
-      await agent.agentJoin(token);
+      const { agent, id } = await setup();
+      await agent.agentJoin(id);
 
       const late = connectYjsClient(agent);
       expect(findAgentState(late.awareness)).toMatchObject({
@@ -1577,32 +1582,32 @@ describe("DocumentAgent", () => {
     });
 
     it("removes presence for all connections immediately on leave", async () => {
-      const { agent, token } = await setup();
+      const { agent, id } = await setup();
       const a = connectYjsClient(agent);
-      await agent.agentJoin(token);
+      await agent.agentJoin(id);
       expect(findAgentState(a.awareness)).toBeDefined();
 
-      const result = await agent.agentLeave(token);
+      const result = await agent.agentLeave(id);
       expect(result).toEqual({ ok: true });
       expect(findAgentState(a.awareness)).toBeUndefined();
       cleanup(a);
     });
 
-    it("rejects join/leave for an invalid token", async () => {
+    it("rejects join/leave for a malformed identity", async () => {
       const { agent } = await setup();
-      expect(await agent.agentJoin("vpr_nonexistent")).toMatchObject({
+      expect(await agent.agentJoin({} as never)).toMatchObject({
         error: { code: "invalid_token" },
       });
-      expect(await agent.agentLeave("vpr_nonexistent")).toMatchObject({
+      expect(await agent.agentLeave({} as never)).toMatchObject({
         error: { code: "invalid_token" },
       });
     });
 
     it("removes presence automatically after 5 minutes of inactivity", async () => {
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-      const { agent, token } = await setup();
+      const { agent, id } = await setup();
       const a = connectYjsClient(agent);
-      await agent.agentJoin(token);
+      await agent.agentJoin(id);
 
       await vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 1);
       expect(findAgentState(a.awareness)).toBeDefined();
@@ -1614,9 +1619,9 @@ describe("DocumentAgent", () => {
 
     it("resets the idle timer on every performance, keeping a busy agent present", async () => {
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-      const { agent, token } = await setup(["write"]);
+      const { agent, id } = await setup(["write"]);
       const a = connectYjsClient(agent);
-      await agent.agentJoin(token);
+      await agent.agentJoin(id);
 
       // Just under the idle window, perform a (quick) mutation — its
       // typing ticks call onPerformanceCursor, which resets the timer. Only
@@ -1624,7 +1629,7 @@ describe("DocumentAgent", () => {
       // vi.runAllTimersAsync() would also drain the *freshly reset* 5-minute
       // idle timeout in the same call, defeating the point of the test.
       await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
-      await agent.agentInsert(token, { where: "append", markdown: "hi", pace: "natural" });
+      await agent.agentInsert(id, { where: "append", markdown: "hi", pace: "natural" });
       await vi.advanceTimersByTimeAsync(200);
 
       // Another 4 minutes — past the original 5-minute mark from join, but
@@ -1636,14 +1641,14 @@ describe("DocumentAgent", () => {
 
     it("populates a y-tiptap-shaped cursor field during a performance, even for an agent that never joined", async () => {
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-      const { agent, token } = await setup(["write"]);
+      const { agent, id } = await setup(["write"]);
       const a = connectYjsClient(agent);
 
       // Bounded advance, not vi.runAllTimersAsync(): each tick's
       // onPerformanceCursor resets a fresh 5-minute idle timeout, which
       // runAllTimersAsync() would drain too, removing presence again before
       // this assertion runs.
-      await agent.agentInsert(token, { where: "append", markdown: "abcdefghij", pace: "natural" });
+      await agent.agentInsert(id, { where: "append", markdown: "abcdefghij", pace: "natural" });
       await vi.advanceTimersByTimeAsync(800);
 
       const state = findAgentState(a.awareness);
@@ -1657,9 +1662,9 @@ describe("DocumentAgent", () => {
     });
 
     it("clears agent presence and idle timers on alarm", async () => {
-      const { agent, token } = await setup();
+      const { agent, id } = await setup();
       const a = connectYjsClient(agent);
-      await agent.agentJoin(token);
+      await agent.agentJoin(id);
       expect(findAgentState(a.awareness)).toBeDefined();
 
       await agent.alarm();
@@ -1680,18 +1685,23 @@ describe("DocumentAgent", () => {
       vi.useRealTimers();
     });
 
-    async function setup(caps?: AgentCapability[]) {
+    async function setup(caps: AgentCapability[] = ["suggest", "comment"]) {
       const agent = makeAgent();
       await agent.onRequest(new Request("https://do/", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: "Hello there." }),
       }));
-      const m = await agent.mintAgentToken({ name: "scribe", capabilities: caps });
-      return { agent, token: (m as { token: string }).token };
+      const id = identity({ caps });
+      // Enrollment is implicit on an agent's first RPC call — the mention/
+      // thread_reply/doc_changed observers only fire once the roster is
+      // non-empty, so this agent must be on it *before* any human edit the
+      // test makes, exactly as an explicit mint used to guarantee.
+      await agent.agentJoin(id);
+      return { agent, id };
     }
 
     it("records a mention through the real Yjs sync path when a human edits an existing block", async () => {
-      const { agent, token } = await setup();
+      const { agent, id } = await setup();
       const client = connectYjsClient(agent);
 
       // A human types more text into the already-synced first paragraph —
@@ -1701,7 +1711,7 @@ describe("DocumentAgent", () => {
       const ytext = para.get(0) as Y.XmlText;
       ytext.insert(ytext.length, " ping @scribe please");
 
-      const result = await agent.agentAwaitEvents(token, {});
+      const result = await agent.agentAwaitEvents(id, {});
       expect("events" in result).toBe(true);
       const events = "events" in result ? result.events : [];
       const mention = events.find((e) => e.type === "mention");
@@ -1716,7 +1726,7 @@ describe("DocumentAgent", () => {
     });
 
     it("records exactly one mention when a human types @scribe one character at a time", async () => {
-      const { agent, token } = await setup();
+      const { agent, id } = await setup();
       const client = connectYjsClient(agent);
 
       const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
@@ -1727,7 +1737,7 @@ describe("DocumentAgent", () => {
         ytext.insert(ytext.length, ch);
       }
 
-      const result = await agent.agentAwaitEvents(token, {});
+      const result = await agent.agentAwaitEvents(id, {});
       const events = "events" in result ? result.events : [];
       const mentions = events.filter((e) => e.type === "mention");
       expect(mentions).toHaveLength(1);
@@ -1741,7 +1751,7 @@ describe("DocumentAgent", () => {
       for (const ch of ", please") {
         ytext.insert(ytext.length, ch);
       }
-      const second = await agent.agentAwaitEvents(token, { cursor, timeoutMs: 20 });
+      const second = await agent.agentAwaitEvents(id, { cursor, timeoutMs: 20 });
       const secondEvents = "events" in second ? second.events : [];
       expect(secondEvents.filter((e) => e.type === "mention")).toHaveLength(0);
 
@@ -1749,7 +1759,7 @@ describe("DocumentAgent", () => {
     });
 
     it("re-fires a mention after it is deleted and retyped", async () => {
-      const { agent, token } = await setup();
+      const { agent, id } = await setup();
       const client = connectYjsClient(agent);
 
       const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
@@ -1758,7 +1768,7 @@ describe("DocumentAgent", () => {
       for (const ch of " @scribe") {
         ytext.insert(ytext.length, ch);
       }
-      const first = await agent.agentAwaitEvents(token, {});
+      const first = await agent.agentAwaitEvents(id, {});
       const cursor = "cursor" in first ? first.cursor : 0;
 
       ytext.delete(base, ytext.length - base);
@@ -1766,7 +1776,7 @@ describe("DocumentAgent", () => {
         ytext.insert(ytext.length, ch);
       }
 
-      const second = await agent.agentAwaitEvents(token, { cursor });
+      const second = await agent.agentAwaitEvents(id, { cursor });
       const mentions = ("events" in second ? second.events : []).filter(
         (e) => e.type === "mention",
       );
@@ -1791,7 +1801,7 @@ describe("DocumentAgent", () => {
       expect(mockTables.get("events") ?? []).toEqual([]);
 
       // With an agent on the roster, the digest is recorded as before.
-      await agent.mintAgentToken({ name: "scribe" });
+      await agent.agentJoin(identity());
       ytext.insert(ytext.length, " and another");
       expect((mockTables.get("events") ?? []).map((r) => r.type)).toContain("doc_changed");
 
@@ -1799,9 +1809,8 @@ describe("DocumentAgent", () => {
     });
 
     it("delivers a mention only to the agent it names", async () => {
-      const { agent, token } = await setup();
-      const minted = await agent.mintAgentToken({ name: "muse" });
-      const museToken = (minted as { token: string }).token;
+      const { agent, id } = await setup();
+      const museId = identity({ id: "email:muse@x.com", name: "muse" });
 
       const client = connectYjsClient(agent);
       const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
@@ -1810,11 +1819,11 @@ describe("DocumentAgent", () => {
         ytext.insert(ytext.length, ch);
       }
 
-      const forScribe = await agent.agentAwaitEvents(token, {});
+      const forScribe = await agent.agentAwaitEvents(id, {});
       const scribeEvents = "events" in forScribe ? forScribe.events : [];
       expect(scribeEvents.filter((e) => e.type === "mention")).toHaveLength(1);
 
-      const forMuse = await agent.agentAwaitEvents(museToken, { timeoutMs: 20 });
+      const forMuse = await agent.agentAwaitEvents(museId, { timeoutMs: 20 });
       const museEvents = "events" in forMuse ? forMuse.events : [];
       expect(museEvents.some((e) => e.type === "mention")).toBe(false);
       // The broadcast digest still reaches everyone.
@@ -1828,13 +1837,12 @@ describe("DocumentAgent", () => {
     });
 
     it("delivers a thread_reply only to the agent that authored the thread", async () => {
-      const { agent, token } = await setup(["comment"]);
-      const minted = await agent.mintAgentToken({ name: "muse", capabilities: ["comment"] });
-      const museToken = (minted as { token: string }).token;
+      const { agent, id } = await setup(["comment"]);
+      const museId = identity({ id: "email:muse@x.com", name: "muse", caps: ["comment"] });
 
-      const read = await agent.agentRead(token);
+      const read = await agent.agentRead(id);
       const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
-      const created = await agent.agentComment(token, { anchor, text: "needs work" });
+      const created = await agent.agentComment(id, { anchor, text: "needs work" });
       const threadId = "threadId" in created ? created.threadId : "";
 
       const client = connectYjsClient(agent);
@@ -1848,11 +1856,11 @@ describe("DocumentAgent", () => {
       });
       threadsMap.set(threadId, JSON.stringify(thread));
 
-      const forScribe = await agent.agentAwaitEvents(token, {});
+      const forScribe = await agent.agentAwaitEvents(id, {});
       expect(("events" in forScribe ? forScribe.events : []).some((e) => e.type === "thread_reply"))
         .toBe(true);
 
-      const forMuse = await agent.agentAwaitEvents(museToken, { timeoutMs: 20 });
+      const forMuse = await agent.agentAwaitEvents(museId, { timeoutMs: 20 });
       expect(("events" in forMuse ? forMuse.events : []).some((e) => e.type === "thread_reply"))
         .toBe(false);
 
@@ -1860,10 +1868,10 @@ describe("DocumentAgent", () => {
     });
 
     it("resolves empty after the timeout when no events occur (fake timers)", async () => {
-      const { agent, token } = await setup();
+      const { agent, id } = await setup();
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
-      const promise = agent.agentAwaitEvents(token, { timeoutMs: 50 });
+      const promise = agent.agentAwaitEvents(id, { timeoutMs: 50 });
       await waitForTimerRegistered();
       await vi.advanceTimersByTimeAsync(50);
       const result = await promise;
@@ -1872,19 +1880,19 @@ describe("DocumentAgent", () => {
     });
 
     it("excludes already-seen events once the cursor advances past them", async () => {
-      const { agent, token } = await setup();
+      const { agent, id } = await setup();
       const client = connectYjsClient(agent);
 
       const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
       const ytext = para.get(0) as Y.XmlText;
       ytext.insert(ytext.length, " ping @scribe please");
 
-      const first = await agent.agentAwaitEvents(token, {});
+      const first = await agent.agentAwaitEvents(id, {});
       const cursor = "cursor" in first ? first.cursor : -1;
       expect(cursor).toBeGreaterThan(0);
 
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-      const secondPromise = agent.agentAwaitEvents(token, { cursor, timeoutMs: 50 });
+      const secondPromise = agent.agentAwaitEvents(id, { cursor, timeoutMs: 50 });
       await waitForTimerRegistered();
       await vi.advanceTimersByTimeAsync(50);
       const second = await secondPromise;
@@ -1894,15 +1902,15 @@ describe("DocumentAgent", () => {
     });
 
     it("round-trips a comment and reply, and records a thread_reply event for a human reply", async () => {
-      const { agent, token } = await setup(["comment"]);
-      const read = await agent.agentRead(token);
+      const { agent, id } = await setup(["comment"]);
+      const read = await agent.agentRead(id);
       const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
 
-      const created = await agent.agentComment(token, { anchor, quote: "Hello", text: "needs work" });
+      const created = await agent.agentComment(id, { anchor, quote: "Hello", text: "needs work" });
       expect("threadId" in created).toBe(true);
       const threadId = "threadId" in created ? created.threadId : "";
 
-      const afterCreate = await agent.agentRead(token);
+      const afterCreate = await agent.agentRead(id);
       const threads = "threads" in afterCreate ? afterCreate.threads : [];
       expect(threads).toHaveLength(1);
       expect(threads[0]).toMatchObject({
@@ -1929,7 +1937,7 @@ describe("DocumentAgent", () => {
       });
       threadsMap.set(threadId, JSON.stringify(thread));
 
-      const result = await agent.agentAwaitEvents(token, {});
+      const result = await agent.agentAwaitEvents(id, {});
       const events = "events" in result ? result.events : [];
       const threadReply = events.find((e) => e.type === "thread_reply");
       expect(threadReply).toMatchObject({
@@ -1941,40 +1949,40 @@ describe("DocumentAgent", () => {
     });
 
     it("agentComment requires the comment capability", async () => {
-      const { agent, token } = await setup([]);
-      const read = await agent.agentRead(token);
+      const { agent, id } = await setup([]);
+      const read = await agent.agentRead(id);
       const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
-      const result = await agent.agentComment(token, { anchor, text: "hi" });
+      const result = await agent.agentComment(id, { anchor, text: "hi" });
       expect(result).toMatchObject({ error: { code: "capability_denied" } });
     });
 
     it("agentReply appends a reply, attributed to the replying agent", async () => {
-      const { agent, token } = await setup(["comment"]);
-      const read = await agent.agentRead(token);
+      const { agent, id } = await setup(["comment"]);
+      const read = await agent.agentRead(id);
       const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
-      const created = await agent.agentComment(token, { anchor, text: "hi" });
+      const created = await agent.agentComment(id, { anchor, text: "hi" });
       const threadId = "threadId" in created ? created.threadId : "";
 
-      const result = await agent.agentReply(token, { threadId, text: "reply text" });
+      const result = await agent.agentReply(id, { threadId, text: "reply text" });
       expect(result).toEqual({ ok: true });
 
-      const after = await agent.agentRead(token);
+      const after = await agent.agentRead(id);
       const threads = "threads" in after ? after.threads : [];
       expect(threads[0].replies).toHaveLength(1);
       expect(threads[0].replies[0]).toMatchObject({ text: "reply text", author: { name: "scribe" } });
     });
 
     it("agentReply returns thread_not_found for an unknown thread", async () => {
-      const { agent, token } = await setup(["comment"]);
-      const result = await agent.agentReply(token, { threadId: "nope", text: "x" });
+      const { agent, id } = await setup(["comment"]);
+      const result = await agent.agentReply(id, { threadId: "nope", text: "x" });
       expect(result).toMatchObject({ error: { code: "thread_not_found" } });
     });
 
     it("records a thread_reply event only when a reply is actually added, not on a resolve toggle", async () => {
-      const { agent, token } = await setup(["comment"]);
-      const read = await agent.agentRead(token);
+      const { agent, id } = await setup(["comment"]);
+      const read = await agent.agentRead(id);
       const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
-      const created = await agent.agentComment(token, { anchor, text: "needs work" });
+      const created = await agent.agentComment(id, { anchor, text: "needs work" });
       const threadId = "threadId" in created ? created.threadId : "";
 
       const client = connectYjsClient(agent);
@@ -1986,7 +1994,7 @@ describe("DocumentAgent", () => {
       const beforeResolve = JSON.parse(threadsMap.get(threadId)!);
       threadsMap.set(threadId, JSON.stringify({ ...beforeResolve, resolved: true }));
 
-      const afterResolve = await agent.agentAwaitEvents(token, { timeoutMs: 20 });
+      const afterResolve = await agent.agentAwaitEvents(id, { timeoutMs: 20 });
       const eventsAfterResolve = "events" in afterResolve ? afterResolve.events : [];
       expect(eventsAfterResolve.some((e) => e.type === "thread_reply")).toBe(false);
       const cursorAfterResolve = "cursor" in afterResolve ? afterResolve.cursor : 0;
@@ -2001,7 +2009,7 @@ describe("DocumentAgent", () => {
       });
       threadsMap.set(threadId, JSON.stringify(beforeReply));
 
-      const afterReply = await agent.agentAwaitEvents(token, { cursor: cursorAfterResolve });
+      const afterReply = await agent.agentAwaitEvents(id, { cursor: cursorAfterResolve });
       const eventsAfterReply = "events" in afterReply ? afterReply.events : [];
       const threadReplyEvents = eventsAfterReply.filter((e) => e.type === "thread_reply");
       expect(threadReplyEvents).toHaveLength(1);
@@ -2011,34 +2019,34 @@ describe("DocumentAgent", () => {
     });
 
     it("agentComment and agentReply are rate-limited like the other mutation RPCs", async () => {
-      const { agent, token } = await setup(["comment"]);
-      const read = await agent.agentRead(token);
+      const { agent, id } = await setup(["comment"]);
+      const read = await agent.agentRead(id);
       const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
 
       // Pre-fill this agent's rate-limit log at the per-minute mutation
       // cap, driving checkRateLimit's denial path directly rather than via
       // 10 real calls.
-      const tokenRows = mockTables.get("agent_tokens") ?? [];
-      const row = tokenRows.find((r) => r.name === "scribe")!;
+      const rosterRows = mockTables.get("roster") ?? [];
+      const row = rosterRows.find((r) => r.name === "scribe")!;
       const now = Date.now();
       row.recent_mutations = JSON.stringify(
         Array.from({ length: 10 }, () => ({ at: now, chars: 1 })),
       );
 
-      const commentResult = await agent.agentComment(token, { anchor, text: "hi" });
+      const commentResult = await agent.agentComment(id, { anchor, text: "hi" });
       expect(commentResult).toMatchObject({ error: { code: "rate_limited" } });
 
-      const replyResult = await agent.agentReply(token, { threadId: "whatever", text: "hi" });
+      const replyResult = await agent.agentReply(id, { threadId: "whatever", text: "hi" });
       expect(replyResult).toMatchObject({ error: { code: "rate_limited" } });
     });
 
     it("prunes events on doc expiry (alarm)", async () => {
-      const { agent, token } = await setup();
+      const { agent, id } = await setup();
       const client = connectYjsClient(agent);
       const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
       const ytext = para.get(0) as Y.XmlText;
       ytext.insert(ytext.length, " ping @scribe please");
-      await agent.agentAwaitEvents(token, {});
+      await agent.agentAwaitEvents(id, {});
       cleanup(client);
 
       await agent.alarm();

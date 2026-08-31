@@ -4,17 +4,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 /*  Mocks                                                              */
 /* ------------------------------------------------------------------ */
 
-const { mockMint, mockRoster, mockRevoke } = vi.hoisted(() => ({
-  mockMint: vi.fn(),
+const { mockRoster, mockRevoke } = vi.hoisted(() => ({
   mockRoster: vi.fn(),
   mockRevoke: vi.fn(),
 }));
 
 vi.mock("agents", () => ({
   getAgentByName: vi.fn().mockResolvedValue({
-    mintAgentToken: mockMint,
     getAgentRoster: mockRoster,
-    revokeAgentToken: mockRevoke,
+    revokeAgentEntry: mockRevoke,
   }),
 }));
 
@@ -87,79 +85,19 @@ describe("GET /:id/agents (loader)", () => {
 describe("POST /:id/agents (action)", () => {
   it("returns 404 for an invalid document id", async () => {
     const response = (await action(
-      actionArgs("bad", { intent: "mint", name: "scribe" }),
+      actionArgs("bad", { intent: "revoke", name: "scribe" }),
     )) as Response;
     expect(response.status).toBe(404);
   });
 
-  it("mints a token and returns it exactly once", async () => {
-    mockMint.mockResolvedValue({ token: "secret-token", entry: rosterEntry });
+  it("returns 410 Gone for the retired mint intent", async () => {
     const response = (await action(
       actionArgs("abcd1234", { intent: "mint", name: "scribe" }),
     )) as Response;
-
-    expect(response.status).toBe(201);
-    const json = await response.json();
-    expect(json).toEqual({ token: "secret-token", entry: rosterEntry });
-    expect(mockMint).toHaveBeenCalledWith({
-      name: "scribe",
-      owner: undefined,
-      capabilities: undefined,
-    });
+    expect(response.status).toBe(410);
   });
 
-  it("passes owner and capabilities through to mintAgentToken", async () => {
-    mockMint.mockResolvedValue({ token: "t", entry: rosterEntry });
-    await action(
-      actionArgs("abcd1234", {
-        intent: "mint",
-        name: "scribe",
-        owner: "nicholas",
-        capabilities: ["write"],
-      }),
-    );
-    expect(mockMint).toHaveBeenCalledWith({
-      name: "scribe",
-      owner: "nicholas",
-      capabilities: ["write"],
-    });
-  });
-
-  it("rejects capabilities outside the known set", async () => {
-    const response = (await action(
-      actionArgs("abcd1234", {
-        intent: "mint",
-        name: "scribe",
-        capabilities: ["write", "admin"],
-      }),
-    )) as Response;
-    expect(response.status).toBe(400);
-    expect(mockMint).not.toHaveBeenCalled();
-  });
-
-  it("returns 400 with the DO error for invalid_name", async () => {
-    mockMint.mockResolvedValue({
-      error: { code: "invalid_name", message: "Agent name already taken: scribe" },
-    });
-    const response = (await action(
-      actionArgs("abcd1234", { intent: "mint", name: "scribe" }),
-    )) as Response;
-    expect(response.status).toBe(400);
-    const json = await response.json();
-    expect(json.error.code).toBe("invalid_name");
-  });
-
-  it("returns 404 with the DO error for doc_not_found", async () => {
-    mockMint.mockResolvedValue({
-      error: { code: "doc_not_found", message: "Document does not exist" },
-    });
-    const response = (await action(
-      actionArgs("abcd1234", { intent: "mint", name: "scribe" }),
-    )) as Response;
-    expect(response.status).toBe(404);
-  });
-
-  it("revokes a token", async () => {
+  it("revokes an agent entry", async () => {
     mockRevoke.mockResolvedValue({ ok: true });
     const response = (await action(
       actionArgs("abcd1234", { intent: "revoke", name: "scribe" }),
@@ -170,14 +108,23 @@ describe("POST /:id/agents (action)", () => {
     expect(mockRevoke).toHaveBeenCalledWith("scribe");
   });
 
+  it("returns 404 with the DO error for doc_not_found on revoke", async () => {
+    mockRevoke.mockResolvedValue({
+      error: { code: "doc_not_found", message: "Document does not exist" },
+    });
+    const response = (await action(
+      actionArgs("abcd1234", { intent: "revoke", name: "scribe" }),
+    )) as Response;
+    expect(response.status).toBe(404);
+  });
+
   it("returns 400 for an unknown intent", async () => {
     const response = (await action(actionArgs("abcd1234", { intent: "bogus" }))) as Response;
     expect(response.status).toBe(400);
   });
 
-  it("returns 400 for a missing name on mint", async () => {
-    const response = (await action(actionArgs("abcd1234", { intent: "mint" }))) as Response;
+  it("returns 400 for a missing name on revoke", async () => {
+    const response = (await action(actionArgs("abcd1234", { intent: "revoke" }))) as Response;
     expect(response.status).toBe(400);
-    expect(mockMint).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
 import { TOOLS, validateNewDocumentMarkdown, createDocumentAgentName } from "../../../agents/mcp-tools";
+import type { AgentIdentity } from "../../../app/shared/agent-protocol";
+
+const ID: AgentIdentity = {
+  kind: "principal",
+  id: "email:a@x.com",
+  name: "scribe",
+  owner: "email:a@x.com",
+  caps: ["suggest", "comment", "write"],
+};
 
 const SPEC_TOOLS = [
   "read_document",
@@ -27,7 +36,7 @@ describe("mcp tool table", () => {
     }
   });
 
-  it("routes read_document to the stub with the bearer token", async () => {
+  it("routes read_document to the stub with the verified identity", async () => {
     const stub = {
       agentRead: vi.fn(async () => ({
         markdown: "# Hi",
@@ -38,10 +47,10 @@ describe("mcp tool table", () => {
     };
     const tool = TOOLS.find((t) => t.name === "read_document")!;
     const out = await tool.run(
-      { getStub: async () => stub as never, token: "vpr_t" },
+      { getStub: async () => stub as never, identity: ID },
       { doc_id: "abcd1234" },
     );
-    expect(stub.agentRead).toHaveBeenCalledWith("vpr_t");
+    expect(stub.agentRead).toHaveBeenCalledWith(ID);
     expect(out).toMatchObject({ markdown: "# Hi" });
   });
 
@@ -49,7 +58,7 @@ describe("mcp tool table", () => {
     const getStub = vi.fn();
     const tool = TOOLS.find((t) => t.name === "read_document")!;
     const out = await tool.run(
-      { getStub: getStub as never, token: "vpr_t" },
+      { getStub: getStub as never, identity: ID },
       { doc_id: "NOT-AN-ID" },
     );
     expect(getStub).not.toHaveBeenCalled();
@@ -60,10 +69,10 @@ describe("mcp tool table", () => {
     const stub = { agentInsert: vi.fn(async () => ({ ok: true })) };
     const tool = TOOLS.find((t) => t.name === "insert")!;
     const out = await tool.run(
-      { getStub: async () => stub as never, token: "vpr_t" },
+      { getStub: async () => stub as never, identity: ID },
       { doc_id: "abcd1234", anchor: "b1-aaaabbbb", where: "after", markdown: "hi", pace: "instant" },
     );
-    expect(stub.agentInsert).toHaveBeenCalledWith("vpr_t", {
+    expect(stub.agentInsert).toHaveBeenCalledWith(ID, {
       anchor: "b1-aaaabbbb",
       where: "after",
       markdown: "hi",
@@ -76,10 +85,10 @@ describe("mcp tool table", () => {
     const stub = { agentReplace: vi.fn(async () => ({ ok: true })) };
     const tool = TOOLS.find((t) => t.name === "replace")!;
     await tool.run(
-      { getStub: async () => stub as never, token: "vpr_t" },
+      { getStub: async () => stub as never, identity: ID },
       { doc_id: "abcd1234", from_anchor: "b1-aaaabbbb", to_anchor: "b2-ccccdddd", markdown: "x" },
     );
-    expect(stub.agentReplace).toHaveBeenCalledWith("vpr_t", {
+    expect(stub.agentReplace).toHaveBeenCalledWith(ID, {
       from: "b1-aaaabbbb",
       to: "b2-ccccdddd",
       markdown: "x",
@@ -91,10 +100,10 @@ describe("mcp tool table", () => {
     const stub = { agentSuggest: vi.fn(async () => ({ ok: true })) };
     const tool = TOOLS.find((t) => t.name === "suggest")!;
     await tool.run(
-      { getStub: async () => stub as never, token: "vpr_t" },
+      { getStub: async () => stub as never, identity: ID },
       { doc_id: "abcd1234", anchor: "b1-aaaabbbb", find: "old", replacement: "new" },
     );
-    expect(stub.agentSuggest).toHaveBeenCalledWith("vpr_t", {
+    expect(stub.agentSuggest).toHaveBeenCalledWith(ID, {
       anchor: "b1-aaaabbbb",
       find: "old",
       replacement: "new",
@@ -107,7 +116,7 @@ describe("mcp tool table", () => {
       agentComment: vi.fn(async () => ({ threadId: "t1" })),
       agentReply: vi.fn(async () => ({ ok: true })),
     };
-    const deps = { getStub: async () => stub as never, token: "vpr_t" };
+    const deps = { getStub: async () => stub as never, identity: ID };
 
     const comment = await TOOLS.find((t) => t.name === "comment")!.run(deps, {
       doc_id: "abcd1234",
@@ -115,7 +124,7 @@ describe("mcp tool table", () => {
       quote: "here",
       text: "why?",
     });
-    expect(stub.agentComment).toHaveBeenCalledWith("vpr_t", {
+    expect(stub.agentComment).toHaveBeenCalledWith(ID, {
       anchor: "b1-aaaabbbb",
       quote: "here",
       text: "why?",
@@ -127,7 +136,7 @@ describe("mcp tool table", () => {
       thread_id: "t1",
       text: "because",
     });
-    expect(stub.agentReply).toHaveBeenCalledWith("vpr_t", { threadId: "t1", text: "because" });
+    expect(stub.agentReply).toHaveBeenCalledWith(ID, { threadId: "t1", text: "because" });
   });
 
   it("maps join/leave onto presence RPCs", async () => {
@@ -135,26 +144,26 @@ describe("mcp tool table", () => {
       agentJoin: vi.fn(async () => ({ ok: true })),
       agentLeave: vi.fn(async () => ({ ok: true })),
     };
-    const deps = { getStub: async () => stub as never, token: "vpr_t" };
+    const deps = { getStub: async () => stub as never, identity: ID };
 
     await TOOLS.find((t) => t.name === "join")!.run(deps, {
       doc_id: "abcd1234",
       status: "drafting",
     });
-    expect(stub.agentJoin).toHaveBeenCalledWith("vpr_t", "drafting");
+    expect(stub.agentJoin).toHaveBeenCalledWith(ID, "drafting");
 
     await TOOLS.find((t) => t.name === "leave")!.run(deps, { doc_id: "abcd1234" });
-    expect(stub.agentLeave).toHaveBeenCalledWith("vpr_t");
+    expect(stub.agentLeave).toHaveBeenCalledWith(ID);
   });
 
   it("converts await_events since_cursor/timeout_s to RPC args", async () => {
     const stub = { agentAwaitEvents: vi.fn(async () => ({ events: [], cursor: 7 })) };
     const tool = TOOLS.find((t) => t.name === "await_events")!;
     await tool.run(
-      { getStub: async () => stub as never, token: "vpr_t" },
+      { getStub: async () => stub as never, identity: ID },
       { doc_id: "abcd1234", since_cursor: 7, timeout_s: 30 },
     );
-    expect(stub.agentAwaitEvents).toHaveBeenCalledWith("vpr_t", {
+    expect(stub.agentAwaitEvents).toHaveBeenCalledWith(ID, {
       cursor: 7,
       timeoutMs: 30_000,
     });
@@ -168,7 +177,7 @@ describe("mcp tool table", () => {
     };
     const tool = TOOLS.find((t) => t.name === "read_document")!;
     const out = await tool.run(
-      { getStub: async () => stub as never, token: "nope" },
+      { getStub: async () => stub as never, identity: ID },
       { doc_id: "abcd1234" },
     );
     expect(out).toMatchObject({ error: { code: "invalid_token" } });

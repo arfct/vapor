@@ -3,7 +3,6 @@ import type { Route } from "./+types/doc.$id.agents";
 import { isValidDocumentId } from "~/shared/constants";
 import { getCloudflare } from "~/lib/cloudflare.server";
 import type {
-  AgentCapability,
   AgentError,
   AgentErrorCode,
   AgentRosterEntry,
@@ -11,16 +10,9 @@ import type {
 
 /** The subset of the DocumentAgent RPC surface this route calls. */
 interface AgentStub {
-  mintAgentToken(opts: {
-    name: string;
-    owner?: string;
-    capabilities?: AgentCapability[];
-  }): Promise<{ token: string; entry: AgentRosterEntry } | { error: AgentError }>;
   getAgentRoster(): Promise<AgentRosterEntry[]>;
-  revokeAgentToken(name: string): Promise<{ ok: true } | { error: AgentError }>;
+  revokeAgentEntry(name: string): Promise<{ ok: true } | { error: AgentError }>;
 }
-
-const KNOWN_CAPABILITIES: AgentCapability[] = ["comment", "suggest", "write"];
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -38,11 +30,9 @@ function badRequest(message: string) {
 }
 
 /**
- * Maps a DocumentAgent `AgentError` onto an HTTP status. Only
- * `mintAgentToken`/`revokeAgentToken` errors reach this route today
- * (doc_not_found, invalid_name), but the mapping covers the full
- * `AgentErrorCode` union so a future RPC error doesn't fall through
- * unmapped.
+ * Maps a DocumentAgent `AgentError` onto an HTTP status. The mapping
+ * covers the full `AgentErrorCode` union so a future RPC error doesn't
+ * fall through unmapped.
  */
 function statusForErrorCode(code: AgentErrorCode): number {
   switch (code) {
@@ -102,38 +92,12 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   const record = body as Record<string, unknown>;
 
   if (record.intent === "mint") {
-    const name = record.name;
-    if (typeof name !== "string") {
-      return badRequest("name is required");
-    }
-
-    const ownerRaw = record.owner;
-    const owner =
-      typeof ownerRaw === "string" && ownerRaw.trim() ? ownerRaw : undefined;
-
-    let capabilities: AgentCapability[] | undefined;
-    if (record.capabilities !== undefined) {
-      const capsRaw = record.capabilities;
-      const isValid =
-        Array.isArray(capsRaw) &&
-        capsRaw.every(
-          (c): c is AgentCapability =>
-            typeof c === "string" &&
-            KNOWN_CAPABILITIES.includes(c as AgentCapability),
-        );
-      if (!isValid) {
-        return badRequest(
-          `capabilities must be a subset of ${KNOWN_CAPABILITIES.join(", ")}`,
-        );
-      }
-      capabilities = capsRaw as AgentCapability[];
-    }
-
-    const result = await stub.mintAgentToken({ name, owner, capabilities });
-    if ("error" in result) {
-      return jsonResponse(result, statusForErrorCode(result.error.code));
-    }
-    return jsonResponse(result, 201);
+    // Per-doc tokens retired with the identity phase: agents connect over
+    // MCP (OAuth or the anonymous door) and enroll on first touch.
+    return jsonResponse(
+      { error: { message: "Token minting is gone. Connect via https://vapor.fyi/mcp instead." } },
+      410,
+    );
   }
 
   if (record.intent === "revoke") {
@@ -142,7 +106,7 @@ export async function action({ params, context, request }: Route.ActionArgs) {
       return badRequest("name is required");
     }
 
-    const result = await stub.revokeAgentToken(name);
+    const result = await stub.revokeAgentEntry(name);
     if ("error" in result) {
       return jsonResponse(result, statusForErrorCode(result.error.code));
     }

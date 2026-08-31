@@ -13,11 +13,12 @@ function ChevronDown() {
 }
 
 /**
- * Header menu for the editing mode. Edit and Suggest switch modes;
- * Accept all / Reject all apply to every pending suggestion.
+ * Header menu for the editing mode. Edit and Suggest switch modes, Preview
+ * toggles the rendered view; Accept all / Reject all apply to every
+ * pending suggestion.
  */
 export default function ModeMenu() {
-  const { editorInstance: editor, mode, setMode } = useDocument();
+  const { editorInstance: editor, mode, setMode, showPreview, togglePreview } = useDocument();
   const [hasSuggestions, setHasSuggestions] = useState(false);
 
   useEffect(() => {
@@ -40,7 +41,7 @@ export default function ModeMenu() {
           className="flex h-full cursor-pointer items-center gap-1 px-3 text-sm uppercase tracking-wider transition-colors hover:bg-border"
           aria-label="Editing mode"
         >
-          {mode === "suggest" ? "Suggest" : "Edit"}
+          {showPreview ? "Preview" : mode === "suggest" ? "Suggest" : "Edit"}
           <ChevronDown />
         </button>
       </DropdownMenu.Trigger>
@@ -50,15 +51,32 @@ export default function ModeMenu() {
           align="end"
           sideOffset={4}
         >
-          <DropdownMenu.Item onSelect={() => setMode("edit")} className={itemClass}>
+          <DropdownMenu.Item
+            onSelect={() => {
+              setMode("edit");
+              if (showPreview) togglePreview();
+            }}
+            className={itemClass}
+          >
             <Icon name="edit" />
             <span>Edit</span>
-            {mode === "edit" && <span className="ml-auto text-muted">{"✓"}</span>}
+            {mode === "edit" && !showPreview && <span className="ml-auto text-muted">{"✓"}</span>}
           </DropdownMenu.Item>
-          <DropdownMenu.Item onSelect={() => setMode("suggest")} className={itemClass}>
+          <DropdownMenu.Item
+            onSelect={() => {
+              setMode("suggest");
+              if (showPreview) togglePreview();
+            }}
+            className={itemClass}
+          >
             <Icon name="rate_review" />
             <span>Suggest</span>
-            {mode === "suggest" && <span className="ml-auto text-muted">{"✓"}</span>}
+            {mode === "suggest" && !showPreview && <span className="ml-auto text-muted">{"✓"}</span>}
+          </DropdownMenu.Item>
+          <DropdownMenu.Item onSelect={togglePreview} className={itemClass}>
+            <Icon name="visibility" />
+            <span>Preview</span>
+            {showPreview && <span className="ml-auto text-muted">{"✓"}</span>}
           </DropdownMenu.Item>
           <DropdownMenu.Separator className="my-1 border-t border-border" />
           <DropdownMenu.Item

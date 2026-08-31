@@ -37,7 +37,7 @@ export const links: Route.LinksFunction = () => [
     // Subset to the icon names actually used — keep this list sorted and in
     // sync with <Icon name> usages or new glyphs render as raw text.
     rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=account_circle,brightness_auto,check,dark_mode,delete,done_all,edit,light_mode,logout,more_vert,rate_review,remove_done,smart_toy,undo&display=block",
+    href: "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=account_circle,brightness_auto,check,dark_mode,delete,done_all,edit,light_mode,logout,more_vert,rate_review,remove_done,smart_toy,undo,visibility&display=block",
   },
 ];
 

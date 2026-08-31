@@ -9,13 +9,11 @@ import { useYjsEditor } from "~/lib/useYjsEditor";
 import { DocumentProvider, useDocument } from "~/lib/DocumentContext";
 import Editor from "~/components/Editor";
 import Preview from "~/components/Preview";
-import PreviewToggle from "~/components/PreviewToggle";
 import ShareButton from "~/components/ShareButton";
 import AgentsPanel from "~/components/AgentsPanel";
 import ModeMenu from "~/components/ModeMenu";
 import HeaderMenu from "~/components/HeaderMenu";
 import CleanViewToggle from "~/components/CleanViewToggle";
-import SuggestionActions from "~/components/SuggestionActions";
 import CommentInput from "~/components/CommentInput";
 import ThreadList from "~/components/ThreadList";
 import MobilePanel from "~/components/MobilePanel";
@@ -118,7 +116,7 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
       </header>
       <AgentsPanel open={agentsOpen} onClose={() => setAgentsOpen(false)} />
       <div className="flex flex-1 overflow-hidden">
-        <main className="flex-1 overflow-y-auto pb-[33vh] lg:border-r lg:border-border lg:pb-0">
+        <main className="flex-1 overflow-y-auto pb-[33vh] lg:pb-0">
           <Editor
             yjs={yjs}
             hidden={showPreview}
@@ -136,14 +134,9 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
         <aside className="hidden w-96 flex-col overflow-hidden lg:flex">
           <div className="flex-1 overflow-y-auto">
             <OnboardingBanner />
-            <SuggestionActions />
             {mode === "suggest" && <CleanViewToggle />}
-            <div className="border-t border-border" />
             <CommentInput />
             <ThreadList />
-          </div>
-          <div className="shrink-0 border-t border-border">
-            <PreviewToggle />
           </div>
         </aside>
       </div>

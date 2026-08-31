@@ -10,7 +10,6 @@ export default function ThreadList() {
     addReply: onReply,
     resolveThread: onResolve,
     deleteThread: onDelete,
-    openCommentInput: onNewComment,
   } = useDocument();
 
   const [showResolved, setShowResolved] = useState(false);
@@ -21,25 +20,6 @@ export default function ThreadList() {
 
   return (
     <div className="flex flex-col">
-      <div className="flex items-center justify-between px-3 py-2">
-        <span className="text-sm uppercase tracking-wider text-muted">
-          Comments ({openThreads.length})
-        </span>
-        <button
-          onClick={onNewComment}
-          className="cursor-pointer bg-canary px-2 py-0.5 text-sm font-medium uppercase tracking-wider text-[#1a1a1a] transition-opacity hover:opacity-85"
-          aria-label="New comment"
-        >
-          + Add
-        </button>
-      </div>
-
-      {visibleThreads.length === 0 && !showResolved && (
-        <div className="px-3 py-6 text-center text-muted">
-          No comments yet
-        </div>
-      )}
-
       {visibleThreads.map((thread) => (
         <div key={thread.id} className="border-b border-border">
           <ThreadPanel

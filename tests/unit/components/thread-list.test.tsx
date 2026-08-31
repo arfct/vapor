@@ -17,10 +17,9 @@ const makeThread = (overrides = {}) => ({
 });
 
 describe("ThreadList", () => {
-  it("shows thread count and 'No comments yet' when empty", () => {
-    const { getByText } = renderWithDocument(createElement(ThreadList));
-    expect(getByText("Comments (0)")).toBeTruthy();
-    expect(getByText("No comments yet")).toBeTruthy();
+  it("renders nothing when there are no threads", () => {
+    const { container } = renderWithDocument(createElement(ThreadList));
+    expect(container.textContent).toBe("");
   });
 
   it("renders ThreadPanel for each open thread with separator borders", () => {
@@ -31,7 +30,6 @@ describe("ThreadList", () => {
     const { getByText, container } = renderWithDocument(createElement(ThreadList), {
       context: { threads },
     });
-    expect(getByText("Comments (2)")).toBeTruthy();
     expect(getByText("First")).toBeTruthy();
     expect(getByText("Second")).toBeTruthy();
 
@@ -50,20 +48,10 @@ describe("ThreadList", () => {
       { context: { threads } },
     );
 
-    expect(getByText("Comments (1)")).toBeTruthy();
     expect(queryByText("Resolved thread")).toBeFalsy();
     expect(getByText("Show resolved (1)")).toBeTruthy();
 
     fireEvent.click(getByText("Show resolved (1)"));
     expect(queryByText("Resolved thread")).toBeTruthy();
-  });
-
-  it("new comment button calls openCommentInput", () => {
-    const { contextValue, getByLabelText } = renderWithDocument(
-      createElement(ThreadList),
-    );
-
-    fireEvent.click(getByLabelText("New comment"));
-    expect(contextValue.openCommentInput).toHaveBeenCalledOnce();
   });
 });

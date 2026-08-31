@@ -5,6 +5,7 @@ import {
   redirectHost,
   redirectLegacyDocPath,
 } from "../../../workers/routes";
+import * as routesModule from "../../../workers/routes";
 
 describe("handleRawMarkdown", () => {
   it("returns 200 with text/markdown for an existing doc", async () => {
@@ -228,5 +229,100 @@ describe("redirectHost", () => {
     const res = redirectHost(new Request("https://vapor.arfct.workers.dev/abc"));
 
     expect(res).toBeNull();
+  });
+});
+
+describe("handleAuth", () => {
+  const { handleAuth } = routesModule;
+
+  function deps(overrides: Partial<Parameters<typeof handleAuth>[1]> = {}) {
+    return {
+      secret: "test-secret",
+      googleClientId: "client-123",
+      verifyGoogle: vi.fn(async () => ({
+        email: "Nicholas@Artifact.com",
+        name: "Nicholas",
+        picture: "https://p/x.png",
+      })),
+      upsertProfile: vi.fn(async () => ({
+        profile: { displayName: "Nicholas", agentSlug: null },
+      })),
+      getProfile: vi.fn(async () => ({
+        profile: { displayName: "Nicholas", agentSlug: "nicholas" },
+      })),
+      ...overrides,
+    };
+  }
+
+  function googlePost(origin = "https://vapor.fyi") {
+    return new Request("https://vapor.fyi/auth/google", {
+      method: "POST",
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ credential: "tok" }),
+    });
+  }
+
+  it("returns null for non-auth paths", async () => {
+    expect(await handleAuth(new Request("https://vapor.fyi/other"), deps())).toBeNull();
+  });
+
+  it("config returns the public client id", async () => {
+    const res = await handleAuth(new Request("https://vapor.fyi/auth/config"), deps());
+    expect(await res?.json()).toEqual({ googleClientId: "client-123" });
+  });
+
+  it("google happy path sets a secure session cookie and lowercases the principal", async () => {
+    const d = deps();
+    const res = await handleAuth(googlePost(), d);
+    expect(res?.status).toBe(200);
+    const cookie = res?.headers.get("Set-Cookie") ?? "";
+    expect(cookie).toContain("vp_session=");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Lax");
+    expect(cookie).toContain("Secure");
+    expect(d.upsertProfile).toHaveBeenCalledWith(
+      "email:nicholas@artifact.com",
+      expect.objectContaining({ displayName: "Nicholas" }),
+    );
+  });
+
+  it("rejects cross-origin sign-in", async () => {
+    const res = await handleAuth(googlePost("https://evil.example"), deps());
+    expect(res?.status).toBe(403);
+  });
+
+  it("rejects a bad credential", async () => {
+    const res = await handleAuth(
+      googlePost(),
+      deps({ verifyGoogle: vi.fn(async () => null) }),
+    );
+    expect(res?.status).toBe(401);
+  });
+
+  it("me without a session reports signedIn false", async () => {
+    const res = await handleAuth(new Request("https://vapor.fyi/auth/me"), deps());
+    expect(await res?.json()).toEqual({ signedIn: false });
+  });
+
+  it("me with a session cookie returns the profile", async () => {
+    const d = deps();
+    const signIn = await handleAuth(googlePost(), d);
+    const cookie = (signIn?.headers.get("Set-Cookie") ?? "").split(";")[0];
+    const res = await handleAuth(
+      new Request("https://vapor.fyi/auth/me", { headers: { Cookie: cookie } }),
+      d,
+    );
+    const body = (await res?.json()) as Record<string, unknown>;
+    expect(body.signedIn).toBe(true);
+    expect(body.principal).toBe("email:nicholas@artifact.com");
+    expect(body.agentSlug).toBe("nicholas");
+  });
+
+  it("logout clears the cookie", async () => {
+    const res = await handleAuth(
+      new Request("https://vapor.fyi/auth/logout", { method: "POST" }),
+      deps(),
+    );
+    expect(res?.headers.get("Set-Cookie")).toContain("Max-Age=0");
   });
 });

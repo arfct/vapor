@@ -5,10 +5,13 @@ import { VaporMcp, type VaporMcpProps } from "../agents/mcp";
 import {
   handleRawMarkdown,
   handleMcpHelp,
+  handleAuth,
   redirectHost,
   redirectLegacyDocPath,
   type MarkdownStub,
 } from "./routes";
+import { verifyGoogleIdToken } from "../app/lib/auth.server";
+import type Registry from "../agents/registry";
 
 export { default as DocumentAgent } from "../agents/document";
 export { default as Registry } from "../agents/registry";
@@ -38,6 +41,25 @@ export default {
     const legacyDocResponse = redirectLegacyDocPath(request);
     if (legacyDocResponse) {
       return legacyDocResponse;
+    }
+
+    // /auth/* — Google sign-in sessions. Optional everywhere; only mints and
+    // reads the vp_session cookie.
+    if (url.pathname.startsWith("/auth/")) {
+      const registry = (await getAgentByName(
+        env.Registry,
+        "global",
+      )) as unknown as Registry;
+      const authResponse = await handleAuth(request, {
+        secret: env.SESSION_SECRET ?? "",
+        googleClientId: env.GOOGLE_CLIENT_ID ?? "",
+        verifyGoogle: verifyGoogleIdToken,
+        upsertProfile: (principal, info) => registry.upsertProfile(principal, info),
+        getProfile: (principal) => registry.getProfile(principal),
+      });
+      if (authResponse) {
+        return authResponse;
+      }
     }
 
     // A browser landing on /mcp (Accept: text/html) gets a how-to-connect

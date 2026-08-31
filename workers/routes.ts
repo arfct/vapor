@@ -9,6 +9,14 @@
 import { isValidDocumentId } from "../app/shared/constants";
 import type { AgentError } from "../app/shared/agent-protocol";
 import { mcpHelpHtml } from "../app/lib/mcp-help";
+import {
+  mintSessionToken,
+  sessionFromRequest,
+  sessionCookieHeader,
+  clearSessionCookieHeader,
+  sameOrigin,
+  principalFromEmail,
+} from "../app/lib/auth.server";
 
 /** The subset of the DocumentAgent RPC surface handleRawMarkdown calls. */
 export interface MarkdownStub {
@@ -106,6 +114,100 @@ export function redirectHost(request: Request): Response | null {
       Location: targetUrl,
     },
   });
+}
+
+const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
+
+/** Dependencies handleAuth needs, injected from workers/app.ts. */
+export interface AuthDeps {
+  secret: string;
+  googleClientId: string;
+  /** Injectable for tests; production passes verifyGoogleIdToken. */
+  verifyGoogle: (
+    credential: string,
+    clientId: string,
+  ) => Promise<{ email: string; name: string; picture?: string } | null>;
+  upsertProfile: (
+    principal: string,
+    info: { displayName: string; avatar?: string },
+  ) => Promise<{ profile: { displayName: string; agentSlug: string | null } }>;
+  getProfile: (
+    principal: string,
+  ) => Promise<{ profile: { displayName: string; agentSlug: string | null } | null }>;
+}
+
+function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...headers },
+  });
+}
+
+/**
+ * `/auth/*` — Google sign-in sessions. Returns null for non-auth paths so
+ * the worker falls through. Sign-in is optional everywhere; these routes
+ * only mint and read the `vp_session` cookie.
+ */
+export async function handleAuth(request: Request, deps: AuthDeps): Promise<Response | null> {
+  const url = new URL(request.url);
+  if (!url.pathname.startsWith("/auth/")) return null;
+  const secure = url.protocol === "https:";
+
+  if (request.method === "GET" && url.pathname === "/auth/config") {
+    return json({ googleClientId: deps.googleClientId });
+  }
+
+  if (request.method === "GET" && url.pathname === "/auth/me") {
+    const session = await sessionFromRequest(request, deps.secret);
+    if (!session) return json({ signedIn: false });
+    const { profile } = await deps.getProfile(session.principal);
+    return json({
+      signedIn: true,
+      principal: session.principal,
+      email: session.email,
+      displayName: profile?.displayName ?? session.email,
+      agentSlug: profile?.agentSlug ?? null,
+    });
+  }
+
+  if (request.method === "POST" && url.pathname === "/auth/logout") {
+    return json({ ok: true }, 200, { "Set-Cookie": clearSessionCookieHeader(secure) });
+  }
+
+  if (request.method === "POST" && url.pathname === "/auth/google") {
+    if (!sameOrigin(request)) {
+      return json({ error: "cross-origin sign-in rejected" }, 403);
+    }
+    let credential: string | undefined;
+    try {
+      const body = (await request.json()) as { credential?: string };
+      credential = body.credential;
+    } catch {
+      return json({ error: "invalid body" }, 400);
+    }
+    if (!credential) return json({ error: "missing credential" }, 400);
+
+    const verified = await deps.verifyGoogle(credential, deps.googleClientId);
+    if (!verified) return json({ error: "invalid credential" }, 401);
+
+    const principal = principalFromEmail(verified.email);
+    const { profile } = await deps.upsertProfile(principal, {
+      displayName: verified.name || verified.email,
+      avatar: verified.picture,
+    });
+    const token = await mintSessionToken(
+      { principal, email: verified.email.toLowerCase() },
+      deps.secret,
+      SESSION_TTL_SECONDS,
+    );
+    return json(
+      { signedIn: true, principal, displayName: profile.displayName },
+      200,
+      { "Set-Cookie": sessionCookieHeader(token, SESSION_TTL_SECONDS, secure) },
+    );
+  }
+
+  return null;
 }
 
 /**

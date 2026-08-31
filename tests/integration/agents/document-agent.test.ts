@@ -16,7 +16,7 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import { DOCUMENT_TTL_MS, DOC_FORMAT_VERSION } from "~/shared/constants";
 import { YjsProvider } from "~/lib/yjs-provider";
 import { MAX_AGENTS_PER_DOC, type AgentCapability, type AgentIdentity } from "~/shared/agent-protocol";
-import { yDocToMarkdown } from "~/lib/y-markdown";
+import { yDocToMarkdown } from "~/shared/rich-markdown";
 
 /* ------------------------------------------------------------------ */
 /*  Mock Agent base class                                              */
@@ -493,17 +493,19 @@ describe("DocumentAgent", () => {
       cleanup(client);
     });
 
-    it("imports multiline content as separate paragraphs", async () => {
+    it("imports blank-line-separated content as separate blocks", async () => {
       await agent.onRequest(
         new Request("https://do/", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: "line one\nline two\nline three" }),
+          body: JSON.stringify({ content: "line one\n\nline two\n\n# line three" }),
         }),
       );
 
       const client = connectYjsClient();
-      expect(client.doc.getXmlFragment("default").length).toBe(3);
+      const frag = client.doc.getXmlFragment("default");
+      expect(frag.length).toBe(3);
+      expect((frag.get(2) as Y.XmlElement).nodeName).toBe("heading");
       cleanup(client);
     });
 
@@ -525,7 +527,9 @@ describe("DocumentAgent", () => {
       cleanup(client);
     });
 
-    it("returns 400 for unsupported CriticMarkup (substitution)", async () => {
+    it("imports CriticMarkup substitution as literal text", async () => {
+      // Substitution has no mark form; the markdown parser leaves its
+      // syntax in place as plain text rather than rejecting the import.
       const res = await agent.onRequest(
         new Request("https://do/", {
           method: "POST",
@@ -533,10 +537,16 @@ describe("DocumentAgent", () => {
           body: JSON.stringify({ content: "hello {~~old~>new~~}" }),
         }),
       );
-      expect(res.status).toBe(400);
-      const body = (await res.json()) as { ok: boolean; error: string };
-      expect(body.ok).toBe(false);
-      expect(body.error).toContain("Unsupported CriticMarkup");
+      expect(res.status).toBe(200);
+      const client = connectYjsClient();
+      const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
+      // The inner ~~…~~ pair reads as GFM strikethrough; the braces stay text.
+      expect((para.get(0) as Y.XmlText).toDelta()).toEqual([
+        { insert: "hello {" },
+        { insert: "old~>new", attributes: { strike: {} } },
+        { insert: "}" },
+      ]);
+      cleanup(client);
     });
 
     it("still creates doc even with malformed JSON body", async () => {
@@ -978,7 +988,7 @@ describe("DocumentAgent", () => {
       const { agent, id } = await setup();
       const r = await agent.agentRead(id);
       expect("markdown" in r && r.markdown).toBe("# Title\n\nBody.");
-      expect("blocks" in r && r.blocks[0].anchor).toMatch(/^b0-[0-9a-f]{8}$/);
+      expect("blocks" in r && r.blocks[0].anchor).toMatch(/^[a-z0-9]{8}-[0-9a-f]{8}$/);
     });
 
     it("exportMarkdown returns the document's markdown with no identity", async () => {
@@ -1006,7 +1016,7 @@ describe("DocumentAgent", () => {
     it("suggest lays critic marks", async () => {
       const { agent, id } = await setup(["suggest"]);
       const read = await agent.agentRead(id);
-      const anchor = ("blocks" in read ? read.blocks : [])[2].anchor;   // "Body."
+      const anchor = ("blocks" in read ? read.blocks : [])[1].anchor;   // "Body."
       await agent.agentSuggest(id, { anchor, find: "Body.", replacement: "Better body." });
       const after = await agent.agentRead(id);
       expect("markdown" in after && after.markdown).toContain("{--Body.--}{++Better body.++}");
@@ -1037,15 +1047,15 @@ describe("DocumentAgent", () => {
       // content hash. resolveAnchor's nearest-index heuristic then lets us
       // pick out either occurrence by fabricating an anchor whose *stated*
       // index is far from one occurrence and close to the other.
-      await agent.agentInsert(id, { where: "append", markdown: "Same\nOther\nSame\nEnd" });
+      await agent.agentInsert(id, { where: "append", markdown: "Same\n\nOther\n\nSame\n\nEnd" });
 
       const before = await agent.agentRead(id);
       const beforeMarkdown = "markdown" in before ? before.markdown : "";
       const blocks = "blocks" in before ? before.blocks : [];
       const sameBlocks = blocks.filter((b) => b.text === "Same");
-      expect(sameBlocks).toHaveLength(2); // real indices 3 and 5
+      expect(sameBlocks).toHaveLength(2); // real indices 2 and 4
 
-      const hash = sameBlocks[0].anchor.split("-")[1];
+      const hash = sameBlocks[0].anchor.split("-").pop()!;
       // "from" resolves to the later occurrence (nearest to stated index 100).
       const fromAnchor = `b100-${hash}`;
       // "to" resolves to the earlier occurrence (nearest to stated index 0).
@@ -1115,16 +1125,16 @@ describe("DocumentAgent", () => {
         // elapse.
         const beforeAnyTick = await agent.agentRead(id);
         const blocksBefore = "blocks" in beforeAnyTick ? beforeAnyTick.blocks : [];
-        expect(blocksBefore[3]?.text ?? "").toBe("");
+        expect(blocksBefore[2]?.text ?? "").toBe("");
 
-        // Advance past at least the first tick (minimum natural-pace delay
-        // is 30ms), but nowhere near enough for the fastest possible full
-        // typing (78 chars / 6 chars-per-tick max * 30ms-per-tick min =
-        // 390ms) — so this is genuinely partial, not a fluke of timing.
-        await vi.advanceTimersByTimeAsync(100);
+        // Advance past at least the first tick (maximum natural-pace delay
+        // is 320ms), but nowhere near enough for the fastest possible full
+        // typing (78 chars / 4 chars-per-tick max * 180ms-per-tick min =
+        // 3510ms) — so this is genuinely partial, not a fluke of timing.
+        await vi.advanceTimersByTimeAsync(400);
 
         const afterFirstTick = await agent.agentRead(id);
-        const partialBlock = ("blocks" in afterFirstTick ? afterFirstTick.blocks : [])[3];
+        const partialBlock = ("blocks" in afterFirstTick ? afterFirstTick.blocks : [])[2];
         const partialLength = partialBlock?.text.length ?? 0;
         expect(partialLength).toBeGreaterThan(0);
         expect(partialLength).toBeLessThan(fullText.length);
@@ -1306,8 +1316,13 @@ describe("DocumentAgent", () => {
     /*  Unsupported markup: errors as values, never a throw              */
     /* ================================================================ */
 
-    describe("unsupported markup", () => {
-      /** CriticMarkup substitution — the one syntax the mark model can't hold. */
+    describe("substitution markup", () => {
+      /**
+       * CriticMarkup substitution has no mark form. The markdown parser
+       * leaves its syntax in place as literal text — mutations succeed and
+       * the syntax reads back verbatim (unsupported_markup remains only as
+       * the parser-failure backstop).
+       */
       const SUBSTITUTION = "A {~~old~>new~~} B";
 
       /**
@@ -1326,9 +1341,8 @@ describe("DocumentAgent", () => {
         vi.useRealTimers();
       });
 
-      it("agentInsert returns unsupported_markup and leaves the document untouched", async () => {
+      it("agentInsert imports substitution syntax as literal text", async () => {
         const { agent, id } = await setup(["write"]);
-        const before = await agent.agentRead(id);
 
         const result = await agent.agentInsert(id, {
           where: "append",
@@ -1336,19 +1350,14 @@ describe("DocumentAgent", () => {
           pace: "instant",
         });
 
-        expect(result).toMatchObject({
-          error: { code: "unsupported_markup", message: expect.stringContaining("substitution") },
-        });
+        expect(result).toEqual({ ok: true });
         const after = await agent.agentRead(id);
-        expect("markdown" in after && after.markdown).toBe(
-          "markdown" in before ? before.markdown : "",
-        );
+        expect("markdown" in after && after.markdown).toContain("{~~old\\~>new~~}");
       });
 
-      it("agentReplace returns unsupported_markup without deleting the blocks it would replace", async () => {
+      it("agentReplace with substitution text keeps the document consistent", async () => {
         const { agent, id } = await setup(["write"]);
         const before = await agent.agentRead(id);
-        const beforeMarkdown = "markdown" in before ? before.markdown : "";
         const anchor = ("blocks" in before ? before.blocks : [])[0].anchor;
 
         const result = await agent.agentReplace(id, {
@@ -1357,29 +1366,13 @@ describe("DocumentAgent", () => {
           pace: "instant",
         });
 
-        expect(result).toMatchObject({ error: { code: "unsupported_markup" } });
-        // The data-loss case: deleteBlocks and insertMarkdownBlocks used to
-        // share one transaction, and Yjs cannot roll a transaction back, so
-        // a parse failure between them committed the delete.
+        expect(result).toEqual({ ok: true });
         const after = await agent.agentRead(id);
-        expect("markdown" in after && after.markdown).toBe(beforeMarkdown);
+        expect("markdown" in after && after.markdown).toContain("{~~old\\~>new~~}");
+        expect("markdown" in after && after.markdown).toContain("Body.");
       });
 
-      it("rejects unsupported markup at any pace, without queueing it", async () => {
-        const { agent, id } = await setup(["write"]);
-        createConnection();
-
-        const result = await agent.agentInsert(id, {
-          where: "append",
-          markdown: SUBSTITUTION,
-          pace: "natural",
-        });
-
-        expect(result).toMatchObject({ error: { code: "unsupported_markup" } });
-        expect(mockTables.get("performances") ?? []).toEqual([]);
-      });
-
-      it("drains the queue past a queued mutation with unsupported markup", async () => {
+      it("types a queued substitution as literal text and drains the queue", async () => {
         vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
         const { agent, id } = await setup(["write"]);
         createConnection();
@@ -1400,7 +1393,7 @@ describe("DocumentAgent", () => {
         const after = await agent.agentRead(id);
         const markdown = "markdown" in after ? after.markdown : "";
         expect(markdown).toContain("Good text.");
-        expect(markdown).not.toContain("~>");
+        expect(markdown).toContain("old\\~>new");
         expect(asQueue(agent).isPerforming).toBe(false);
         expect(mockTables.get("performances") ?? []).toEqual([]);
       });

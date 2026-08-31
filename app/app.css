@@ -321,100 +321,6 @@ body {
   background-color: rgb(255 255 255 / 35%);
 }
 
-/* Markdown decoration classes */
-.md-bold {
-  font-weight: 700;
-}
-
-.md-italic {
-  font-style: italic;
-}
-
-.md-code {
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-  background-color: var(--color-border);
-  padding: 0.1em 0.25em;
-  border-radius: 2px;
-}
-
-.tiptap p.md-code-block {
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-  background-color: var(--color-border);
-  max-width: none;
-  padding: 0 1em;
-}
-
-.tiptap p.md-code-block-open {
-  padding-top: 0.5em;
-}
-
-.tiptap p.md-code-block-close {
-  padding-bottom: 0.5em;
-}
-
-/* Syntax highlighting tokens (sugar-high) */
-.sh-keyword { color: #8b5cf6; }
-.sh-string { color: #16a34a; }
-.sh-comment { color: var(--color-muted); font-style: italic; }
-.sh-class { color: #0891b2; }
-.sh-property { color: #2563eb; }
-.sh-entity { color: #c026d3; }
-.sh-jsxliterals { color: #0891b2; }
-.sh-sign { color: var(--color-muted); }
-
-.md-strikethrough {
-  text-decoration: line-through;
-}
-
-.md-delimiter {
-  opacity: 0.35;
-}
-
-.md-heading-delimiter {
-  opacity: 0.35;
-}
-
-.md-heading {
-  font-weight: 600;
-}
-
-.md-heading-1 {
-  font-size: 1.75em;
-  line-height: 1.3;
-}
-
-.md-heading-2 {
-  font-size: 1.4em;
-  line-height: 1.3;
-}
-
-.md-heading-3 {
-  font-size: 1.15em;
-  line-height: 1.3;
-}
-
-.md-link-text {
-  color: #2563eb;
-}
-
-.md-link-url {
-  color: var(--color-muted);
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.md-hr {
-  opacity: 0.35;
-}
-
-/* CriticMarkup delimiter tokens (widget decorations around mark ranges) */
-.cm-delimiter {
-  opacity: 0.35;
-  font-size: 0.85em;
-}
-
 /* CriticMarkup mark styles (rendered as <span> elements by TipTap marks) */
 .cm-addition {
   color: #22c55e;
@@ -478,18 +384,14 @@ body {
   display: none;
 }
 
-/* Clean view: hide delimiters and comment text only */
-.clean-view .cm-delimiter {
-  display: none;
-}
-
-.clean-view .cm-comment {
+/* Comment text is data for the thread rail, not document prose — always
+   hidden inline; its point marker stays as the click target. */
+.tiptap .cm-comment {
   font-size: 0;
   border-bottom: none;
 }
 
-/* Keep point markers visible inside hidden comment spans */
-.clean-view .cm-comment .cm-point-marker {
+.tiptap .cm-comment .cm-point-marker {
   font-size: 1rem;
 }
 
@@ -504,95 +406,6 @@ body {
   background-color: color-mix(in srgb, #3b82f6 20%, transparent);
 }
 
-/* Preview styles */
-.preview {
-  max-width: 65ch;
-  padding: 1.5rem;
-  font-family: var(--font-serif);
-  font-size: 1.15rem;
-  line-height: 1.7;
-  color: var(--color-ink);
-}
-
-.preview h1,
-.preview h2,
-.preview h3,
-.preview h4,
-.preview h5,
-.preview h6 {
-  margin-top: 1.5em;
-  margin-bottom: 0.5em;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.preview h1 { font-size: 2em; }
-.preview h2 { font-size: 1.5em; }
-.preview h3 { font-size: 1.25em; }
-
-.preview p {
-  margin: 0.75em 0;
-}
-
-.preview code {
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-  background-color: var(--color-border);
-  padding: 0.1em 0.3em;
-  border-radius: 2px;
-}
-
-.preview pre {
-  background-color: var(--color-border);
-  padding: 1em;
-  overflow-x: auto;
-  margin: 1em 0;
-}
-
-.preview pre code {
-  background: none;
-  padding: 0;
-}
-
-.preview blockquote {
-  border-left: 3px solid var(--color-border);
-  padding-left: 1em;
-  color: var(--color-muted);
-  margin: 1em 0;
-}
-
-.preview ul {
-  list-style-type: disc;
-  padding-left: 1.5em;
-  margin: 0.75em 0;
-}
-
-.preview ol {
-  list-style-type: decimal;
-  padding-left: 1.5em;
-  margin: 0.75em 0;
-}
-
-.preview a {
-  color: #2563eb;
-  text-decoration: underline;
-}
-
-/* CriticMarkup in rendered preview (same colors as editor marks) */
-.preview .cm-addition {
-  color: #22c55e;
-}
-
-.preview .cm-deletion {
-  color: #ef4444;
-  text-decoration: line-through;
-}
-
-.preview .cm-comment,
-.preview .cm-highlight {
-  border-bottom: 3px solid var(--color-canary, #ffe014);
-}
-
 /* Dark theme — explicit dark mode */
 [data-theme="dark"] {
   --color-ink: #e5e5e5;
@@ -604,16 +417,8 @@ body {
   color-scheme: dark;
 }
 
-[data-theme="dark"] .md-link-text { color: #60a5fa; }
 [data-theme="dark"] .cm-addition { color: #4ade80; }
 [data-theme="dark"] .cm-deletion { color: #f87171; }
-[data-theme="dark"] .preview a { color: #60a5fa; }
-[data-theme="dark"] .sh-keyword { color: #a78bfa; }
-[data-theme="dark"] .sh-string { color: #4ade80; }
-[data-theme="dark"] .sh-class { color: #22d3ee; }
-[data-theme="dark"] .sh-property { color: #60a5fa; }
-[data-theme="dark"] .sh-entity { color: #e879f9; }
-[data-theme="dark"] .sh-jsxliterals { color: #22d3ee; }
 
 /* Dark theme — auto mode follows system preference */
 @media (prefers-color-scheme: dark) {
@@ -627,16 +432,8 @@ body {
     color-scheme: dark;
   }
 
-  [data-theme="auto"] .md-link-text { color: #60a5fa; }
   [data-theme="auto"] .cm-addition { color: #4ade80; }
   [data-theme="auto"] .cm-deletion { color: #f87171; }
-  [data-theme="auto"] .preview a { color: #60a5fa; }
-  [data-theme="auto"] .sh-keyword { color: #a78bfa; }
-  [data-theme="auto"] .sh-string { color: #4ade80; }
-  [data-theme="auto"] .sh-class { color: #22d3ee; }
-  [data-theme="auto"] .sh-property { color: #60a5fa; }
-  [data-theme="auto"] .sh-entity { color: #e879f9; }
-  [data-theme="auto"] .sh-jsxliterals { color: #22d3ee; }
 }
 
 /* Onboarding marquee button */

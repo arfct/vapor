@@ -18,6 +18,8 @@ export interface BlockAnchor {
 }
 
 export interface DocBlock extends BlockAnchor {
+  /** Persistent block id (null only on pre-block-id documents). */
+  id: string | null;
   text: string;            // markdown w/ critic delimiters
 }
 
@@ -46,6 +48,8 @@ export interface AgentError {
 
 export type AgentErrorCode =
   | "stale_anchor"
+  /** Anchor's block id exists but its content hash is out of date. */
+  | "stale_block"
   | "capability_denied"
   | "invalid_token"
   | "doc_not_found"

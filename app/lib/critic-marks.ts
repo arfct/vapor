@@ -59,20 +59,13 @@ export const CriticHighlight = Mark.create({
   },
 });
 
-/* ---------- Delimiter decorations ---------- */
+/* ---------- Point-comment markers ---------- */
 
 interface MarkRun {
   from: number;
   to: number;
   markName: string;
 }
-
-const DELIMITERS: Record<string, [string, string]> = {
-  criticAddition: ["{++", "++}"],
-  criticDeletion: ["{--", "--}"],
-  criticComment: ["{>>", "<<}"],
-  criticHighlight: ["{==", "==}"],
-};
 
 function findMarkRuns(doc: ProseMirrorNode): MarkRun[] {
   const runs: MarkRun[] = [];
@@ -116,14 +109,21 @@ function findMarkRuns(doc: ProseMirrorNode): MarkRun[] {
   return runs;
 }
 
-const criticDelimiterKey = new PluginKey("criticDelimiters");
+const criticMarkerKey = new PluginKey("criticPointMarkers");
 
-export const CriticDelimiters = Extension.create({
-  name: "criticDelimiters",
+/**
+ * Widget markers for point comments (a criticComment run not preceded by a
+ * criticHighlight). Comment text itself is visually hidden (see app.css) —
+ * the marker is the click target that opens the thread. WYSIWYG rendering
+ * has no delimiter decorations: suggestions and highlights read through
+ * their mark styling alone.
+ */
+export const CriticPointMarkers = Extension.create({
+  name: "criticPointMarkers",
   addProseMirrorPlugins() {
     return [
       new Plugin({
-        key: criticDelimiterKey,
+        key: criticMarkerKey,
         props: {
           decorations(state) {
             const runs = findMarkRuns(state.doc);
@@ -132,55 +132,22 @@ export const CriticDelimiters = Extension.create({
             const decorations: Decoration[] = [];
             for (let i = 0; i < runs.length; i++) {
               const run = runs[i];
-              const delims = DELIMITERS[run.markName];
-              if (!delims) continue;
-              const [open, close] = delims;
-
+              if (run.markName !== "criticComment") continue;
+              const prev = i > 0 ? runs[i - 1] : null;
+              const isPaired = prev?.markName === "criticHighlight" && prev.to === run.from;
+              if (isPaired) continue;
               decorations.push(
                 Decoration.widget(
                   run.from,
                   () => {
                     const el = document.createElement("span");
-                    el.className = "cm-delimiter";
-                    el.textContent = open;
+                    el.className = "cm-point-marker";
+                    el.setAttribute("aria-label", "Comment");
                     return el;
                   },
-                  { side: 1 },
+                  { side: 0 },
                 ),
               );
-              decorations.push(
-                Decoration.widget(
-                  run.to,
-                  () => {
-                    const el = document.createElement("span");
-                    el.className = "cm-delimiter";
-                    el.textContent = close;
-                    return el;
-                  },
-                  { side: -1 },
-                ),
-              );
-
-              // Point comment marker: a criticComment not preceded by a criticHighlight
-              if (run.markName === "criticComment") {
-                const prev = i > 0 ? runs[i - 1] : null;
-                const isPaired =
-                  prev?.markName === "criticHighlight" && prev.to === run.from;
-                if (!isPaired) {
-                  decorations.push(
-                    Decoration.widget(
-                      run.from,
-                      () => {
-                        const el = document.createElement("span");
-                        el.className = "cm-point-marker";
-                        el.setAttribute("aria-label", "Comment");
-                        return el;
-                      },
-                      { side: 0 },
-                    ),
-                  );
-                }
-              }
             }
 
             return DecorationSet.create(state.doc, decorations);

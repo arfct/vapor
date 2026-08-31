@@ -1,29 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from "vitest";
 import { createElement } from "react";
-import { fireEvent } from "@testing-library/react";
 import { renderWithDocument } from "../../helpers/document-context";
-import CleanViewToggle from "~/components/CleanViewToggle";
 import ShareButton from "~/components/ShareButton";
 import ConnectionStatus from "~/components/ConnectionStatus";
 import Preview from "~/components/Preview";
-
-describe("CleanViewToggle", () => {
-  it("renders checkbox reflecting cleanView state", () => {
-    const { getByText } = renderWithDocument(createElement(CleanViewToggle), {
-      context: { cleanView: true },
-    });
-    expect(getByText("Show editing markup")).toBeTruthy();
-  });
-
-  it("toggle calls toggleCleanView", () => {
-    const { contextValue, getByRole } = renderWithDocument(
-      createElement(CleanViewToggle),
-    );
-    fireEvent.click(getByRole("checkbox"));
-    expect(contextValue.toggleCleanView).toHaveBeenCalledOnce();
-  });
-});
 
 describe("ShareButton", () => {
   it("renders share trigger button", () => {
@@ -40,10 +21,11 @@ describe("ConnectionStatus", () => {
 });
 
 describe("Preview", () => {
-  it("renders markdown as HTML", () => {
-    const { container } = renderWithDocument(createElement(Preview), {
-      context: { markdown: "Hello world" },
+  it("shows the document's markdown source", () => {
+    const { container, getByText } = renderWithDocument(createElement(Preview), {
+      context: { markdown: "# Hello world" },
     });
-    expect(container.querySelector(".preview")).toBeTruthy();
+    expect(container.querySelector("pre")).toBeTruthy();
+    expect(getByText("# Hello world")).toBeTruthy();
   });
 });

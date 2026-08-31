@@ -1,30 +1,16 @@
-import { useMemo } from "react";
-import { marked } from "marked";
-import DOMPurify from "dompurify";
 import { useDocument } from "~/lib/DocumentContext";
 
-/** Replace CriticMarkup delimiters with styled HTML spans before markdown rendering */
-function renderCriticMarkup(text: string): string {
-  return text
-    .replace(/\{--(.+?)--\}/g, '<span class="cm-deletion">$1</span>')
-    .replace(/\{\+\+(.+?)\+\+\}/g, '<span class="cm-addition">$1</span>')
-    .replace(/\{>>(.+?)<<\}/g, '')
-    .replace(/\{==(.+?)==\}/g, '<span class="cm-highlight">$1</span>');
-}
-
+/**
+ * The Markdown source view — the inverse of the old rendered preview: the
+ * editor is now the rendered view, so this shows the document's canonical
+ * markdown serialization, read-only.
+ */
 export default function Preview() {
   const { markdown } = useDocument();
 
-  const html = useMemo(() => {
-    const withCritic = renderCriticMarkup(markdown);
-    const raw = marked.parse(withCritic, { async: false }) as string;
-    return DOMPurify.sanitize(raw);
-  }, [markdown]);
-
   return (
-    <div
-      className="preview font-serif"
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <pre className="max-w-[80ch] overflow-x-auto whitespace-pre-wrap p-6 font-mono text-sm leading-relaxed text-ink">
+      {markdown}
+    </pre>
   );
 }

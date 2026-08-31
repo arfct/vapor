@@ -55,8 +55,6 @@ export function createMockDocumentContext(
     showPreview: false,
     togglePreview: vi.fn(),
     setPreviewHeld: vi.fn(),
-    cleanView: true,
-    toggleCleanView: vi.fn(),
     commentActive: false,
     commentSelection: null,
     commentHighlight: null,

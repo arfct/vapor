@@ -9,7 +9,6 @@ import { MSG_SYNC, MSG_AWARENESS, DOCUMENT_TTL_MS, DOC_FORMAT_VERSION, USER_COLO
 import type { AgentIdentity, AgentCapability, AgentRosterEntry, AgentError, Pace } from "../app/shared/agent-protocol";
 import {
   AGENT_NAME_RE,
-  formatAnchor,
   findMentions,
   MAX_AGENTS_PER_DOC,
   RATE_LIMIT_MUTATIONS_PER_MIN,
@@ -22,8 +21,10 @@ import {
   buildMarkdownBlocks,
   insertBlockNodes,
   deleteBlocks,
-} from "../app/lib/y-markdown";
-import { parseCriticMarkupToContent, tryParseCriticMarkup } from "../app/lib/critic-parser";
+  formatAnchor,
+  parseMarkdown,
+  buildTypedBlock,
+} from "../app/shared/rich-markdown";
 import { chunkTyping } from "../app/lib/performance-chunks";
 import { encodeAgentAwareness, agentClientId, type AgentPresenceState } from "../app/lib/agent-awareness";
 import type { ThreadData, ThreadReply } from "../app/shared/types";
@@ -48,6 +49,33 @@ const AGENT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
  */
 function sqlBlob(data: Uint8Array): string {
   return data as unknown as string;
+}
+
+/**
+ * All Y.XmlText descendants of a block element, in document order — rich
+ * blocks (lists, quotes) nest their text inside child elements. A suggest's
+ * `find` must land inside a single text node; matches that span nodes are
+ * treated as not found.
+ */
+function textNodesUnder(el: Y.XmlElement): Y.XmlText[] {
+  const out: Y.XmlText[] = [];
+  for (const child of el.toArray()) {
+    if (child instanceof Y.XmlText) out.push(child);
+    else if (child instanceof Y.XmlElement) out.push(...textNodesUnder(child));
+  }
+  return out;
+}
+
+function findInBlock(
+  el: Y.XmlElement,
+  find: string,
+): { ytext: Y.XmlText; pos: number } | null {
+  for (const ytext of textNodesUnder(el)) {
+    const text = (ytext.toDelta() as { insert: string }[]).map((op) => op.insert).join("");
+    const pos = text.indexOf(find);
+    if (pos !== -1) return { ytext, pos };
+  }
+  return null;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -490,28 +518,29 @@ class DocumentAgent extends Agent {
       if (contentType.includes("application/json")) {
         try {
           const body = await request.json() as { content?: string; threads?: unknown[]; onboarding?: boolean };
+
+          // Parse before the transaction: Yjs cannot roll back, and a parse
+          // failure must not commit a half-imported document.
+          let importNodes: Y.XmlElement[] | null = null;
+          if (body.content) {
+            const built = buildMarkdownBlocks(body.content);
+            if (!built.ok) {
+              return new Response(JSON.stringify({ ok: false, error: built.message }), {
+                status: 400,
+                headers: { "Content-Type": "application/json" },
+              });
+            }
+            importNodes = built.nodes;
+          }
+
           // Tagged "agent" (system import, not a live edit) so it doesn't
           // register as a human edit for mention/doc_changed/thread_reply
           // detection — see the frag/threads observers in ensureInitialised.
           doc.transact(() => {
-            if (body.content) {
-              // Parse CriticMarkup and apply as marks on XmlText
+            if (importNodes) {
               const frag = doc.getXmlFragment("default");
               if (frag.length === 0) {
-                const lines = body.content.split("\n");
-                for (const line of lines) {
-                  const { cleanText, marks } = parseCriticMarkupToContent(line);
-                  const para = new Y.XmlElement("paragraph");
-                  const ytext = new Y.XmlText(cleanText);
-                  // Apply marks via Yjs formatting attributes
-                  for (const mark of marks) {
-                    const attrs: Record<string, Record<string, unknown>> = {};
-                    attrs[mark.type] = mark.attrs ?? {};
-                    ytext.format(mark.from, mark.to - mark.from, attrs);
-                  }
-                  para.insert(0, [ytext]);
-                  frag.insert(frag.length, [para]);
-                }
+                frag.insert(0, importNodes);
               }
             }
             if (body.threads && Array.isArray(body.threads)) {
@@ -528,15 +557,8 @@ class DocumentAgent extends Agent {
               docState.set("onboarding", "true");
             }
           }, "agent");
-        } catch (err) {
-          // If it's an unsupported CriticMarkup error, return it
-          if (err instanceof Error && err.message.includes("Unsupported CriticMarkup")) {
-            return new Response(JSON.stringify({ ok: false, error: err.message }), {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
-          // Ignore other malformed JSON — document is still created
+        } catch {
+          // Ignore malformed JSON — document is still created
         }
       }
 
@@ -677,10 +699,15 @@ class DocumentAgent extends Agent {
    */
   private findBlockTextForXmlText(ytext: Y.XmlText): string | null {
     if (!this.doc) return null;
-    const parent = ytext.parent;
-    if (!(parent instanceof Y.XmlElement)) return null;
     const frag = this.doc.getXmlFragment("default");
-    const index = frag.toArray().indexOf(parent);
+    // Climb to the top-level block containing this text node — rich blocks
+    // (lists, quotes) nest text several elements deep.
+    let node: unknown = ytext;
+    while (node && (node as { parent: unknown }).parent !== frag) {
+      node = (node as { parent: unknown }).parent;
+    }
+    if (!(node instanceof Y.XmlElement)) return null;
+    const index = frag.toArray().indexOf(node);
     if (index === -1) return null;
     return getBlocks(this.doc)[index]?.text ?? null;
   }
@@ -1238,11 +1265,11 @@ class DocumentAgent extends Agent {
     pace: Pace | undefined,
     mutation: MutationPayload,
   ): { ok: true } | { error: AgentError } {
-    // Reject markdown the mark model can't represent here, before the
+    // Reject markdown the schema can't represent here, before the
     // instant/queued fork: an agent gets the same typed error whatever its
     // pace, and nothing unparseable is ever persisted to `performances`.
     if (mutation.kind === "insert" || mutation.kind === "replace") {
-      const parsed = tryParseCriticMarkup(mutation.markdown);
+      const parsed = parseMarkdown(mutation.markdown);
       if (!parsed.ok) {
         return { error: { code: "unsupported_markup", message: parsed.message } };
       }
@@ -1385,7 +1412,7 @@ class DocumentAgent extends Agent {
 
     let index: number;
     if (mutation.where === "append") {
-      index = getBlocks(doc).length;
+      index = doc.getXmlFragment("default").length;
     } else {
       if (!mutation.anchor) {
         this.deletePerformanceRow(item.id);
@@ -1399,62 +1426,69 @@ class DocumentAgent extends Agent {
       index = mutation.where === "before" ? resolved.index : resolved.index + 1;
     }
 
-    if (mutation.markdown.includes("\n")) {
-      const built = buildMarkdownBlocks(mutation.markdown);
-      if (!built.ok) {
-        // Unreachable via the RPCs (dispatchMutation validates before
-        // queueing) — this is the poisoned-row backstop.
-        console.warn(`Dropping queued insert with unsupported markup: ${built.message}`);
-        this.deletePerformanceRow(item.id);
-        return;
-      }
-      doc.transact(() => insertBlockNodes(doc, index, built.nodes), "agent");
-      this.deletePerformanceRow(item.id);
-      return;
-    }
-
-    const parsed = tryParseCriticMarkup(mutation.markdown);
+    const parsed = parseMarkdown(mutation.markdown);
     if (!parsed.ok) {
+      // Unreachable via the RPCs (dispatchMutation validates before
+      // queueing) — this is the poisoned-row backstop.
       console.warn(`Dropping queued insert with unsupported markup: ${parsed.message}`);
       this.deletePerformanceRow(item.id);
       return;
     }
-    const { cleanText, marks } = parsed;
-    const ticks = chunkTyping(cleanText, pace);
 
-    // Claim the slot now, synchronously — see the doc comment above.
-    const el = new Y.XmlElement("paragraph");
-    const ytext = new Y.XmlText("");
-    el.insert(0, [ytext]);
-    doc.transact(() => doc.getXmlFragment("default").insert(index, [el]), "agent");
-    this.deletePerformanceRow(item.id);
+    // Type block by block. Each block's skeleton (structure with empty text
+    // nodes) is inserted synchronously — claiming its slot before any await
+    // can let a concurrent mutation shift indices — and its text is then
+    // typed run by run WITH the run's formatting attributes, so styled text
+    // styles as it appears. The `performances` row is deleted at the first
+    // claim (eviction from then on loses only the untyped tail; see the
+    // original doc comment above).
+    const frag = doc.getXmlFragment("default");
+    let rowDeleted = false;
+    let prevElement: Y.XmlElement | null = null;
 
-    let typed = 0;
-    let relPos = Y.createRelativePositionFromTypeIndex(ytext, 0);
-    for (const tick of ticks) {
-      await sleep(tick.delayMs);
-      const { doc: liveDoc } = this.ensureInitialised();
-      const absPos = Y.createAbsolutePositionFromRelativePosition(relPos, liveDoc);
-      if (!absPos || absPos.type !== ytext) {
-        // The paragraph (or its text) is gone — nothing sane left to type into.
-        return;
+    for (let b = 0; b < parsed.doc.childCount; b++) {
+      const { element, fills } = buildTypedBlock(parsed.doc.child(b));
+
+      // Re-derive the insertion point from the previous typed block: its
+      // index is only trustworthy while we haven't yielded.
+      let insertAt: number;
+      if (prevElement) {
+        const prevIndex = frag.toArray().indexOf(prevElement);
+        if (prevIndex === -1) return; // our earlier work was deleted — stop
+        insertAt = prevIndex + 1;
+      } else {
+        insertAt = Math.min(index, frag.length);
       }
-      doc.transact(() => ytext.insert(absPos.index, tick.chunk), "agent");
-      typed += tick.chunk.length;
-      const caretOffset = absPos.index + tick.chunk.length;
-      relPos = Y.createRelativePositionFromTypeIndex(ytext, caretOffset);
-      this.onPerformanceCursor(item.agentName, ytext, caretOffset);
-    }
 
-    // Only apply the original CriticMarkup marks if the full text landed
-    // undisturbed — if typing was cut short above, mark offsets computed
-    // against the original text no longer mean anything.
-    if (marks.length > 0 && typed === cleanText.length) {
-      doc.transact(() => {
-        for (const mark of marks) {
-          ytext.format(mark.from, mark.to - mark.from, { [mark.type]: mark.attrs ?? {} });
+      doc.transact(() => frag.insert(insertAt, [element]), "agent");
+      if (!rowDeleted) {
+        this.deletePerformanceRow(item.id);
+        rowDeleted = true;
+      }
+      prevElement = element;
+
+      for (const fill of fills) {
+        let relPos = Y.createRelativePositionFromTypeIndex(fill.ytext, 0);
+        for (const run of fill.runs) {
+          const ticks = chunkTyping(run.text, pace);
+          for (const tick of ticks) {
+            await sleep(tick.delayMs);
+            const { doc: liveDoc } = this.ensureInitialised();
+            const absPos = Y.createAbsolutePositionFromRelativePosition(relPos, liveDoc);
+            if (!absPos || absPos.type !== fill.ytext) {
+              // The block (or its text) is gone — nothing sane left to type into.
+              return;
+            }
+            doc.transact(
+              () => fill.ytext.insert(absPos.index, tick.chunk, run.attrs as Record<string, unknown>),
+              "agent",
+            );
+            const caretOffset = absPos.index + tick.chunk.length;
+            relPos = Y.createRelativePositionFromTypeIndex(fill.ytext, caretOffset);
+            this.onPerformanceCursor(item.agentName, fill.ytext, caretOffset);
+          }
         }
-      }, "agent");
+      }
     }
   }
 
@@ -1484,20 +1518,12 @@ class DocumentAgent extends Agent {
 
     const frag = doc.getXmlFragment("default");
     const el = frag.get(resolved.index);
-    const ytext = el instanceof Y.XmlElement
-      ? el.toArray().find((child): child is Y.XmlText => child instanceof Y.XmlText)
-      : undefined;
-    if (!ytext) {
+    const match = el instanceof Y.XmlElement ? findInBlock(el, mutation.find) : null;
+    if (!match) {
       this.deletePerformanceRow(item.id);
       return;
     }
-
-    const cleanText = (ytext.toDelta() as { insert: string }[]).map((op) => op.insert).join("");
-    const pos = cleanText.indexOf(mutation.find);
-    if (pos === -1) {
-      this.deletePerformanceRow(item.id);
-      return;
-    }
+    const { ytext, pos } = match;
 
     // Claim the slot now, synchronously — see the doc comment above.
     doc.transact(() => ytext.format(pos, mutation.find.length, { criticDeletion: {} }), "agent");
@@ -1573,7 +1599,7 @@ class DocumentAgent extends Agent {
       case "insert": {
         let index: number;
         if (m.where === "append") {
-          index = getBlocks(doc).length;
+          index = doc.getXmlFragment("default").length;
         } else {
           if (!m.anchor) {
             return {
@@ -1652,26 +1678,17 @@ class DocumentAgent extends Agent {
 
         const frag = doc.getXmlFragment("default");
         const el = frag.get(resolved.index);
-        const ytext = el instanceof Y.XmlElement
-          ? el.toArray().find((child): child is Y.XmlText => child instanceof Y.XmlText)
-          : undefined;
-
         const block = getBlocks(doc)[resolved.index];
-        if (!ytext) {
-          return { error: { code: "find_not_matched", message: "Block has no text", snippet: block?.text ?? "" } };
-        }
-
-        const cleanText = (ytext.toDelta() as { insert: string }[]).map((op) => op.insert).join("");
-        const pos = cleanText.indexOf(m.find);
-        if (pos === -1) {
+        const match = el instanceof Y.XmlElement ? findInBlock(el, m.find) : null;
+        if (!match) {
           return {
-            error: { code: "find_not_matched", message: "Could not find text to suggest a change on", snippet: block.text },
+            error: { code: "find_not_matched", message: "Could not find text to suggest a change on", snippet: block?.text ?? "" },
           };
         }
 
         doc.transact(() => {
-          ytext.format(pos, m.find.length, { criticDeletion: {} });
-          ytext.insert(pos + m.find.length, m.replacement, { criticAddition: {} });
+          match.ytext.format(match.pos, m.find.length, { criticDeletion: {} });
+          match.ytext.insert(match.pos + m.find.length, m.replacement, { criticAddition: {} });
         }, "agent");
 
         return { ok: true };

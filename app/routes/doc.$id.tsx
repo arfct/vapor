@@ -13,7 +13,6 @@ import ShareButton from "~/components/ShareButton";
 import AgentsPanel from "~/components/AgentsPanel";
 import ModeMenu from "~/components/ModeMenu";
 import HeaderMenu from "~/components/HeaderMenu";
-import CleanViewToggle from "~/components/CleanViewToggle";
 import CommentInput from "~/components/CommentInput";
 import ThreadList from "~/components/ThreadList";
 import MobilePanel from "~/components/MobilePanel";
@@ -79,11 +78,9 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
     handleCommentClick,
     commentHighlight,
     activeCommentRange,
-    cleanView,
     openCommentInput,
     handleResolveAtCursor,
     handleDeleteAtCursor,
-    mode,
   } = useDocument();
   const [agentsOpen, setAgentsOpen] = useState(false);
 
@@ -124,7 +121,6 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
             onCommentClick={handleCommentClick}
             commentHighlight={commentHighlight}
             activeCommentRange={activeCommentRange}
-            cleanView={cleanView}
             onNewComment={openCommentInput}
             onResolveAtCursor={handleResolveAtCursor}
             onDeleteAtCursor={handleDeleteAtCursor}
@@ -134,7 +130,6 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
         <aside className="hidden w-96 flex-col overflow-hidden lg:flex">
           <div className="flex-1 overflow-y-auto">
             <OnboardingBanner />
-            {mode === "suggest" && <CleanViewToggle />}
             <CommentInput />
             <ThreadList />
           </div>

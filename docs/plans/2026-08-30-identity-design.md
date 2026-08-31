@@ -45,10 +45,20 @@ Reserved-slug list gains `auth`, `oauth`, `.well-known` (already covered), `sett
 
 Identity is the default; anonymity is the explicitly chosen door:
 
-- **`/mcp`** — the primary endpoint, now credential-bearing. Accepts either an OAuth access token (identity path) or an existing per-doc `vpr_` bearer token (Invite-agent flow, unchanged — a request carrying any credential is never challenged). A request with **no** credential gets `401` + `WWW-Authenticate` with the resource-metadata URL — which is exactly what makes Claude Code and claude.ai run the browser consent flow automatically. Adding `https://vapor.fyi/mcp` now means signing in.
+- **`/mcp`** — the primary endpoint. Accepts exactly one credential type: an OAuth access token. A request with no (or an invalid) credential gets `401` + `WWW-Authenticate` with the resource-metadata URL — which is exactly what makes Claude Code and claude.ai run the browser consent flow automatically. Adding `https://vapor.fyi/mcp` means signing in.
 - **`/mcp/anonymous`** — identical tool surface, never challenges. Tokenless → auto-enrolled anonymous agent (current behavior, relocated). The zero-friction door for people who don't want an account, and the connector URL the help page offers second, not first.
 
-Migration note: tokenless clients already connected to `/mcp` will start receiving the OAuth challenge and be walked into consent — the intended nudge. Per-doc-token clients are unaffected. The `/mcp` help page and README lead with the signed-in door and mention `/mcp/anonymous` as the alternative.
+Migration note: this is a deliberate breaking change for existing `/mcp` clients — tokenless ones get walked into consent (the intended nudge), and `vpr_` bearer holders are cut off (see below). The help page and README lead with the signed-in door and mention `/mcp/anonymous` as the alternative.
+
+## Per-doc tokens retire
+
+User-facing `vpr_` tokens are removed — they were the identity stopgap, and OAuth replaces them (Nicholas approved the break: no users to migrate).
+
+- **Invite agent dialog** shrinks to what it should have been: connection instructions (the two doors) plus the roster with revoke. No minting, no one-time token screen, no capability switches — capabilities now live on the OAuth grant.
+- **Write capability** is granted at consent time, per user, instead of per doc. Per-doc revoke survives via the roster (severing that doc's enrollment); revoking the grant itself kills the counterpart everywhere.
+- **`create_document`** returns id + URL only — the calling identity (principal or anonymous session) is already enrolled on the new doc; no token in the response.
+- **Headless agents** (CI, scripts) use `/mcp/anonymous` (suggest + comment), or complete one browser consent and hold the refresh token; personal API tokens return later if that pinches.
+- **Internally**, `DocumentAgent`'s roster and RPC surface migrate from raw-token arguments to a verified identity argument (`{ kind: "principal" | "anonymous", id, caps }`) passed by `VaporMcp` after it has authenticated the caller — the `agent_tokens` hashing machinery goes away entirely rather than lingering as plumbing. Rate limits key on the identity instead of the token hash.
 
 ## Consent and capabilities
 
@@ -64,7 +74,7 @@ Granted caps ride in the access token. Rationale: the org's agents-suggest-by-de
 One standing agent identity per user:
 
 - **`agentSlug`**: auto-derived at first grant — `slugifyAgentName(displayName)`, uniquified globally in the Registry (`-2`, `-3`, …). User-editable later (settings page is out of scope this phase).
-- On any `/mcp/me` tool call touching a doc, `VaporMcp` enrolls (or reuses) a roster entry: `name = agentSlug`, `owner = principal`, capabilities = the grant's caps, token server-held per (principal, doc) in the Registry — the session-state pattern from anonymous agents, but durable and cross-session.
+- On any authenticated `/mcp` tool call touching a doc, `VaporMcp` enrolls (or reuses) a roster entry: `name = agentSlug`, `owner = principal`, capabilities = the grant's caps. No tokens involved — the verified identity is the credential, so enrollment is durable and cross-session by construction.
 - The roster UI shows the owner; the caret badge is unchanged. Revoke in a doc severs that doc's entry only; the OAuth grant itself is revoked via `/oauth/revoke` or a future settings page.
 - Invariant: counterpart capabilities ≤ the grant's caps ≤ what any URL-holder could do anyway (all docs world-editable this phase), preserving the no-escalation argument.
 
@@ -85,5 +95,5 @@ ACLs/private docs, doc ownership enforcement, handle claiming UI, settings page,
 ## Testing
 
 - **Unit**: session JWT round-trip + expiry + tamper rejection; Google ID-token verification against a fixture JWKS (subpixel's test approach); slug uniquification; OAuth code/PKCE verifier checks; consent-cap encoding.
-- **Integration**: Registry DO profile round-trip via the mock-Agent pattern; `/mcp/me` 401-challenge shape; grant → counterpart enrollment → roster owner set; anonymous `/mcp` completely unaffected (regression).
+- **Integration**: Registry DO profile round-trip via the mock-Agent pattern; `/mcp` 401-challenge shape (bare and invalid-credential requests); grant → counterpart enrollment → roster owner set; `/mcp/anonymous` behaves exactly as today's tokenless `/mcp` (regression); DocumentAgent RPCs accept the verified-identity argument and reject malformed ones.
 - **Live acceptance**: add `vapor.fyi/mcp` in Claude Code → browser consent → suggest lands as `<agentSlug>` owned by the signed-in principal; `vapor.fyi/mcp/anonymous` still connects with zero configuration; sign in on the web → presence shows displayName.

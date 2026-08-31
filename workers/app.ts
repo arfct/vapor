@@ -11,6 +11,7 @@ import {
 } from "./routes";
 
 export { default as DocumentAgent } from "../agents/document";
+export { default as Registry } from "../agents/registry";
 export { VaporMcp };
 
 const requestHandler = createRequestHandler(

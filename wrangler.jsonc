@@ -16,12 +16,14 @@
 	"durable_objects": {
 		"bindings": [
 			{ "name": "DocumentAgent", "class_name": "DocumentAgent" },
-			{ "name": "VaporMcp", "class_name": "VaporMcp" }
+			{ "name": "VaporMcp", "class_name": "VaporMcp" },
+			{ "name": "Registry", "class_name": "Registry" }
 		]
 	},
 	"migrations": [
 		{ "tag": "v1", "new_sqlite_classes": ["DocumentAgent"] },
-		{ "tag": "v2", "new_sqlite_classes": ["VaporMcp"] }
+		{ "tag": "v2", "new_sqlite_classes": ["VaporMcp"] },
+		{ "tag": "v3", "new_sqlite_classes": ["Registry"] }
 	],
 	"keep_vars": true
 }

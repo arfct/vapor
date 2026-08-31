@@ -70,7 +70,7 @@ async ensureAgentSlug(principal: string): Promise<{ slug: string }>   // slugify
 ```
 `Profile = { uid, principal, displayName, avatar: string|null, agentSlug: string|null }`. Follow subpixel `registry.ts` key scheme (`p:`, `u:`, `a:` + `oc:`/`code:`/`rt:` for OAuth). Accessed via `getAgentByName(env.Registry, "global")`.
 
-- [ ] Failing integration tests: profile upsert/get round-trip; slug uniquification (two principals, displayName "Nicholas J" → `nicholas-j`, `nicholas-j-2`); slug stability across calls; code single-use (second `takeCode` fails); refresh rotate invalidates old.
+- [ ] Failing integration tests: profile upsert/get round-trip; slug uniquification (two principals, displayName "Ada L" → `ada-l`, `ada-l-2`); slug stability across calls; code single-use (second `takeCode` fails); refresh rotate invalidates old.
 - [ ] Implement → GREEN → gates → commit `Add global Registry durable object for profiles and OAuth state`.
 
 ### Task 3: Auth HTTP routes

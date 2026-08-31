@@ -1,144 +1,69 @@
 # vapor
 
-Collaborative markdown editor. A cross between GitHub Gist and Google Docs — share and do multiplayer editing on markdown documents, quickly.
+A markdown document should be a *place*, not a file—shared, live, briefly existing, and open to AI agents on the same terms as people. **[vapor.fyi](https://vapor.fyi)** is that place: a cross between GitHub Gist and Google Docs where an agent joins a document exactly the way a person does—a name, a color, a visible cursor, tracked-change suggestions, and typing you can watch. vapor is a fork of [mist](https://github.com/inanimate-tech/mist).
 
-vapor is a fork of [mist](https://github.com/inanimate-tech/mist).
+## Documents are public and temporary—by design
 
-Everything is public by URL. Documents persist live with no save button. Multiple users (and AI agents — see below) see each other's cursors in real time.
-
-## Features
-
-- **Real-time multiplayer editing** via TipTap + Yjs, backed by Cloudflare Durable Objects
-- **Live markdown formatting** — inline styles render as you type, with formatting characters shown in grey
-- **Suggest mode** — track changes using CriticMarkup (additions, deletions, comments, highlights)
-- **Threaded comments** with highlight anchoring
-- **Preview mode** — rendered markdown with click, hover, or keypress toggle
-- **AI agent collaborators** — invite Claude Code or any MCP client into a document as a named collaborator
-- **CLI upload** — `curl https://your-domain/new -T file.md`
-- **Drag and drop** `.md` files to create new documents
-- **Dark/light/auto themes**
-- **Documents auto-expire** after 99 hours
-
-## Tech stack
-
-- [Cloudflare Workers](https://developers.cloudflare.com/workers/) + [Durable Objects](https://developers.cloudflare.com/durable-objects/) (backend + persistence)
-- [Cloudflare Agents SDK](https://developers.cloudflare.com/agents/) (real-time WebSocket agent, MCP server)
-- [React Router 7](https://reactrouter.com/) (SSR)
-- [TipTap 3](https://tiptap.dev/) (editor)
-- [Yjs](https://yjs.dev/) (CRDT for multiplayer)
-- [Tailwind CSS 4](https://tailwindcss.com/) (styling)
-- TypeScript, Vitest
-
-## Getting started
-
-### Prerequisites
-
-- Node.js 22+ (see `.nvmrc`)
-- A Cloudflare account (free tier works)
-
-### Setup
+Anyone holding a document's URL can read and edit it. Every document deletes itself about 99 hours after creation. These two constraints are what make the rest simple: there are no accounts to require, no permissions to administer, and nothing to clean up. The tradeoff is explicit—vapor is for *working through* something together, not for storing it. Export before it expires.
 
 ```bash
-git clone https://github.com/arfct/vapor.git
-cd vapor
-npm install
+curl https://vapor.fyi/new -T notes.md    # create from a file
+curl https://vapor.fyi/<id>.md            # read raw markdown back
 ```
 
-### Development
+Editing is live markdown—inline styles render as you type—with CriticMarkup track changes, threaded comments anchored to highlights, and a rendered preview.
+
+## Everyone at the table has a name
+
+Identity in vapor is attribution, never access control. Sign-in (Google) is optional everywhere; what it changes is who your work is credited to:
+
+| | Human | Agent |
+|---|---|---|
+| **Anonymous** | Curious Ladybug 🐞 | Agentic Butterfly 🦋 |
+| **Signed in** | Ada Lovelace (+ avatar) | Ada's Agent |
+
+An anonymous identity—adjective, animal, cursor color—lives in your browser and follows you across documents. Signing in replaces the animal with your name, re-attributes your earlier anonymous comments, and gives you a durable *counterpart agent* that acts as you across every document you point it at.
+
+## Agents suggest; humans decide
+
+vapor supplies the protocol and the presence—the intelligence is whatever [MCP](https://modelcontextprotocol.io) client you connect. Two doors:
 
 ```bash
-npm run dev
-```
-
-### Deploy
-
-Set your Cloudflare account ID via environment variable:
-
-```bash
-export CLOUDFLARE_ACCOUNT_ID=your-account-id
-npm run deploy
-```
-
-### Optional: Analytics
-
-To enable [Fathom](https://usefathom.com/) analytics, set these environment variables (or add to `.dev.vars`):
-
-```
-VITE_FATHOM_SITE_ID=your-site-id
-VITE_FATHOM_DOMAINS=your-domain.com
-```
-
-### Commands
-
-```bash
-npm run dev          # Local development server
-npm run build        # Production build
-npm run deploy       # Build and deploy to Cloudflare Workers
-npm run typecheck    # TypeScript type checking
-npm run lint         # ESLint
-npm run test         # Vitest with coverage
-npm run test:watch   # Vitest in watch mode
-```
-
-## Project structure
-
-```
-agents/       Durable Object agents (document state, MCP server)
-app/
-  components/ UI components
-  lib/        Editor logic, utilities, CriticMarkup, Yjs provider
-  routes/     File-based routing
-  shared/     Types and constants shared between client and server
-workers/      Cloudflare Worker entry point
-tests/        Test suite
-```
-
-## AI agent collaborators
-
-Agents join a document as collaborators that look and behave like people: a name, a colour, a cursor, human-paced typing, suggestions, and comments. vapor supplies the protocol and the presence — the intelligence is whatever MCP client you connect.
-
-### Connecting
-
-Two doors. **`https://vapor.fyi/mcp`** is the main one — signing in gives the agent a stable identity (its own counterpart, owned by you) and, if you grant it at consent, `write` access:
-
-```bash
+# signed in: stable identity, and write access if you grant it at consent
 claude mcp add --transport http vapor https://vapor.fyi/mcp
-```
 
-Adding it runs an OAuth flow: the client opens a browser sign-in the first time, then remembers it. On claude.ai, add a custom connector at Settings → Connectors → Add custom connector pointing at the same URL — sign-in happens in the consent popup.
-
-Prefer no account? **`https://vapor.fyi/mcp/anonymous`** connects with zero setup and can `suggest` and `comment`:
-
-```bash
+# anonymous: zero setup, suggest and comment only
 claude mcp add --transport http vapor https://vapor.fyi/mcp/anonymous
 ```
 
-### Identity and capabilities
+The default grant is **suggest + comment**—tracked changes a human accepts or rejects. **Full write** is an explicit opt-in at the consent screen. This mirrors how teams already work: agents open PRs; they don't push to main. Each document's Agents panel shows who's enrolled, with per-document revoke; revoking the OAuth grant severs the counterpart everywhere.
 
-Sign-in (Google) is optional everywhere — anonymous editing, anonymous MCP, and public-by-URL documents are unchanged. What identity buys is attribution and a durable counterpart agent: presence and comments show your name, and your agent's roster entries are owned by you across every document.
+Tools: `read_document` · `insert` · `replace` · `suggest` · `comment` · `reply` · `join`/`leave` · `await_events` · `create_document`. Typing `@agent-name` raises a mention event that wakes any agent long-polling `await_events`—that is how you summon a collaborator mid-sentence. Agent edits type in at human pace, cursor visible; pass `pace: "instant"` when nobody needs the theatre.
 
-At consent you choose the agent's capabilities: **suggest + comment** (the default — tracked changes a human accepts or rejects) or **full write** (direct edits). Anonymous agents are always suggest + comment. Revoke an agent from a document via its **Agents** panel, or revoke the whole grant to sever the counterpart everywhere.
+## One Durable Object per document
 
-### Tools
+Each document is a Cloudflare Durable Object holding the [Yjs](https://yjs.dev/) CRDT, the agent roster, the typing-performance queue, and the event log—sync, presence, and agent state live where the document lives. Around it: the [Agents SDK](https://developers.cloudflare.com/agents/) for WebSockets and MCP, [TipTap](https://tiptap.dev/) on [React Router 7](https://reactrouter.com/), and a dependency-free identity stack (Google sign-in via GSI, HMAC session JWTs, a hand-rolled OAuth 2.1 server with PKCE, dynamic registration, and CIMD) ported from [subpixel](https://subpixel.app).
 
-- `read_document` — markdown with per-block anchors, presence list, open threads
-- `insert` — insert markdown before/after a block, or append to the doc
-- `replace` — replace a block range
-- `suggest` — CriticMarkup addition/deletion marks on matched text
-- `comment` — open a thread anchored to a highlight
-- `reply` — reply in a thread
-- `join` / `leave` — enter/exit presence
-- `await_events` — long-poll for mentions, thread replies, doc-changed digests
-- `create_document` — create a new doc; the caller is enrolled as its first agent
+```
+agents/    Durable Objects: DocumentAgent, VaporMcp, Registry
+app/       React Router app: components, editor logic, routes, shared types
+workers/   Worker entry, route handlers, OAuth server
+tests/     Unit + integration suites
+```
 
-### Raw export
+## Working on it
 
-`GET /:id.md` returns a document's markdown, public by URL, no token needed.
+Node 22+ and a free-tier Cloudflare account suffice.
 
-### @mentions
+```bash
+git clone https://github.com/arfct/vapor.git && cd vapor && npm install
+npm run dev          # local server
+npm run test         # vitest with coverage; also: typecheck, lint
+npm run deploy       # build + wrangler deploy (needs CLOUDFLARE_ACCOUNT_ID)
+```
 
-Typing `@agent-name` in a document raises a `mention` event. An agent holding `await_events` open wakes on it — this is how you summon a specific collaborator into a conversation.
+Sign-in needs `GOOGLE_CLIENT_ID` (public, a wrangler var) and `SESSION_SECRET` (a Workers secret); both are optional in development and documented in `.dev.vars.example`. Design docs live in [docs/](docs/)—start with the [agent collaborators spec](docs/plans/2026-08-30-agent-collaborators-design.md) and the [identity spec](docs/plans/2026-08-30-identity-design.md).
 
-## Licence
+## Fine print
 
-[MIT](LICENSE)
+[Privacy](https://vapor.fyi/privacy) · [Terms](https://vapor.fyi/terms) · [MIT](LICENSE)

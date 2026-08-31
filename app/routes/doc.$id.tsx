@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { data, Link } from "react-router";
 import type { Route } from "./+types/doc.$id";
 import { getAgentByName } from "agents";
@@ -9,16 +10,14 @@ import { DocumentProvider, useDocument } from "~/lib/DocumentContext";
 import Editor from "~/components/Editor";
 import Preview from "~/components/Preview";
 import PreviewToggle from "~/components/PreviewToggle";
-import ConnectionStatus from "~/components/ConnectionStatus";
 import ShareButton from "~/components/ShareButton";
 import AgentsPanel from "~/components/AgentsPanel";
-import ModeToggle from "~/components/ModeToggle";
+import ModeMenu from "~/components/ModeMenu";
+import HeaderMenu from "~/components/HeaderMenu";
 import CleanViewToggle from "~/components/CleanViewToggle";
 import SuggestionActions from "~/components/SuggestionActions";
 import CommentInput from "~/components/CommentInput";
 import ThreadList from "~/components/ThreadList";
-import ThemeSelector from "~/components/ThemeSelector";
-import SignIn from "~/components/SignIn";
 import MobilePanel from "~/components/MobilePanel";
 import OnboardingBanner from "~/components/OnboardingBanner";
 
@@ -88,6 +87,7 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
     handleDeleteAtCursor,
     mode,
   } = useDocument();
+  const [agentsOpen, setAgentsOpen] = useState(false);
 
   return (
     <div className="flex h-screen flex-col">
@@ -106,22 +106,17 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
             </span>
           )}
         </div>
-        <div className="flex shrink-0 items-center border-l border-border px-3">
-          <ConnectionStatus />
+        <div className="shrink-0 border-l border-border">
+          <ModeMenu />
         </div>
         <div className="shrink-0 border-l border-border">
           <ShareButton />
         </div>
         <div className="shrink-0 border-l border-border">
-          <AgentsPanel />
-        </div>
-        <div className="shrink-0 border-l border-border">
-          <SignIn />
-        </div>
-        <div className="flex shrink-0 items-center border-l border-border">
-          <ThemeSelector />
+          <HeaderMenu onOpenAgents={() => setAgentsOpen(true)} />
         </div>
       </header>
+      <AgentsPanel open={agentsOpen} onClose={() => setAgentsOpen(false)} />
       <div className="flex flex-1 overflow-hidden">
         <main className="flex-1 overflow-y-auto pb-[33vh] lg:border-r lg:border-border lg:pb-0">
           <Editor
@@ -141,7 +136,6 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
         <aside className="hidden w-96 flex-col overflow-hidden lg:flex">
           <div className="flex-1 overflow-y-auto">
             <OnboardingBanner />
-            <ModeToggle />
             <SuggestionActions />
             {mode === "suggest" && <CleanViewToggle />}
             <div className="border-t border-border" />

@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { ThreadData } from "~/shared/types";
+import Icon from "~/components/Icon";
 
 function timeAgo(ts: number): string {
   const seconds = Math.floor((Date.now() - ts) / 1000);
@@ -13,7 +14,39 @@ function timeAgo(ts: number): string {
 }
 
 function truncate(text: string, max: number): string {
-  return text.length > max ? text.slice(0, max) + "\u2026" : text;
+  return text.length > max ? text.slice(0, max) + "…" : text;
+}
+
+function AuthorHeader({
+  author,
+  timestamp,
+  children,
+}: {
+  author: ThreadData["author"];
+  timestamp: number;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      {author.avatar ? (
+        <img className="h-7 w-7 shrink-0 rounded-full object-cover" src={author.avatar} alt="" />
+      ) : author.animal ? (
+        <span
+          className="anon-animal flex h-7 w-7 shrink-0 items-center justify-center text-xl"
+          style={{ color: author.color }}
+        >
+          {author.animal}
+        </span>
+      ) : (
+        <span className="h-7 w-7 shrink-0" />
+      )}
+      <div className="flex min-w-0 flex-col leading-tight">
+        <span className="truncate text-base font-medium">{author.name}</span>
+        <span className="text-sm text-muted">{timeAgo(timestamp)}</span>
+      </div>
+      {children}
+    </div>
+  );
 }
 
 interface ThreadPanelProps {
@@ -34,20 +67,22 @@ export default function ThreadPanel({
   onDelete,
 }: ThreadPanelProps) {
   const [replyText, setReplyText] = useState("");
-  const [showReplyInput, setShowReplyInput] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (showReplyInput && inputRef.current) {
-      inputRef.current.focus();
+    if (!menuOpen) return;
+    function onPointerDown(e: PointerEvent) {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
     }
-  }, [showReplyInput]);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [menuOpen]);
 
   const handleReplySubmit = useCallback(() => {
     if (!replyText.trim()) return;
     onReply(thread.id, replyText.trim());
     setReplyText("");
-    setShowReplyInput(false);
   }, [thread.id, replyText, onReply]);
 
   const handleReplyKeyDown = useCallback(
@@ -57,7 +92,6 @@ export default function ThreadPanel({
         handleReplySubmit();
       } else if (e.key === "Escape") {
         setReplyText("");
-        setShowReplyInput(false);
       }
     },
     [handleReplySubmit],
@@ -68,92 +102,79 @@ export default function ThreadPanel({
       className={`cursor-pointer p-3 ${active ? "bg-canary/15" : ""}`}
       onClick={() => onSelect(active ? null : thread.id)}
     >
-      {/* Author + timestamp */}
-      <div className="flex items-center gap-1.5">
-        {thread.author.avatar ? (
-          <img className="author-avatar" src={thread.author.avatar} alt="" />
-        ) : (
-          thread.author.animal && (
-            <span className="anon-animal text-sm" style={{ color: thread.author.color }}>
-              {thread.author.animal}
-            </span>
-          )
-        )}
-        <span className="text-base font-medium">{thread.author.name}</span>
-        <span className="text-sm text-muted">{timeAgo(thread.createdAt)}</span>
-      </div>
+      {/* Author + timestamp + actions */}
+      <AuthorHeader author={thread.author} timestamp={thread.createdAt}>
+        <div
+          className="ml-auto flex items-center gap-1"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => onResolve(thread.id)}
+            title={thread.resolved ? "Reopen" : "Resolve"}
+            aria-label={thread.resolved ? "Reopen" : "Resolve"}
+            className="cursor-pointer p-1 text-muted transition-colors hover:text-ink"
+          >
+            <Icon name={thread.resolved ? "undo" : "check"} />
+          </button>
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              title="More actions"
+              aria-label="More actions"
+              className="cursor-pointer p-1 text-muted transition-colors hover:text-ink"
+            >
+              <Icon name="more_vert" />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-full z-10 min-w-28 border border-border bg-paper py-1 shadow-lg">
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onDelete(thread.id);
+                  }}
+                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-red-500 transition-colors hover:bg-border"
+                >
+                  <Icon name="delete" />
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </AuthorHeader>
 
       {/* Highlight context */}
       {thread.highlightText && (
-        <div className="cm-highlight mt-1 truncate px-1 text-base">
+        <div className="cm-highlight mt-2 truncate px-1 text-base">
           {truncate(thread.highlightText, 80)}
         </div>
       )}
 
       {/* Comment text */}
-      <p className="mt-1 text-base">{thread.commentText}</p>
+      <p className="mt-1.5 text-base">{thread.commentText}</p>
 
       {/* Replies */}
       {thread.replies.length > 0 && (
-        <div className="mt-2 space-y-2 border-l border-border pl-3">
+        <div className="mt-3 space-y-3">
           {thread.replies.map((reply) => (
             <div key={reply.id}>
-              <div className="flex items-center gap-1.5">
-                {reply.author.avatar ? (
-                  <img className="author-avatar" src={reply.author.avatar} alt="" />
-                ) : (
-                  reply.author.animal && (
-                    <span className="anon-animal text-sm" style={{ color: reply.author.color }}>
-                      {reply.author.animal}
-                    </span>
-                  )
-                )}
-                <span className="text-base font-medium">{reply.author.name}</span>
-                <span className="text-sm text-muted">
-                  {timeAgo(reply.createdAt)}
-                </span>
-              </div>
-              <p className="mt-0.5 text-base">{reply.text}</p>
+              <AuthorHeader author={reply.author} timestamp={reply.createdAt} />
+              <p className="mt-1 text-base">{reply.text}</p>
             </div>
           ))}
         </div>
       )}
 
       {/* Reply input */}
-      {showReplyInput && (
-        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-          <input
-            ref={inputRef}
-            type="text"
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            onKeyDown={handleReplyKeyDown}
-            placeholder="Reply..."
-            className="w-full border border-border bg-paper px-2 py-1 outline-none focus:border-coral"
-          />
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="mt-2 flex border border-border" onClick={(e) => e.stopPropagation()}>
-        <button
-          onClick={() => setShowReplyInput(true)}
-          className="flex-1 cursor-pointer px-2.5 py-1.5 text-sm uppercase tracking-wider text-muted transition-colors hover:bg-border"
-        >
-          Reply
-        </button>
-        <button
-          onClick={() => onResolve(thread.id)}
-          className="flex-1 cursor-pointer border-l border-border px-2.5 py-1.5 text-sm uppercase tracking-wider text-green-600 transition-colors hover:bg-border"
-        >
-          {thread.resolved ? "Reopen" : "Resolve"}
-        </button>
-        <button
-          onClick={() => onDelete(thread.id)}
-          className="flex-1 cursor-pointer border-l border-border px-2.5 py-1.5 text-sm uppercase tracking-wider text-red-500 transition-colors hover:bg-border"
-        >
-          Delete
-        </button>
+      <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="text"
+          value={replyText}
+          onChange={(e) => setReplyText(e.target.value)}
+          onKeyDown={handleReplyKeyDown}
+          placeholder="Reply..."
+          className="w-full rounded-full border border-border bg-paper px-3 py-1.5 outline-none focus:border-coral"
+        />
       </div>
     </div>
   );

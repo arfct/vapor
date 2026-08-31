@@ -16,6 +16,7 @@ export interface DocumentContextValue {
 
   // Mode
   mode: DocMode;
+  setMode: (mode: DocMode) => void;
   toggleMode: () => void;
 
   // Preview
@@ -222,6 +223,7 @@ export function DocumentProvider({
     editorInstance,
     markdown,
     mode: yjs.mode,
+    setMode: yjs.setMode,
     toggleMode,
     showPreview,
     togglePreview,

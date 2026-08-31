@@ -34,8 +34,6 @@ describe("SuggestionActions", () => {
     );
     expect(getByText("Accept")).toBeTruthy();
     expect(getByText("Reject")).toBeTruthy();
-    expect(getByText("Accept all")).toBeTruthy();
-    expect(getByText("Reject all")).toBeTruthy();
   });
 });
 

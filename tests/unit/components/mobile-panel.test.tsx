@@ -23,8 +23,8 @@ describe("MobilePanel", () => {
       { context: { mode: "suggest" } },
     );
 
-    // Editing tab starts active, should show ModeToggle content
-    expect(queryByText("Suggest changes")).toBeTruthy();
+    // Editing tab starts active; suggest mode shows the cursor actions
+    expect(queryByText("Accept")).toBeTruthy();
 
     // Click Comments tab
     fireEvent.click(getByText("Comments"));
@@ -35,15 +35,14 @@ describe("MobilePanel", () => {
     expect(queryByText("Comments (0)")).toBeFalsy();
   });
 
-  it("editing tab renders ModeToggle and SuggestionActions", () => {
-    const { getByText, getByLabelText } = renderWithDocument(
+  it("editing tab renders SuggestionActions in suggest mode", () => {
+    const { getByText } = renderWithDocument(
       createElement(MobilePanel, { className: "lg:hidden" }),
+      { context: { mode: "suggest" } },
     );
 
-    // Editing tab is active by default
-    // ModeToggle shows "Edit mode" when mode is "edit"
-    expect(getByText("Edit mode")).toBeTruthy();
-    expect(getByLabelText("Toggle suggest mode")).toBeTruthy();
+    expect(getByText("Accept")).toBeTruthy();
+    expect(getByText("Reject")).toBeTruthy();
   });
 
   it("comments tab renders CommentInput and ThreadList", () => {

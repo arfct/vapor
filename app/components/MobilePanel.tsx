@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import CommentInput from "~/components/CommentInput";
 import ThreadList from "~/components/ThreadList";
 import SuggestionActions from "~/components/SuggestionActions";
-import ModeToggle from "~/components/ModeToggle";
 import PreviewToggle from "~/components/PreviewToggle";
 import OnboardingBanner from "~/components/OnboardingBanner";
 import { useDocument } from "~/lib/DocumentContext";
@@ -60,7 +59,6 @@ export default function MobilePanel({ className }: { className?: string }) {
           {activeTab === "editing" && (
             <>
               <OnboardingBanner />
-              <ModeToggle />
               <SuggestionActions />
             </>
           )}

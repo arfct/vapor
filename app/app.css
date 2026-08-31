@@ -69,6 +69,23 @@ body {
   pointer-events: none;
 }
 
+/* Material Symbols Outlined icon glyphs (ligature-based). */
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  font-size: 1.3em;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  vertical-align: -0.28em;
+  font-variation-settings: "opsz" 20;
+}
+
 /* Monochrome animal glyphs (Noto Emoji) — tinted via `color`. */
 .anon-animal {
   font-family: "Noto Emoji", var(--font-sans);
@@ -213,13 +230,12 @@ body {
   text-decoration: line-through;
 }
 
+/* Comment/highlight underline: border-bottom rather than text-decoration —
+   decoration shorthands fall back to currentColor when the variable fails
+   to resolve, which rendered as a black bar in some contexts. */
 .cm-comment,
 .cm-highlight {
-  text-decoration: underline solid var(--color-canary);
-  text-decoration-color: var(--color-canary) !important;
-  text-decoration-thickness: 4.5px;
-  text-underline-offset: 2px;
-  text-decoration-skip-ink: none;
+  border-bottom: 3px solid var(--color-canary, #ffe014);
 }
 
 /* Active: underline + background */
@@ -232,7 +248,7 @@ body {
   display: inline-block;
   position: relative;
   width: 8px;
-  height: 4.5px;
+  height: 3px;
   background: var(--color-canary);
   vertical-align: -2px;
   margin: 0 1px;
@@ -259,7 +275,7 @@ body {
 .cm-comment-active .cm-point-marker {
   height: 1.3em;
   background-color: color-mix(in srgb, var(--color-canary) 30%, transparent);
-  border-bottom: 4.5px solid var(--color-canary);
+  border-bottom: 3px solid var(--color-canary);
 }
 
 :has(> .cm-comment-active) > .cm-point-marker::before,
@@ -274,7 +290,7 @@ body {
 
 .clean-view .cm-comment {
   font-size: 0;
-  text-decoration: none;
+  border-bottom: none;
 }
 
 /* Keep point markers visible inside hidden comment spans */
@@ -379,11 +395,7 @@ body {
 
 .preview .cm-comment,
 .preview .cm-highlight {
-  text-decoration: underline solid var(--color-canary);
-  text-decoration-color: var(--color-canary) !important;
-  text-decoration-thickness: 4.5px;
-  text-underline-offset: 2px;
-  text-decoration-skip-ink: none;
+  border-bottom: 3px solid var(--color-canary, #ffe014);
 }
 
 /* Dark theme — explicit dark mode */

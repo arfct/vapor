@@ -3,7 +3,6 @@ import { useDocument } from "~/lib/DocumentContext";
 import {
   hasSuggestionMarkup,
   isCursorInSuggestion,
-  processAllRanges,
   processRangeAtCursor,
 } from "~/lib/suggestion-actions";
 
@@ -29,16 +28,6 @@ export default function SuggestionActions() {
     };
   }, [editor]);
 
-  const handleAcceptAll = useCallback(() => {
-    if (!editor) return;
-    processAllRanges(editor, true);
-  }, [editor]);
-
-  const handleRejectAll = useCallback(() => {
-    if (!editor) return;
-    processAllRanges(editor, false);
-  }, [editor]);
-
   const handleAcceptAtCursor = useCallback(() => {
     if (!editor) return;
     processRangeAtCursor(editor, true);
@@ -60,39 +49,21 @@ export default function SuggestionActions() {
     "flex-1 cursor-default border border-border px-2 py-1.5 text-sm uppercase tracking-wider text-muted/40 transition-colors";
 
   return (
-    <div className="flex flex-col gap-1 p-3">
-      <div className="flex gap-1">
-        <button
-          onClick={handleAcceptAtCursor}
-          disabled={!cursorInRange}
-          className={cursorInRange ? enabledClass : disabledClass}
-        >
-          Accept
-        </button>
-        <button
-          onClick={handleRejectAtCursor}
-          disabled={!cursorInRange}
-          className={cursorInRange ? enabledClass : disabledClass}
-        >
-          Reject
-        </button>
-      </div>
-      <div className="flex gap-1">
-        <button
-          onClick={handleAcceptAll}
-          disabled={!hasSuggestions}
-          className={hasSuggestions ? enabledClass : disabledClass}
-        >
-          Accept all
-        </button>
-        <button
-          onClick={handleRejectAll}
-          disabled={!hasSuggestions}
-          className={hasSuggestions ? enabledClass : disabledClass}
-        >
-          Reject all
-        </button>
-      </div>
+    <div className="flex gap-1 p-3">
+      <button
+        onClick={handleAcceptAtCursor}
+        disabled={!cursorInRange}
+        className={cursorInRange ? enabledClass : disabledClass}
+      >
+        Accept
+      </button>
+      <button
+        onClick={handleRejectAtCursor}
+        disabled={!cursorInRange}
+        className={cursorInRange ? enabledClass : disabledClass}
+      >
+        Reject
+      </button>
     </div>
   );
 }

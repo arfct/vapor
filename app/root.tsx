@@ -13,6 +13,9 @@ import Fathom from "~/components/Fathom";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [
+  { rel: "icon", href: "/favicon.ico", sizes: "48x48" },
+  { rel: "icon", type: "image/png", href: "/favicon-32.png", sizes: "32x32" },
+  { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   {
     rel: "preconnect",
@@ -28,6 +31,12 @@ export const links: Route.LinksFunction = () => [
     // `color`, so animals can wear the user's cursor colour.
     rel: "stylesheet",
     href: "https://fonts.googleapis.com/css2?family=Noto+Emoji:wght@400;600&display=swap",
+  },
+  {
+    // Subset to the icon names actually used — keep this list sorted and in
+    // sync with <Icon name> usages or new glyphs render as raw text.
+    rel: "stylesheet",
+    href: "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=account_circle,brightness_auto,check,dark_mode,delete,done_all,edit,light_mode,logout,more_vert,rate_review,remove_done,smart_toy,undo&display=block",
   },
 ];
 

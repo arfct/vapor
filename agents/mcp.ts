@@ -19,6 +19,7 @@ import {
   TOOLS,
   validateNewDocumentMarkdown,
   createDocumentAgentName,
+  anonymousAgentLabel,
   type DocStub,
 } from "./mcp-tools";
 import { generateDocumentId } from "../app/shared/constants";
@@ -80,12 +81,14 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
     }
 
     const clientInfo = this.server.server.getClientVersion();
+    const sessionKey = `anon:${this.name}`;
     return {
       kind: "anonymous",
       // this.name is the per-session DO instance name (stable across
       // reconnects of the same MCP session).
-      id: `anon:${this.name}`,
+      id: sessionKey,
       name: slugifyAgentName(clientInfo?.name ?? "agent"),
+      label: anonymousAgentLabel(sessionKey),
       owner: null,
       caps: [...DEFAULT_CAPABILITIES],
     };

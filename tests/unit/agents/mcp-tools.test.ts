@@ -216,3 +216,15 @@ describe("createDocumentAgentName", () => {
     expect(createDocumentAgentName("!!!")).toBe("agent");
   });
 });
+
+describe("anonymousAgentLabel", () => {
+  it("is a stable Agentic <Animal> per session key", async () => {
+    const { anonymousAgentLabel } = await import("../../../agents/mcp-tools");
+    const { ANON_ANIMALS } = await import("../../../app/shared/anon-animals");
+    const a = anonymousAgentLabel("anon:streamable-http:abc123");
+    expect(a).toBe(anonymousAgentLabel("anon:streamable-http:abc123"));
+    expect(a).toMatch(/^Agentic /);
+    expect(ANON_ANIMALS.map((x) => `Agentic ${x.name}`)).toContain(a);
+    expect(anonymousAgentLabel("anon:other-session")).toMatch(/^Agentic /);
+  });
+});

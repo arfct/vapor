@@ -8,7 +8,8 @@
  */
 import { z } from "zod";
 import { isValidDocumentId } from "../app/shared/constants";
-import { slugifyAgentName, type AgentError, type AgentIdentity } from "../app/shared/agent-protocol";
+import { slugifyAgentName, blockHash, type AgentError, type AgentIdentity } from "../app/shared/agent-protocol";
+import { ANON_ANIMALS } from "../app/shared/anon-animals";
 
 /** The subset of the DocumentAgent RPC surface the tools call. */
 export interface DocStub {
@@ -79,6 +80,16 @@ export function validateNewDocumentMarkdown(
  */
 export function createDocumentAgentName(clientName: string | undefined): string {
   return slugifyAgentName(clientName ?? "agent");
+}
+
+/**
+ * Display label for an anonymous agent: "Agentic <Animal>", with the animal
+ * picked deterministically from the MCP session key so the same session is
+ * the same creature in every document and on every call.
+ */
+export function anonymousAgentLabel(sessionKey: string): string {
+  const index = parseInt(blockHash(sessionKey), 16) % ANON_ANIMALS.length;
+  return `Agentic ${ANON_ANIMALS[index].name}`;
 }
 
 const docId = z.string().describe("The 8-character document id (from its URL).");

@@ -84,6 +84,7 @@ interface PerformanceRow {
 interface RosterRow {
   identity_id: string;
   name: string;
+  label?: string | null;
   color: string;
   owner: string | null;
   capabilities: string;
@@ -102,6 +103,7 @@ interface MutationLogEntry {
 function rowToRosterEntry(row: RosterRow): AgentRosterEntry {
   return {
     name: row.name,
+    label: row.label ?? null,
     color: row.color,
     owner: row.owner,
     capabilities: JSON.parse(row.capabilities) as AgentCapability[],
@@ -166,6 +168,7 @@ class DocumentAgent extends Agent {
       CREATE TABLE IF NOT EXISTS roster (
         identity_id TEXT PRIMARY KEY,
         name TEXT UNIQUE,
+        label TEXT,
         color TEXT,
         owner TEXT,
         capabilities TEXT,
@@ -626,12 +629,13 @@ class DocumentAgent extends Agent {
     const color = USER_COLOURS[roster.length % USER_COLOURS.length].color;
     const createdAt = Date.now();
     this.sql`
-      INSERT INTO roster (identity_id, name, color, owner, capabilities, created_at, last_seen_at)
-      VALUES (${identity.id}, ${name}, ${color}, ${identity.owner}, ${JSON.stringify(identity.caps)}, ${createdAt}, ${null})
+      INSERT INTO roster (identity_id, name, label, color, owner, capabilities, created_at, last_seen_at)
+      VALUES (${identity.id}, ${name}, ${identity.label ?? null}, ${color}, ${identity.owner}, ${JSON.stringify(identity.caps)}, ${createdAt}, ${null})
     `;
     return {
       entry: {
         name,
+        label: identity.label ?? null,
         color,
         owner: identity.owner,
         capabilities: identity.caps,
@@ -925,7 +929,7 @@ class DocumentAgent extends Agent {
     const roster = await this.getAgentRoster();
     for (const entry of roster) {
       if (entry.lastSeenAt != null && now - entry.lastSeenAt < 5 * 60 * 1000) {
-        presence.push({ name: entry.name, isAgent: true });
+        presence.push({ name: entry.label ?? entry.name, isAgent: true });
       }
     }
 
@@ -1070,13 +1074,13 @@ class DocumentAgent extends Agent {
       return { error: { code: resolved.error, message: "Anchor not found", snippet: resolved.snippet } };
     }
 
-    const { name, color } = verified.entry;
+    const { name, label, color } = verified.entry;
     const id = crypto.randomUUID();
     const thread: ThreadData = {
       id,
       commentText: args.text,
       highlightText: args.quote,
-      author: { name, color, colorLight: color },
+      author: { name: label ?? name, color, colorLight: color },
       createdAt: Date.now(),
       resolved: false,
       replies: [],
@@ -1122,10 +1126,10 @@ class DocumentAgent extends Agent {
       return { error: { code: "thread_not_found", message: "thread is unreadable" } };
     }
 
-    const { name, color } = verified.entry;
+    const { name, label, color } = verified.entry;
     const reply: ThreadReply = {
       id: crypto.randomUUID(),
-      author: { name, color, colorLight: color },
+      author: { name: label ?? name, color, colorLight: color },
       text: args.text,
       createdAt: Date.now(),
     };
@@ -1147,9 +1151,9 @@ class DocumentAgent extends Agent {
     const verified = await this.verifyIdentity(identity);
     if ("error" in verified) return verified;
 
-    const { name, color } = verified.entry;
+    const { name, label, color } = verified.entry;
     this.setAgentPresence(name, {
-      user: { name, color, isAgent: true },
+      user: { name: label ?? name, color, isAgent: true },
       ...(status !== undefined ? { status } : {}),
     });
     this.resetAgentIdleTimer(name);
@@ -1540,11 +1544,11 @@ class DocumentAgent extends Agent {
     const status = existing?.state?.status;
     let user = existing?.state?.user;
     if (!user) {
-      const rows = this.sql<{ name: string; color: string }>`
-        SELECT name, color FROM roster WHERE name = ${agentName}
+      const rows = this.sql<{ name: string; label: string | null; color: string }>`
+        SELECT name, label, color FROM roster WHERE name = ${agentName}
       `;
       if (rows.length === 0) return; // unknown agent — nothing sane to show
-      user = { name: rows[0].name, color: rows[0].color, isAgent: true };
+      user = { name: rows[0].label ?? rows[0].name, color: rows[0].color, isAgent: true };
     }
 
     this.setAgentPresence(agentName, { user, ...(status !== undefined ? { status } : {}), cursor });

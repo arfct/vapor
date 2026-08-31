@@ -48,8 +48,9 @@ function jsonContent(result: unknown) {
 export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps> {
   server = new McpServer({ name: "vapor", version: "1.0.0" });
 
-  /** Session-cached counterpart slug for the principal path. */
+  /** Session-cached counterpart slug + label for the principal path. */
   private agentSlug: string | null = null;
+  private agentLabel: string | null = null;
 
   /**
    * The identity every tool call runs under. Principals get their global
@@ -64,11 +65,15 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
         const ensured = await registry.ensureAgentSlug(auth.principal);
         this.agentSlug =
           "slug" in ensured ? ensured.slug : slugifyAgentName(auth.email.split("@")[0] ?? "agent");
+        const { profile } = await registry.getProfile(auth.principal);
+        const ownerName = profile?.displayName ?? auth.email.split("@")[0] ?? "Someone";
+        this.agentLabel = `${ownerName}'s Agent`;
       }
       return {
         kind: "principal",
         id: auth.principal,
         name: this.agentSlug,
+        label: this.agentLabel ?? undefined,
         owner: auth.principal,
         caps: auth.caps ?? [...DEFAULT_CAPABILITIES],
       };

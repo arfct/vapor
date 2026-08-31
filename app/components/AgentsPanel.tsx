@@ -157,7 +157,10 @@ export default function AgentsPanel() {
                             className="inline-block h-3 w-3 shrink-0 rounded-full"
                             style={{ backgroundColor: entry.color }}
                           />
-                          <span className="font-mono text-sm">{entry.name}</span>
+                          <span className="text-sm">{entry.label ?? entry.name}</span>
+                          {entry.label && (
+                            <span className="font-mono text-xs text-muted">@{entry.name}</span>
+                          )}
                           <span className="flex gap-1">
                             {entry.capabilities.map((c) => (
                               <span

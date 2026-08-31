@@ -3,6 +3,8 @@ export type Pace = "natural" | "fast" | "instant";
 
 export interface AgentRosterEntry {
   name: string;            // slug, unique per doc
+  /** Display attribution ("<Owner>'s Agent"); null for anonymous agents. */
+  label?: string | null;
   color: string;           // one of USER_COLOURS .color values
   owner: string | null;    // free text this phase
   capabilities: AgentCapability[];
@@ -29,7 +31,9 @@ export interface DocBlock extends BlockAnchor {
 export interface AgentIdentity {
   kind: "principal" | "anonymous";
   id: string; // principal ("email:…") or anonymous session key
-  name: string; // roster/display slug (agentSlug or slugified clientInfo)
+  name: string; // roster slug (agentSlug or slugified clientInfo) — used for @mentions
+  /** Human-facing attribution, e.g. "Nicholas Jitkoff's Agent". Falls back to name. */
+  label?: string;
   owner: string | null; // principal for kind=principal, null for anonymous
   caps: AgentCapability[];
 }

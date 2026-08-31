@@ -6,9 +6,19 @@ import {
   matchThreadsToComments,
   type MatchedThread,
 } from "~/lib/comment-threads";
+import { blockHash } from "~/shared/agent-protocol";
 
 function generateId(): string {
   return Math.random().toString(36).slice(2, 10);
+}
+
+/**
+ * Deterministic thread id for a comment mark, so every client that decides
+ * to create a thread for the same mark writes the SAME Y.Map key and the
+ * writes converge instead of duplicating.
+ */
+export function threadIdForComment(comment: { commentText: string; highlightText?: string }): string {
+  return `t-${blockHash(`${comment.commentText}|${comment.highlightText ?? ""}`)}`;
 }
 
 function readAllThreads(map: { forEach: (cb: (val: string, key: string) => void) => void }): ThreadData[] {
@@ -37,6 +47,8 @@ export function useThreads({
   const threadsMapRef = useRef(doc.getMap<string>("threads"));
   const pendingActivateRef = useRef<string | null>(null);
   const reconcilingRef = useRef(false);
+  /** Delayed fallback creations for marks whose author hasn't written a thread yet. */
+  const fallbackTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const suppressSelectionRef = useRef(false);
 
   // Reconcile: scan document marks, auto-create Y.Map entries for new comments,
@@ -60,13 +72,50 @@ export function useThreads({
       }
     }
 
-    // Auto-create threads for unmatched comments (document marks are ground truth)
+    // Auto-create threads for unmatched comments (document marks are ground
+    // truth) — but only the client that AUTHORED the comment creates its
+    // thread immediately. Marks sync to every connected client within
+    // milliseconds, and when each of them "reconciled" instantly, one
+    // comment became N threads, each stamped with a bystander's identity.
+    // Non-authors instead schedule a delayed fallback (covering imported
+    // {>>comments<<} whose author isn't present), and every creation path
+    // uses a deterministic id so stragglers converge on one Y.Map key.
     let created = false;
     for (let i = 0; i < comments.length; i++) {
       if (usedCommentIndices.has(i)) continue;
 
       const comment = comments[i];
-      const id = generateId();
+      const id = threadIdForComment(comment);
+      const isAuthor = pendingActivateRef.current === comment.commentText;
+
+      if (!isAuthor) {
+        if (!fallbackTimersRef.current.has(id)) {
+          const timer = setTimeout(() => {
+            fallbackTimersRef.current.delete(id);
+            // Re-check: skip if the author's (or anyone's) thread arrived.
+            if (threadsMapRef.current.get(id) !== undefined) return;
+            const existing = readAllThreads(threadsMapRef.current);
+            if (existing.some((t) => t.commentText === comment.commentText)) return;
+            reconcilingRef.current = true;
+            threadsMapRef.current.set(
+              id,
+              JSON.stringify({
+                id,
+                commentText: comment.commentText,
+                highlightText: comment.highlightText,
+                author: user,
+                createdAt: Date.now(),
+                resolved: false,
+                replies: [],
+              } satisfies ThreadData),
+            );
+            reconcilingRef.current = false;
+          }, 3000);
+          fallbackTimersRef.current.set(id, timer);
+        }
+        continue;
+      }
+
       const thread: ThreadData = {
         id,
         commentText: comment.commentText,
@@ -81,11 +130,13 @@ export function useThreads({
       threadsMapRef.current.set(id, JSON.stringify(thread));
       reconcilingRef.current = false;
       created = true;
+      setActiveThreadId(id);
+      pendingActivateRef.current = null;
 
-      // If this was a comment just inserted via CommentInput, activate it
-      if (pendingActivateRef.current === comment.commentText) {
-        setActiveThreadId(id);
-        pendingActivateRef.current = null;
+      const pendingTimer = fallbackTimersRef.current.get(id);
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+        fallbackTimersRef.current.delete(id);
       }
     }
 
@@ -108,6 +159,15 @@ export function useThreads({
       setThreads(finalThreads.map((t) => ({ ...t, position: undefined })));
     }
   }, [editor, user]);
+
+  // Cancel any pending fallback creations when the hook unmounts.
+  useEffect(() => {
+    const timers = fallbackTimersRef.current;
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+      timers.clear();
+    };
+  }, []);
 
   // Observe Y.Map changes (from remote clients)
   useEffect(() => {

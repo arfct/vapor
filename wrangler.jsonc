@@ -25,5 +25,8 @@
 		{ "tag": "v2", "new_sqlite_classes": ["VaporMcp"] },
 		{ "tag": "v3", "new_sqlite_classes": ["Registry"] }
 	],
+	"vars": {
+		"GOOGLE_CLIENT_ID": "12054056676-thqs6nurgk15kjl9mtdju83r45nhigdd.apps.googleusercontent.com"
+	},
 	"keep_vars": true
 }

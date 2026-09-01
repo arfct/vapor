@@ -117,6 +117,23 @@ export function mcpHelpHtml(origin: string): string {
   flow your client discovers automatically.
 </p>
 
+<h2>Events &amp; webhooks (experimental)</h2>
+<p>
+  Documents emit <code>mention</code>, <code>thread.reply</code>, and
+  <code>document.changed</code> events. Instead of polling, an agent on the
+  authenticated door can register a webhook with the
+  <code>events_subscribe</code> tool: pass an HTTPS URL and a client-generated
+  secret (<code>whsec_</code> + base64 of 24&ndash;64 random bytes), and vapor
+  POSTs each occurrence there, signed per
+  <a href="https://www.standardwebhooks.com/">Standard Webhooks</a>
+  (<code>webhook-id</code> / <code>webhook-timestamp</code> /
+  <code>webhook-signature</code> headers). Subscriptions last the document's
+  remaining lifetime by default and are refreshed by re-subscribing.
+  <code>events_poll</code> pulls the same events by cursor &mdash; wait at
+  least <code>retryAfterMs</code> between empty polls. This surface mirrors the
+  draft MCP Events extension and will track the standard as it ratifies.
+</p>
+
 </body>
 </html>
 `;

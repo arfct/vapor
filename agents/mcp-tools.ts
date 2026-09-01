@@ -22,6 +22,10 @@ export interface DocStub {
   agentJoin(identity: AgentIdentity, status?: string): Promise<unknown>;
   agentLeave(identity: AgentIdentity): Promise<unknown>;
   agentAwaitEvents(identity: AgentIdentity, args: unknown): Promise<unknown>;
+  eventsList(identity: AgentIdentity): Promise<unknown>;
+  eventsPoll(identity: AgentIdentity, args: unknown): Promise<unknown>;
+  eventsSubscribe(identity: AgentIdentity, args: unknown): Promise<unknown>;
+  eventsUnsubscribe(identity: AgentIdentity, args: unknown): Promise<unknown>;
 }
 
 export interface ToolDeps {
@@ -249,7 +253,7 @@ export const TOOLS: ToolDef[] = [
   docTool({
     name: "await_events",
     description:
-      "Poll for document events (mentions, thread replies, change digests) after a cursor. Returns as soon as anything is waiting, or empty when the timeout (capped at 15s) elapses. An empty result includes retryAfterMs — wait at least that long before polling again; hot-looping this tool keeps the document's server pinned.",
+      "DEPRECATED — prefer events_poll (and events_subscribe for push). Long-polls for document events after a cursor; capped at 15s, empty results carry retryAfterMs.",
     schema: {
       since_cursor: z
         .number()
@@ -267,5 +271,74 @@ export const TOOLS: ToolDef[] = [
         timeoutMs: timeoutS === undefined ? undefined : timeoutS * 1000,
       });
     },
+  }),
+
+  docTool({
+    name: "events_list",
+    description:
+      "List the document's event types (experimental — mirrors the draft MCP Events extension): name, delivery modes, argument and payload schemas. Use events_subscribe for webhook push or events_poll to pull.",
+    schema: {},
+    call: (stub, identity) => stub.eventsList(identity),
+  }),
+
+  docTool({
+    name: "events_poll",
+    description:
+      "Poll one event type for occurrences after a cursor (experimental — mirrors the draft MCP Events extension). Returns events plus a new cursor; empty results include retryAfterMs — wait at least that long before polling again. Prefer events_subscribe when you have a webhook receiver.",
+    schema: {
+      name: z.string().describe("Event type name from events_list, e.g. mention."),
+      cursor: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Opaque cursor from a previous poll; omit or null to start from the beginning of the document's log."),
+      max_events: z.number().optional().describe("Cap on returned events (default 50, max 200)."),
+    },
+    call: (stub, identity, args) =>
+      stub.eventsPoll(identity, {
+        name: args.name as string,
+        cursor: args.cursor as string | null | undefined,
+        maxEvents: args.max_events as number | undefined,
+      }),
+  }),
+
+  docTool({
+    name: "events_subscribe",
+    description:
+      "Register a webhook for an event type (experimental — mirrors the draft MCP Events extension). The server POSTs each occurrence to your HTTPS URL, signed per Standard Webhooks with your whsec_ secret. Requires the authenticated /mcp door. Idempotent per (you, url, name): re-subscribing refreshes the TTL — which runs to the document's remaining lifetime by default — and reactivates a suspended subscription.",
+    schema: {
+      name: z.string().describe("Event type name from events_list, e.g. mention."),
+      url: z.string().describe("HTTPS webhook URL to POST occurrences to."),
+      secret: z
+        .string()
+        .describe("Client-generated Standard Webhooks secret: whsec_ + base64 of 24-64 random bytes. You verify deliveries with it."),
+      ttl_ms: z
+        .number()
+        .nullable()
+        .optional()
+        .describe("Suggested subscription lifetime in ms; omit or null for the document's remaining lifetime."),
+    },
+    call: (stub, identity, args) =>
+      stub.eventsSubscribe(identity, {
+        name: args.name as string,
+        url: args.url as string,
+        secret: args.secret as string,
+        ttlMs: args.ttl_ms as number | null | undefined,
+      }),
+  }),
+
+  docTool({
+    name: "events_unsubscribe",
+    description:
+      "Remove a webhook subscription created with events_subscribe (experimental — mirrors the draft MCP Events extension). Keyed by event name + url for the calling identity.",
+    schema: {
+      name: z.string().describe("Event type name the subscription was created for."),
+      url: z.string().describe("The webhook URL the subscription delivers to."),
+    },
+    call: (stub, identity, args) =>
+      stub.eventsUnsubscribe(identity, {
+        name: args.name as string,
+        url: args.url as string,
+      }),
   }),
 ];

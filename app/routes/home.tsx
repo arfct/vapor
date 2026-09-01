@@ -129,65 +129,21 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   }, []);
 
   return (
-    <>
-      <div
-        className="relative min-h-screen px-4 pb-24 pt-16 sm:px-6"
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-      >
-        <div className="absolute right-3 top-3">
-          <ThemeSelector />
-        </div>
-        <div className="mx-auto max-w-3xl">
-          <h1 className="mb-1 text-3xl font-bold text-ink">{APP_NAME}</h1>
-          <p className="mb-8 text-muted">
-            Live Markdown for people and agents, side by side
-          </p>
-
-          <div className="flex flex-wrap items-center gap-4">
-            <button
-              onClick={handleNewDocument}
-              className="cursor-pointer whitespace-nowrap border border-ink bg-ink px-6 py-2 text-paper transition-opacity hover:opacity-80"
-            >
-              New document
-            </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="cursor-pointer text-muted underline underline-offset-2 transition-colors hover:text-ink"
-            >
-              Drop an .md file
-            </button>
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".md"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-
-          <h2 className={headingClass}>From your terminal</h2>
-          <CodeBlock command={`curl ${origin}/new -T file.md`} />
-
-          <h2 className={headingClass}>From your agent</h2>
-          <CodeBlock command={`claude mcp add --transport http vapor ${origin}/mcp`} />
-          <p className="mt-2 text-sm text-muted">
-            Agents join with a visible cursor and edit like a person would.
-          </p>
-
-          <h2 className={headingClass}>As a habit</h2>
-          <CodeBlock command="claude plugin marketplace add arfct/vapor && claude plugin install vapor@vapor" />
-          <p className="mt-2 text-sm text-muted">
-            Bundles the MCP connection with a skill: Claude drafts here,
-            discusses in comments, and saves back to your repo before the
-            doc expires.
-          </p>
-        </div>
-      </div>
-      <footer className="fixed bottom-0 left-0 right-0 z-10 flex items-baseline justify-between border-t border-border bg-paper px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-base text-muted">
-        <span>
-          <span className="whitespace-nowrap">Work in progress.</span> Bugs and
-          feedback on{" "}
+    <div
+      className="min-h-screen bg-paper text-ink"
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+    >
+      <header className="flex items-stretch overflow-x-auto scrollbar-none border-b border-border">
+        <Link
+          to="/"
+          className="flex shrink-0 items-center bg-ink px-4 py-2 font-medium text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
+        >
+          {APP_NAME}
+        </Link>
+        <div className="flex grow items-center whitespace-nowrap px-4 text-sm text-muted">
+          <span>Work in progress.</span>
+          &nbsp;Bugs and feedback on{" "}
           <a
             href="https://github.com/arfct/vapor"
             target="_blank"
@@ -197,17 +153,67 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             GitHub
           </a>
           .
-        </span>
-        <span className="whitespace-nowrap">
+        </div>
+        <div className="flex shrink-0 items-center gap-3 border-l border-border px-4 text-sm">
           <Link to="/privacy" className="text-ink transition-colors hover:text-coral">
             Privacy
           </Link>
-          {" · "}
           <Link to="/terms" className="text-ink transition-colors hover:text-coral">
             Terms
           </Link>
-        </span>
-      </footer>
-    </>
+        </div>
+        <div className="shrink-0 border-l border-border">
+          <ThemeSelector />
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-3xl px-4 pb-16 pt-10 sm:px-6">
+        <p className="text-base text-muted">
+          Live Markdown for people and agents, side by side. Every document
+          is public by URL and deletes itself after 99 hours &mdash; export
+          or save what you want to keep.
+        </p>
+
+        <h2 className={headingClass}>Create a document</h2>
+        <div className="mt-3 flex flex-wrap items-center gap-4">
+          <button
+            onClick={handleNewDocument}
+            className="cursor-pointer whitespace-nowrap border border-ink bg-ink px-6 py-2 text-paper transition-opacity hover:opacity-80"
+          >
+            New document
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="cursor-pointer text-muted underline underline-offset-2 transition-colors hover:text-ink"
+          >
+            Drop an .md file
+          </button>
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".md"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+
+        <h2 className={headingClass}>From your terminal</h2>
+        <CodeBlock command={`curl ${origin}/new -T file.md`} />
+
+        <h2 className={headingClass}>From your agent</h2>
+        <CodeBlock command={`claude mcp add --transport http vapor ${origin}/mcp`} />
+        <p className="mt-2 text-sm text-muted">
+          Agents join with a visible cursor and edit like a person would.
+        </p>
+
+        <h2 className={headingClass}>As a habit</h2>
+        <CodeBlock command="claude plugin marketplace add arfct/vapor && claude plugin install vapor@vapor" />
+        <p className="mt-2 text-sm text-muted">
+          Bundles the MCP connection with a skill: Claude drafts here,
+          discusses in comments, and saves back to your repo before the
+          doc expires.
+        </p>
+      </main>
+    </div>
   );
 }

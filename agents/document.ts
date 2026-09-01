@@ -27,6 +27,22 @@ import {
   pmNodeToYElement,
 } from "../app/shared/rich-markdown";
 import { chunkTyping } from "../app/lib/performance-chunks";
+import {
+  eventCatalog,
+  eventTypeByName,
+  buildOccurrence,
+  encodeCursor,
+  decodeCursor,
+  isValidWebhookSecret,
+  webhookUrlError,
+  subscriptionId,
+  signWebhook,
+  grantTtlMs,
+  DELIVERY_RETRY_DELAYS_MS,
+  SUSPEND_AFTER_FAILING_MS,
+  POLL_RETRY_AFTER_MS,
+  type EventOccurrence,
+} from "./events";
 import { encodeAgentAwareness, agentClientId, type AgentPresenceState } from "../app/lib/agent-awareness";
 import type { ThreadData, ThreadReply } from "../app/shared/types";
 
@@ -252,6 +268,21 @@ class DocumentAgent extends Agent {
         seq INTEGER PRIMARY KEY AUTOINCREMENT,
         type TEXT,
         payload TEXT,
+        created_at INTEGER
+      )
+    `;
+    this.sql`
+      CREATE TABLE IF NOT EXISTS subscriptions (
+        id TEXT PRIMARY KEY,
+        principal TEXT,
+        agent_name TEXT,
+        url TEXT,
+        secret TEXT,
+        name TEXT,
+        arguments TEXT,
+        expires_at INTEGER,
+        failing_since INTEGER,
+        active INTEGER,
         created_at INTEGER
       )
     `;
@@ -523,6 +554,8 @@ class DocumentAgent extends Agent {
     // Recorded events (mentions, thread replies, doc_changed digests) are
     // meaningless once the document they refer to is gone.
     this.sql`DELETE FROM events`;
+    // Webhook subscriptions die with the document.
+    this.sql`DELETE FROM subscriptions`;
     for (const finish of this.eventWaiters) finish();
     this.eventWaiters = [];
     // Agent presence belongs to a document that no longer exists — drop it
@@ -812,6 +845,12 @@ class DocumentAgent extends Agent {
     this.sql`
       INSERT INTO events (type, payload, created_at) VALUES (${type}, ${JSON.stringify(payload)}, ${Date.now()})
     `;
+    // ORDER BY + last element rather than MAX(): behaves identically on
+    // real SQLite and stays within what the test harness's SQL fake parses.
+    const seqRows = this.sql<{ seq: number }>`
+      SELECT seq FROM events ORDER BY seq ASC
+    `;
+    this.dispatchWebhooks(seqRows.length ? seqRows[seqRows.length - 1].seq : 0, type, payload);
     const waiters = this.eventWaiters;
     this.eventWaiters = [];
     for (const resolve of waiters) resolve();
@@ -898,6 +937,290 @@ class DocumentAgent extends Agent {
       return { events, cursor: lastSeq, retryAfterMs: 30_000 };
     }
     return { events, cursor: lastSeq };
+  }
+
+  /* ================================================================ */
+  /*  MCP Events polyfill (draft Triggers & Events extension)          */
+  /*  docs/plans/2026-08-31-mcp-events-polyfill-plan.md                */
+  /* ================================================================ */
+
+  /** When this document's auto-delete alarm fires (TTL grants cap here). */
+  private docExpiresAt(): number {
+    const rows = this.sql<{ value: ArrayBuffer | Uint8Array }>`
+      SELECT value FROM doc_state WHERE key = 'createdAt'
+    `;
+    if (rows.length === 0) return Date.now() + DOCUMENT_TTL_MS;
+    const v = rows[0].value;
+    const bytes = v instanceof Uint8Array ? v : new Uint8Array(v);
+    const createdAt = new Float64Array(bytes.buffer, bytes.byteOffset, 1)[0];
+    return createdAt + DOCUMENT_TTL_MS;
+  }
+
+  /** The sketch's `events/list`: the event-type catalog. */
+  async eventsList(identity: AgentIdentity): Promise<
+    | { events: ReturnType<typeof eventCatalog> }
+    | { error: AgentError }
+  > {
+    const verified = await this.verifyIdentity(identity);
+    if ("error" in verified) return verified;
+    return { events: eventCatalog() };
+  }
+
+  /**
+   * The sketch's `events/poll`: request/response, no long hold (the hold
+   * lives in the deprecated agentAwaitEvents; polling here is meant to be
+   * cheap and paced by nextPollMs).
+   */
+  async eventsPoll(
+    identity: AgentIdentity,
+    args: { name: string; cursor?: string | null; maxEvents?: number },
+  ): Promise<
+    | {
+        events: EventOccurrence[];
+        cursor: string | null;
+        truncated: boolean;
+        hasMore: boolean;
+        nextPollMs: number;
+        retryAfterMs?: number;
+      }
+    | { error: AgentError }
+  > {
+    const verified = await this.verifyIdentity(identity);
+    if ("error" in verified) return verified;
+
+    const type = eventTypeByName(args.name);
+    if (!type) {
+      return { error: { code: "not_found", message: `Unknown event type: ${args.name}` } };
+    }
+    const since = decodeCursor(args.cursor);
+    if (since === null) {
+      return { error: { code: "invalid_params", message: `Unparseable cursor: ${args.cursor}` } };
+    }
+    const maxEvents = Math.min(Math.max(args.maxEvents ?? 50, 1), 200);
+    const self = verified.entry.name;
+
+    const rows = this.sql<EventRow>`
+      SELECT * FROM events WHERE seq > ${since} ORDER BY seq ASC
+    `;
+    const out: EventOccurrence[] = [];
+    let lastSeq = since;
+    let hasMore = false;
+    for (const row of rows) {
+      if (out.length >= maxEvents) {
+        hasMore = true;
+        break;
+      }
+      lastSeq = Math.max(lastSeq, row.seq);
+      if (row.type !== type.internalType) continue;
+      let payload: unknown;
+      try {
+        payload = JSON.parse(row.payload) as unknown;
+      } catch {
+        continue;
+      }
+      if (type.addressed && (payload as { agent?: string }).agent !== self) continue;
+      const occurrence = buildOccurrence({
+        docId: this.name,
+        seq: row.seq,
+        internalType: row.type,
+        payload,
+        createdAt: row.created_at,
+      });
+      if (occurrence) out.push(occurrence);
+    }
+
+    return {
+      events: out,
+      cursor: encodeCursor(lastSeq),
+      truncated: false,
+      hasMore,
+      nextPollMs: POLL_RETRY_AFTER_MS,
+      ...(out.length === 0 ? { retryAfterMs: POLL_RETRY_AFTER_MS } : {}),
+    };
+  }
+
+  /**
+   * The sketch's `events/subscribe` (webhook mode only): idempotent upsert
+   * keyed on (principal, url, name, arguments); re-subscribing refreshes
+   * the TTL and reactivates a suspended subscription. Requires an
+   * authenticated principal — the sketch forbids webhook mode on
+   * unauthenticated callers, and it also keeps the dispatcher from being
+   * an anonymous "make this server POST anywhere" primitive.
+   */
+  async eventsSubscribe(
+    identity: AgentIdentity,
+    args: { name: string; url: string; secret: string; ttlMs?: number | null },
+  ): Promise<
+    | { id: string; refreshBefore: string; cursor: string; truncated: boolean }
+    | { error: AgentError }
+  > {
+    const verified = await this.verifyIdentity(identity);
+    if ("error" in verified) return verified;
+
+    if (identity.kind !== "principal") {
+      return {
+        error: {
+          code: "capability_denied",
+          message: "Webhook subscriptions require the authenticated /mcp door; the anonymous door may poll.",
+        },
+      };
+    }
+    if (!eventTypeByName(args.name)) {
+      return { error: { code: "not_found", message: `Unknown event type: ${args.name}` } };
+    }
+    const urlError = webhookUrlError(args.url);
+    if (urlError) {
+      return { error: { code: "invalid_params", message: urlError } };
+    }
+    if (!isValidWebhookSecret(args.secret)) {
+      return {
+        error: {
+          code: "invalid_params",
+          message: "delivery.secret must be whsec_ + base64 of 24-64 random bytes",
+        },
+      };
+    }
+
+    const now = Date.now();
+    const argumentsJson = JSON.stringify({ doc_id: this.name });
+    const id = await subscriptionId(identity.id, args.url, args.name, argumentsJson);
+    const ttl = grantTtlMs(args.ttlMs, this.docExpiresAt(), now);
+    const expiresAt = now + ttl;
+
+    // Idempotent upsert as delete+insert: a refresh replaces the secret,
+    // re-grants the TTL, clears the failure clock, and reactivates.
+    this.sql`DELETE FROM subscriptions WHERE id = ${id}`;
+    this.sql`
+      INSERT INTO subscriptions (id, principal, agent_name, url, secret, name, arguments, expires_at, failing_since, active, created_at)
+      VALUES (${id}, ${identity.id}, ${verified.entry.name}, ${args.url}, ${args.secret}, ${args.name}, ${argumentsJson}, ${expiresAt}, ${null}, ${1}, ${now})
+    `;
+
+    const seqRows = this.sql<{ seq: number }>`
+      SELECT seq FROM events ORDER BY seq ASC
+    `;
+    const watermark = encodeCursor(seqRows.length ? seqRows[seqRows.length - 1].seq : 0);
+
+    return { id, refreshBefore: new Date(expiresAt).toISOString(), cursor: watermark, truncated: false };
+  }
+
+  /** The sketch's `events/unsubscribe`: eager teardown by subscription key. */
+  async eventsUnsubscribe(
+    identity: AgentIdentity,
+    args: { name: string; url: string },
+  ): Promise<{ ok: true } | { error: AgentError }> {
+    const verified = await this.verifyIdentity(identity);
+    if ("error" in verified) return verified;
+    if (identity.kind !== "principal") {
+      return { error: { code: "capability_denied", message: "Webhook subscriptions require the authenticated /mcp door." } };
+    }
+    const argumentsJson = JSON.stringify({ doc_id: this.name });
+    const id = await subscriptionId(identity.id, args.url, args.name, argumentsJson);
+    const rows = this.sql<{ id: string }>`SELECT id FROM subscriptions WHERE id = ${id}`;
+    if (rows.length === 0) {
+      return { error: { code: "not_found", message: "No such subscription" } };
+    }
+    this.sql`DELETE FROM subscriptions WHERE id = ${id}`;
+    return { ok: true };
+  }
+
+  /**
+   * Dispatches a just-recorded event to matching webhook subscriptions.
+   * Runs off the hot path via waitUntil where available; each delivery
+   * retries briefly and marks sustained failure for suspension.
+   */
+  private dispatchWebhooks(seq: number, internalType: string, payload: unknown): void {
+    const occurrence = buildOccurrence({
+      docId: this.name,
+      seq,
+      internalType,
+      payload,
+      createdAt: Date.now(),
+    });
+    if (!occurrence) return; // internal event type with no wire mapping
+
+    const now = Date.now();
+    const candidates = this.sql<{
+      id: string;
+      url: string;
+      secret: string;
+      agent_name: string;
+      failing_since: number | null;
+      expires_at: number;
+      active: number;
+    }>`
+      SELECT id, url, secret, agent_name, failing_since, expires_at, active
+      FROM subscriptions WHERE name = ${occurrence.name}
+    `;
+    const subs: typeof candidates = [];
+    for (const sub of candidates) {
+      // Lazy TTL expiry: reap lapsed rows whenever we dispatch.
+      if (sub.expires_at < now) {
+        this.sql`DELETE FROM subscriptions WHERE id = ${sub.id}`;
+        continue;
+      }
+      if (sub.active !== 1) continue;
+      subs.push(sub);
+    }
+    if (subs.length === 0) return;
+
+    const addressedTo = (payload as { agent?: string } | null)?.agent;
+    const type = eventTypeByName(occurrence.name);
+
+    for (const sub of subs) {
+      if (type?.addressed && addressedTo !== sub.agent_name) continue;
+      const delivery = this.deliverWebhook(sub, occurrence);
+      // The Agents SDK exposes the DO's state as this.ctx; guard for test
+      // doubles that don't implement waitUntil.
+      const ctx = (this as unknown as { ctx?: { waitUntil?: (p: Promise<unknown>) => void } }).ctx;
+      if (ctx?.waitUntil) ctx.waitUntil(delivery);
+      else void delivery;
+    }
+  }
+
+  private async deliverWebhook(
+    sub: { id: string; url: string; secret: string; failing_since: number | null },
+    occurrence: EventOccurrence,
+  ): Promise<void> {
+    const body = JSON.stringify(occurrence);
+    const headers = {
+      "Content-Type": "application/json",
+      "X-MCP-Subscription-Id": sub.id,
+      ...(await signWebhook({
+        secret: sub.secret,
+        messageId: occurrence.eventId,
+        timestampSeconds: Math.floor(Date.now() / 1000),
+        body,
+      })),
+    };
+
+    const attempts = [0, ...DELIVERY_RETRY_DELAYS_MS];
+    for (let i = 0; i < attempts.length; i++) {
+      if (attempts[i] > 0) await sleep(attempts[i]);
+      try {
+        const res = await fetch(sub.url, { method: "POST", headers, body });
+        if (res.ok) {
+          if (sub.failing_since !== null) {
+            this.sql`UPDATE subscriptions SET failing_since = ${null} WHERE id = ${sub.id}`;
+          }
+          return;
+        }
+      } catch {
+        // fall through to retry
+      }
+    }
+
+    // All attempts failed: start (or continue) the sustained-failure clock;
+    // suspend only after failures have spanned SUSPEND_AFTER_FAILING_MS so
+    // a receiver's deploy blip self-heals instead of killing the
+    // subscription (a successful re-subscribe reactivates).
+    const now = Date.now();
+    const since = sub.failing_since ?? now;
+    if (sub.failing_since === null) {
+      this.sql`UPDATE subscriptions SET failing_since = ${now} WHERE id = ${sub.id}`;
+    }
+    if (now - since >= SUSPEND_AFTER_FAILING_MS) {
+      this.sql`UPDATE subscriptions SET active = ${0} WHERE id = ${sub.id}`;
+    }
   }
 
   /** Revokes an agent's token by name. Idempotent. */

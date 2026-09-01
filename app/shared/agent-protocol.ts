@@ -59,7 +59,11 @@ export type AgentErrorCode =
   | "invalid_name"
   | "thread_not_found"
   /** Markdown the editor's mark model can't represent (CriticMarkup substitution). */
-  | "unsupported_markup";
+  | "unsupported_markup"
+  /** Events polyfill: a referenced event type or subscription doesn't exist (sketch -32011). */
+  | "not_found"
+  /** Events polyfill: statically invalid arguments — bad URL, bad whsec_ secret, bad cursor (sketch -32602). */
+  | "invalid_params";
 
 export const AGENT_NAME_RE = /^[a-z0-9][a-z0-9-]{0,30}[a-z0-9]$/;
 

@@ -2050,4 +2050,213 @@ describe("DocumentAgent", () => {
       expect(mockTables.get("events") ?? []).toEqual([]);
     });
   });
+
+  /* ================================================================ */
+  /*  Events polyfill (draft MCP Triggers & Events extension)          */
+  /* ================================================================ */
+
+  describe("events polyfill", () => {
+    const SECRET = "whsec_" + btoa("0123456789abcdef01234567");
+    const URL = "https://relay.example.com/hook";
+
+    async function setupDoc(caps: AgentCapability[] = ["suggest", "comment"]) {
+      const agent = makeAgent();
+      await agent.onRequest(new Request("https://do/", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "# Title\n\nBody." }),
+      }));
+      const id = identity({ caps });
+      // Enroll the subscriber so @scribe mentions register against the roster.
+      await agent.agentJoin(id);
+      return { agent, id };
+    }
+
+    function subsRows() {
+      return (mockTables.get("subscriptions") ?? []) as Array<Record<string, unknown>>;
+    }
+
+    function mention(agent: InstanceType<typeof DocumentAgent>, text: string) {
+      const client = connectYjsClient(agent);
+      const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
+      const ytext = para.get(0) as Y.XmlText;
+      ytext.insert(ytext.length, text);
+      cleanup(client);
+    }
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    });
+
+    it("lists the event catalog", async () => {
+      const { agent, id } = await setupDoc();
+      const r = await agent.eventsList(id);
+      expect("events" in r && r.events.map((e) => e.name)).toEqual([
+        "document.changed",
+        "mention",
+        "thread.reply",
+      ]);
+    });
+
+    it("polls one event type with cursor advance and addressed filtering", async () => {
+      const { agent, id } = await setupDoc();
+      mention(agent, " ping @scribe please");
+
+      const first = await agent.eventsPoll(id, { name: "mention" });
+      if ("error" in first) throw new Error(first.error.message);
+      expect(first.events).toHaveLength(1);
+      expect(first.events[0]).toMatchObject({
+        name: "mention",
+        data: { doc_id: "test-doc", agent: "scribe" },
+      });
+
+      // Same events, different agent: addressed filtering yields nothing.
+      const other = await agent.eventsPoll(identity({ id: "email:b@x.com", name: "other" }), {
+        name: "mention",
+      });
+      if ("error" in other) throw new Error(other.error.message);
+      expect(other.events).toHaveLength(0);
+      expect(other.retryAfterMs).toBeGreaterThan(0);
+
+      // Cursor advances past everything scanned.
+      const again = await agent.eventsPoll(id, { name: "mention", cursor: first.cursor });
+      if ("error" in again) throw new Error(again.error.message);
+      expect(again.events).toHaveLength(0);
+    });
+
+    it("rejects unknown event names and bad cursors", async () => {
+      const { agent, id } = await setupDoc();
+      expect(await agent.eventsPoll(id, { name: "nope" })).toMatchObject({
+        error: { code: "not_found" },
+      });
+      expect(await agent.eventsPoll(id, { name: "mention", cursor: "zzz" })).toMatchObject({
+        error: { code: "invalid_params" },
+      });
+    });
+
+    it("refuses webhook subscriptions from anonymous identities", async () => {
+      const { agent } = await setupDoc();
+      const anon = identity({ kind: "anonymous", id: "anon:s1", owner: null });
+      const r = await agent.eventsSubscribe(anon, { name: "mention", url: URL, secret: SECRET });
+      expect(r).toMatchObject({ error: { code: "capability_denied" } });
+    });
+
+    it("validates the secret and the URL", async () => {
+      const { agent, id } = await setupDoc();
+      expect(
+        await agent.eventsSubscribe(id, { name: "mention", url: URL, secret: "whsec_short" }),
+      ).toMatchObject({ error: { code: "invalid_params" } });
+      expect(
+        await agent.eventsSubscribe(id, { name: "mention", url: "https://10.0.0.1/h", secret: SECRET }),
+      ).toMatchObject({ error: { code: "invalid_params" } });
+      expect(
+        await agent.eventsSubscribe(id, { name: "mention", url: "http://relay.example.com/h", secret: SECRET }),
+      ).toMatchObject({ error: { code: "invalid_params" } });
+    });
+
+    it("grants TTL to the document's remaining lifetime and upserts idempotently", async () => {
+      const { agent, id } = await setupDoc();
+      const r1 = await agent.eventsSubscribe(id, { name: "mention", url: URL, secret: SECRET });
+      if ("error" in r1) throw new Error(r1.error.message);
+      // Fresh doc: remaining lifetime is ~99h, far beyond the old 24h cap.
+      expect(new Date(r1.refreshBefore).getTime() - Date.now()).toBeGreaterThan(90 * 3600 * 1000);
+      expect(r1.id).toMatch(/^sub_/);
+
+      const r2 = await agent.eventsSubscribe(id, { name: "mention", url: URL, secret: SECRET });
+      if ("error" in r2) throw new Error(r2.error.message);
+      expect(r2.id).toBe(r1.id);
+      expect(subsRows()).toHaveLength(1);
+    });
+
+    it("unsubscribes by key and errors on a missing subscription", async () => {
+      const { agent, id } = await setupDoc();
+      await agent.eventsSubscribe(id, { name: "mention", url: URL, secret: SECRET });
+      expect(await agent.eventsUnsubscribe(id, { name: "mention", url: URL })).toEqual({ ok: true });
+      expect(subsRows()).toHaveLength(0);
+      expect(await agent.eventsUnsubscribe(id, { name: "mention", url: URL })).toMatchObject({
+        error: { code: "not_found" },
+      });
+    });
+
+    it("delivers a signed webhook on a matching event", async () => {
+      const { agent, id } = await setupDoc();
+      const calls: { url: string; headers: Record<string, string>; body: string }[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
+        calls.push({
+          url: String(url),
+          headers: init.headers as Record<string, string>,
+          body: String(init.body),
+        });
+        return new Response("ok", { status: 200 });
+      }));
+
+      await agent.eventsSubscribe(id, { name: "mention", url: URL, secret: SECRET });
+      mention(agent, " hey @scribe look");
+      await new Promise((r) => setTimeout(r, 10));
+
+      expect(calls).toHaveLength(1);
+      const call = calls[0];
+      expect(call.url).toBe(URL);
+      expect(call.headers["X-MCP-Subscription-Id"]).toMatch(/^sub_/);
+      expect(call.headers["webhook-id"]).toMatch(/^test-doc:\d+$/);
+      const body = JSON.parse(call.body) as { name: string; data: { agent: string } };
+      expect(body).toMatchObject({ name: "mention", data: { agent: "scribe" } });
+
+      // Signature verifies against the raw secret bytes.
+      const { createHmac } = await import("node:crypto");
+      const expected = createHmac("sha256", Buffer.from("0123456789abcdef01234567", "binary"))
+        .update(`${call.headers["webhook-id"]}.${call.headers["webhook-timestamp"]}.${call.body}`)
+        .digest("base64");
+      expect(call.headers["webhook-signature"]).toBe(`v1,${expected}`);
+    });
+
+    it("does not deliver another agent's mention", async () => {
+      const { agent, id } = await setupDoc();
+      const fetchMock = vi.fn(async () => new Response("ok", { status: 200 }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      await agent.eventsSubscribe(id, { name: "mention", url: URL, secret: SECRET });
+      // Enroll a second agent, then mention only that one.
+      await agent.agentJoin(identity({ id: "email:b@x.com", name: "other" }));
+      mention(agent, " hi @other only");
+      await new Promise((r) => setTimeout(r, 10));
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("suspends only after sustained failure, and re-subscribe reactivates", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+      const { agent, id } = await setupDoc();
+      vi.stubGlobal("fetch", vi.fn(async () => new Response("no", { status: 500 })));
+
+      await agent.eventsSubscribe(id, { name: "mention", url: URL, secret: SECRET });
+
+      // Mention notifications dedupe per (text node, agent) while the name
+      // stays in the block, so to re-mention we remove the first mention
+      // (forgetting the name) before inserting the second.
+      const client = connectYjsClient(agent);
+      const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
+      const ytext = para.get(0) as Y.XmlText;
+      const base = ytext.length;
+      ytext.insert(base, " one @scribe");
+      await vi.advanceTimersByTimeAsync(10_000); // burn the retry ladder
+      expect(subsRows()[0].failing_since).not.toBeNull();
+      expect(subsRows()[0].active).toBe(1);
+
+      // An hour later, still failing: now it suspends.
+      await vi.advanceTimersByTimeAsync(61 * 60 * 1000);
+      ytext.delete(base, " one @scribe".length);
+      ytext.insert(base, " two @scribe");
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(subsRows()[0].active).toBe(0);
+      cleanup(client);
+
+      // Re-subscribe reactivates and clears the failure clock.
+      const r = await agent.eventsSubscribe(id, { name: "mention", url: URL, secret: SECRET });
+      if ("error" in r) throw new Error(r.error.message);
+      expect(subsRows()[0].active).toBe(1);
+      expect(subsRows()[0].failing_since).toBeNull();
+    });
+  });
+
 });

@@ -3,7 +3,6 @@ import { useNavigate, Link } from "react-router";
 import type { Route } from "./+types/home";
 import { APP_NAME, generateDocumentId } from "~/shared/constants";
 import { deserializeThreads } from "~/lib/thread-serialization";
-import ThemeSelector from "~/components/ThemeSelector";
 import demoDocument from "./demo.md?raw";
 
 export function loader({ request }: Route.LoaderArgs) {
@@ -161,9 +160,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <Link to="/terms" className="text-ink transition-colors hover:text-coral">
             Terms
           </Link>
-        </div>
-        <div className="shrink-0 border-l border-border">
-          <ThemeSelector />
         </div>
       </header>
 

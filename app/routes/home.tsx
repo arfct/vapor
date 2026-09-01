@@ -141,17 +141,18 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           {APP_NAME}
         </Link>
         <div className="flex grow items-center whitespace-nowrap px-4 text-sm text-muted">
-          <span>Work in progress.</span>
-          &nbsp;Bugs and feedback on{" "}
-          <a
-            href="https://github.com/arfct/vapor"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-ink transition-colors hover:text-coral"
-          >
-            GitHub
-          </a>
-          .
+          <span>
+            Work in progress. Bugs and feedback on{" "}
+            <a
+              href="https://github.com/arfct/vapor"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-ink transition-colors hover:text-coral"
+            >
+              GitHub
+            </a>
+            .
+          </span>
         </div>
         <div className="flex shrink-0 items-center gap-3 border-l border-border px-4 text-sm">
           <Link to="/privacy" className="text-ink transition-colors hover:text-coral">

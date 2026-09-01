@@ -95,7 +95,16 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
         >
           vapor
         </Link>
-        <div className="flex grow shrink-0 items-center px-4">
+        <div className="shrink-0 border-r border-border">
+          <FormatToolbar />
+        </div>
+        <div className="shrink-0 border-r border-border">
+          <ModeMenu />
+        </div>
+        <div className="shrink-0 border-r border-border">
+          <ShareButton />
+        </div>
+        <div className="flex shrink-0 items-center whitespace-nowrap px-4">
           <span className="font-mono font-bold">{id}</span>
           {createdAt && (
             <span className="ml-2 whitespace-nowrap text-muted">
@@ -103,17 +112,9 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
             </span>
           )}
         </div>
+        <div className="grow" />
         <div className="flex shrink-0 items-center border-l border-border px-3">
           <ConnectionStatus />
-        </div>
-        <div className="shrink-0 border-l border-border">
-          <FormatToolbar />
-        </div>
-        <div className="shrink-0 border-l border-border">
-          <ModeMenu />
-        </div>
-        <div className="shrink-0 border-l border-border">
-          <ShareButton />
         </div>
         <div className="shrink-0 border-l border-border">
           <HeaderMenu onOpenAgents={() => setAgentsOpen(true)} />

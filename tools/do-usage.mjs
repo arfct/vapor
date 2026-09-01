@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global process, console, fetch */
 /**
  * Durable Objects usage vs. the free-tier daily budgets — the guardrail
  * from docs/plans/2026-08-31-sleeping-tabs-plan.md, so the next quota

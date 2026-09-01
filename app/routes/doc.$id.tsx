@@ -83,6 +83,7 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
     openCommentInput,
     handleResolveAtCursor,
     handleDeleteAtCursor,
+    isOnboarding,
   } = useDocument();
   const [agentsOpen, setAgentsOpen] = useState(false);
 
@@ -95,17 +96,22 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
         >
           vapor
         </Link>
+        {isOnboarding ? (
+          <div className="shrink-0 border-r border-border">
+            <OnboardingBanner />
+          </div>
+        ) : (
+          <>
+            <div className="shrink-0 border-r border-border">
+              <ModeMenu />
+            </div>
+            <div className="shrink-0 border-r border-border">
+              <ShareButton onOpenAgents={() => setAgentsOpen(true)} />
+            </div>
+          </>
+        )}
         <div className="shrink-0 border-r border-border">
           <FormatToolbar />
-        </div>
-        <div className="shrink-0 border-r border-border">
-          <ModeMenu />
-        </div>
-        <div className="shrink-0 border-r border-border">
-          <ShareButton />
-        </div>
-        <div className="shrink-0 border-r border-border empty:hidden">
-          <OnboardingBanner />
         </div>
         <div className="flex shrink-0 items-center whitespace-nowrap px-4">
           <span className="font-mono font-bold">{id}</span>
@@ -120,7 +126,7 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
           <ConnectionStatus />
         </div>
         <div className="shrink-0 border-l border-border">
-          <HeaderMenu onOpenAgents={() => setAgentsOpen(true)} />
+          <HeaderMenu />
         </div>
       </header>
       <AgentsPanel open={agentsOpen} onClose={() => setAgentsOpen(false)} />

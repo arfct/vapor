@@ -1,10 +1,10 @@
 import { useState, useCallback } from "react";
 import { serializeThreads } from "~/lib/thread-serialization";
 import { useDocument } from "~/lib/DocumentContext";
-import { Menu, MenuTrigger, MenuContent, MenuItem } from "~/components/ui/menu";
+import { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from "~/components/ui/menu";
 import Icon from "~/components/Icon";
 
-export default function ShareButton() {
+export default function ShareButton({ onOpenAgents }: { onOpenAgents: () => void }) {
   const { docId, markdown, threads } = useDocument();
   const [copied, setCopied] = useState(false);
 
@@ -35,7 +35,7 @@ export default function ShareButton() {
           Share
         </button>
       </MenuTrigger>
-      <MenuContent align="end">
+      <MenuContent>
         <MenuItem className="gap-2" onClick={handleCopy}>
           <Icon name={copied ? "check" : "link"} />
           <span>{copied ? "Copied" : "Copy link"}</span>
@@ -43,6 +43,11 @@ export default function ShareButton() {
         <MenuItem className="gap-2" onClick={handleDownload}>
           <Icon name="download" />
           <span>Download</span>
+        </MenuItem>
+        <MenuSeparator />
+        <MenuItem className="gap-2" onClick={onOpenAgents}>
+          <Icon name="robot_2" />
+          <span>Invite an agent</span>
         </MenuItem>
       </MenuContent>
     </Menu>

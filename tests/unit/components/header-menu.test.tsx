@@ -23,25 +23,14 @@ describe("HeaderMenu", () => {
     vi.restoreAllMocks();
   });
 
-  it("opens with Agents and theme rows", async () => {
-    const onOpenAgents = vi.fn();
-    renderWithDocument(createElement(HeaderMenu, { onOpenAgents }));
+  it("opens with theme rows", async () => {
+    renderWithDocument(createElement(HeaderMenu));
     fireEvent.click(screen.getByLabelText("Menu"));
 
-    expect(screen.getByText("Agents")).toBeTruthy();
     expect(screen.getByText("Theme")).toBeTruthy();
     expect(screen.getByLabelText("Light")).toBeTruthy();
     expect(screen.getByLabelText("Dark")).toBeTruthy();
     expect(screen.getByLabelText("Auto")).toBeTruthy();
-  });
-
-  it("Agents row closes the menu and opens the panel", () => {
-    const onOpenAgents = vi.fn();
-    renderWithDocument(createElement(HeaderMenu, { onOpenAgents }));
-    fireEvent.click(screen.getByLabelText("Menu"));
-    fireEvent.click(screen.getByText("Agents"));
-    expect(onOpenAgents).toHaveBeenCalledOnce();
-    expect(screen.queryByText("Theme")).toBeFalsy();
   });
 
   it("shows display name and sign-out when signed in", async () => {
@@ -50,7 +39,7 @@ describe("HeaderMenu", () => {
       "POST /auth/logout": { ok: true },
     });
     vi.stubGlobal("fetch", fetchMock);
-    renderWithDocument(createElement(HeaderMenu, { onOpenAgents: vi.fn() }));
+    renderWithDocument(createElement(HeaderMenu));
     fireEvent.click(screen.getByLabelText("Menu"));
 
     expect(await screen.findByText("Ada")).toBeTruthy();

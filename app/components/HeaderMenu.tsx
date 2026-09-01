@@ -27,7 +27,7 @@ const themeOptions: { value: Theme; icon: string; label: string }[] = [
  * The top-right header menu: connection status, the Agents panel, the
  * account row (Google sign-in or name + sign-out), and the theme switcher.
  */
-export default function HeaderMenu({ onOpenAgents }: { onOpenAgents: () => void }) {
+export default function HeaderMenu() {
   const session = useSession();
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
@@ -105,18 +105,8 @@ export default function HeaderMenu({ onOpenAgents }: { onOpenAgents: () => void 
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="fixed right-2 top-12 z-50 w-64 border border-border bg-paper shadow-lg">
-            <button
-              onClick={() => {
-                setOpen(false);
-                onOpenAgents();
-              }}
-              className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left text-sm transition-colors hover:bg-border"
-            >
-              <Icon name="smart_toy" className="text-muted" />
-              Agents
-            </button>
             {session?.signedIn ? (
-              <div className="flex items-center gap-2 border-t border-border px-4 py-3">
+              <div className="flex items-center gap-2 px-4 py-3">
                 <Avatar
                   name={session.displayName ?? "?"}
                   avatar={session.avatar}
@@ -133,7 +123,7 @@ export default function HeaderMenu({ onOpenAgents }: { onOpenAgents: () => void 
                 </button>
               </div>
             ) : (
-              <div className="border-t border-border px-4 py-3">
+              <div className="px-4 py-3">
                 <div ref={buttonHost} />
               </div>
             )}

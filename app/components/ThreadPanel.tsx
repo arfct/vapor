@@ -24,16 +24,17 @@ function AuthorHeader({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-2">
+    <div className="flex items-center gap-2">
       <Avatar
         name={author.name}
         avatar={author.avatar}
         animal={author.animal}
         color={author.color}
+        className="h-8 w-8"
       />
-      <div className="flex min-w-0 flex-col leading-tight">
-        <span className="truncate text-base font-medium">{author.name}</span>
-        <span className="text-sm text-muted">{timeAgo(timestamp)}</span>
+      <div className="flex min-w-0 flex-col justify-center leading-tight">
+        <span className="truncate text-base font-bold">{author.name}</span>
+        <span className="text-base text-muted">{timeAgo(timestamp)}</span>
       </div>
       {children}
     </div>
@@ -59,7 +60,13 @@ export default function ThreadPanel({
 }: ThreadPanelProps) {
   const [replyText, setReplyText] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showReplyInput, setShowReplyInput] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const replyInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (showReplyInput) replyInputRef.current?.focus();
+  }, [showReplyInput]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -74,6 +81,7 @@ export default function ThreadPanel({
     if (!replyText.trim()) return;
     onReply(thread.id, replyText.trim());
     setReplyText("");
+    setShowReplyInput(false);
   }, [thread.id, replyText, onReply]);
 
   const handleReplyKeyDown = useCallback(
@@ -83,10 +91,15 @@ export default function ThreadPanel({
         handleReplySubmit();
       } else if (e.key === "Escape") {
         setReplyText("");
+        setShowReplyInput(false);
       }
     },
     [handleReplySubmit],
   );
+
+  const handleReplyBlur = useCallback(() => {
+    if (!replyText.trim()) setShowReplyInput(false);
+  }, [replyText]);
 
   return (
     <div
@@ -151,16 +164,27 @@ export default function ThreadPanel({
         </div>
       )}
 
-      {/* Reply input */}
+      {/* Reply input, hidden behind a link until clicked */}
       <div className="mt-3" onClick={(e) => e.stopPropagation()}>
-        <input
-          type="text"
-          value={replyText}
-          onChange={(e) => setReplyText(e.target.value)}
-          onKeyDown={handleReplyKeyDown}
-          placeholder="Reply..."
-          className="w-full rounded-full border border-border bg-paper px-3 py-1.5 outline-none focus:border-coral"
-        />
+        {showReplyInput ? (
+          <input
+            ref={replyInputRef}
+            type="text"
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            onKeyDown={handleReplyKeyDown}
+            onBlur={handleReplyBlur}
+            placeholder="Reply..."
+            className="w-full rounded-full border border-border bg-paper px-3 py-1.5 text-base outline-none focus:border-coral"
+          />
+        ) : (
+          <button
+            onClick={() => setShowReplyInput(true)}
+            className="cursor-pointer text-base text-muted transition-colors hover:text-ink"
+          >
+            Reply
+          </button>
+        )}
       </div>
     </div>
   );

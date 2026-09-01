@@ -35,7 +35,7 @@ export default function ModeMenu() {
           {showPreview ? "Markdown" : mode === "suggest" ? "Suggest" : "Edit"}
         </button>
       </MenuTrigger>
-      <MenuContent align="end">
+      <MenuContent>
         <MenuItem
           className={itemClass}
           onClick={() => {

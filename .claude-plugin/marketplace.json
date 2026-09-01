@@ -1,0 +1,12 @@
+{
+  "name": "vapor",
+  "owner": { "name": "Nicholas Jitkoff", "url": "https://github.com/arfct" },
+  "description": "vapor.fyi — live markdown documents people and agents review together",
+  "plugins": [
+    {
+      "name": "vapor",
+      "source": "./plugin",
+      "description": "Draft plans and documents on vapor.fyi — live markdown people and agents review together, exported to the repo before the doc expires."
+    }
+  ]
+}

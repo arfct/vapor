@@ -83,6 +83,7 @@ export const RESERVED_SLUGS = [
   "demo",
   "favicon.ico",
   "robots.txt",
+  "skill.md",
   ".well-known",
   "auth",
   "oauth",

@@ -278,7 +278,7 @@ body {
   word-wrap: normal;
   direction: ltr;
   vertical-align: -0.28em;
-  font-variation-settings: "opsz" 20;
+  font-variation-settings: "opsz" 20, "wght" 300;
 }
 
 /* Monochrome animal glyphs (Noto Emoji) — tinted via `color`. */

@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import CommentInput from "~/components/CommentInput";
 import ThreadList from "~/components/ThreadList";
 import PreviewToggle from "~/components/PreviewToggle";
-import OnboardingBanner from "~/components/OnboardingBanner";
 import { useDocument } from "~/lib/DocumentContext";
 
 type Tab = "editing" | "comments" | "preview";
@@ -55,11 +54,6 @@ export default function MobilePanel({ className }: { className?: string }) {
           className="overflow-y-auto"
           style={{ height: "calc(33vh - 48px)" }}
         >
-          {activeTab === "editing" && (
-            <>
-              <OnboardingBanner />
-            </>
-          )}
           {activeTab === "comments" && (
             <>
               <CommentInput />

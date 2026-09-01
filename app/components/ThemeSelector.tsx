@@ -6,7 +6,7 @@ import Icon from "~/components/Icon";
 const options: { value: Theme; icon: string; label: string }[] = [
   { value: "light", icon: "light_mode", label: "Light" },
   { value: "dark", icon: "dark_mode", label: "Dark" },
-  { value: "auto", icon: "brightness_auto", label: "Auto" },
+  { value: "auto", icon: "computer", label: "Auto" },
 ];
 
 function ChevronDown() {
@@ -32,7 +32,7 @@ export default function ThemeSelector() {
         className="flex cursor-pointer items-center gap-0.5 px-3 text-muted transition-colors hover:text-ink"
         aria-label="Theme"
       >
-        <Icon name="brightness_auto" />
+        <Icon name="computer" />
         <ChevronDown />
       </button>
     );

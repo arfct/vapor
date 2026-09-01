@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSession, notifyAuthChanged } from "~/lib/useSession";
 import { useTheme, type Theme } from "~/lib/useTheme";
 import Icon from "~/components/Icon";
+import Avatar from "~/components/Avatar";
 
 declare global {
   interface Window {
@@ -19,7 +20,7 @@ declare global {
 const themeOptions: { value: Theme; icon: string; label: string }[] = [
   { value: "light", icon: "light_mode", label: "Light" },
   { value: "dark", icon: "dark_mode", label: "Dark" },
-  { value: "auto", icon: "brightness_auto", label: "Auto" },
+  { value: "auto", icon: "computer", label: "Auto" },
 ];
 
 /**
@@ -88,10 +89,16 @@ export default function HeaderMenu({ onOpenAgents }: { onOpenAgents: () => void 
         aria-label="Menu"
         className="flex h-full shrink-0 cursor-pointer items-center px-3 transition-colors hover:bg-border"
       >
-        {session?.signedIn && session.avatar ? (
-          <img className="author-avatar" src={session.avatar} alt="" />
+        {session?.signedIn ? (
+          <Avatar
+            name={session.displayName ?? "?"}
+            avatar={session.avatar}
+            className="h-8 w-8"
+          />
         ) : (
-          <Icon name="account_circle" className="text-lg text-muted" />
+          <span className="flex h-8 w-8 items-center justify-center text-2xl leading-none text-muted">
+            <Icon name="account_circle" />
+          </span>
         )}
       </button>
       {open && (
@@ -110,7 +117,11 @@ export default function HeaderMenu({ onOpenAgents }: { onOpenAgents: () => void 
             </button>
             {session?.signedIn ? (
               <div className="flex items-center gap-2 border-t border-border px-4 py-3">
-                {session.avatar && <img className="author-avatar" src={session.avatar} alt="" />}
+                <Avatar
+                  name={session.displayName ?? "?"}
+                  avatar={session.avatar}
+                  className="h-6 w-6"
+                />
                 <span className="min-w-0 truncate text-sm">{session.displayName}</span>
                 <button
                   onClick={signOut}

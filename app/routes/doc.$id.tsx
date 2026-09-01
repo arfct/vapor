@@ -145,7 +145,7 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
           />
           {showPreview && <Preview />}
         </main>
-        <aside className="hidden w-96 flex-col overflow-hidden lg:flex">
+        <aside className="hidden w-96 flex-col overflow-hidden border-l border-border lg:flex">
           <div className="flex-1 overflow-y-auto">
             <CommentInput />
             <ThreadList />

@@ -334,7 +334,9 @@ export default function Editor({
         className={`min-h-full cursor-text ${hidden ? "hidden" : ""}`}
         onClick={handleClick}
       >
-        <EditorContent editor={editor} />
+        <div className="mx-auto w-full max-w-3xl">
+          <EditorContent editor={editor} />
+        </div>
       </div>
       {onNewComment && onResolveAtCursor && onDeleteAtCursor && (
         <BubbleToolbar

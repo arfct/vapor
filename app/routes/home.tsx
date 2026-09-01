@@ -19,7 +19,9 @@ export function meta(_args: Route.MetaArgs) {
   ];
 }
 
-function CommandRow({ command }: { command: string }) {
+const headingClass = "mt-10 text-2xl font-bold text-ink";
+
+function CodeBlock({ command }: { command: string }) {
   const [copied, setCopied] = useState(false);
 
   function handleCopy() {
@@ -29,13 +31,13 @@ function CommandRow({ command }: { command: string }) {
   }
 
   return (
-    <div className="mt-2 flex max-w-full items-center gap-1.5">
-      <code className="flex min-w-0 items-center overflow-x-auto rounded bg-border px-2 py-0.5 font-mono text-base">
-        <span className="whitespace-nowrap">{command}</span>
+    <div className="mt-3 flex max-w-full items-center gap-2 rounded bg-border py-1 pl-3 pr-1.5">
+      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-base">
+        {command}
       </code>
       <button
         onClick={handleCopy}
-        className="shrink-0 cursor-pointer p-1 text-muted hover:text-ink transition-colors"
+        className="shrink-0 cursor-pointer rounded p-1.5 text-muted transition-colors hover:text-ink"
         aria-label={copied ? "Copied" : "Copy command"}
       >
         {copied ? (
@@ -129,55 +131,58 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   return (
     <>
       <div
-        className="relative flex min-h-screen flex-col items-center justify-center px-4"
+        className="relative min-h-screen px-4 pb-24 pt-16 sm:px-6"
         onDrop={handleDrop}
         onDragOver={handleDragOver}
       >
         <div className="absolute right-3 top-3">
           <ThemeSelector />
         </div>
-        <h1 className="mb-1 font-bold">{APP_NAME}</h1>
-        <p className="mb-8 text-muted">
-          Live Markdown for people and agents, side by side
-        </p>
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <button
-            onClick={handleNewDocument}
-            className="cursor-pointer whitespace-nowrap border border-ink bg-ink px-6 py-2 text-paper transition-opacity hover:opacity-80"
-          >
-            New document
-          </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="cursor-pointer whitespace-nowrap border border-border px-6 py-2 text-muted transition-colors hover:border-ink hover:text-ink"
-          >
-            Drag and drop .md file
-          </button>
+        <div className="mx-auto max-w-3xl">
+          <h1 className="mb-1 text-3xl font-bold text-ink">{APP_NAME}</h1>
+          <p className="mb-8 text-muted">
+            Live Markdown for people and agents, side by side
+          </p>
+
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              onClick={handleNewDocument}
+              className="cursor-pointer whitespace-nowrap border border-ink bg-ink px-6 py-2 text-paper transition-opacity hover:opacity-80"
+            >
+              New document
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="cursor-pointer text-muted underline underline-offset-2 transition-colors hover:text-ink"
+            >
+              Drop an .md file
+            </button>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".md"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+
+          <h2 className={headingClass}>From your terminal</h2>
+          <CodeBlock command={`curl ${origin}/new -T file.md`} />
+
+          <h2 className={headingClass}>From your agent</h2>
+          <CodeBlock command={`claude mcp add --transport http vapor ${origin}/mcp`} />
+          <p className="mt-2 text-sm text-muted">
+            Agents join with a visible cursor and edit like a person would.
+          </p>
+
+          <h2 className={headingClass}>As a habit</h2>
+          <CodeBlock command="claude plugin marketplace add arfct/vapor && claude plugin install vapor@vapor" />
+          <p className="mt-2 text-sm text-muted">
+            Bundles the MCP connection with a skill: Claude drafts here,
+            discusses in comments, and saves back to your repo before the
+            doc expires.
+          </p>
         </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".md"
-          onChange={handleFileChange}
-          className="hidden"
-        />
-        <p className="mt-8 text-muted">Or from your terminal</p>
-        <CommandRow command={`curl ${origin}/new -T file.md`} />
-        <p className="mt-8 text-muted">Or send your agent</p>
-        <CommandRow
-          command={`claude mcp add --transport http vapor ${origin}/mcp`}
-        />
-        <p className="mt-2 max-w-md text-center text-base text-muted">
-          Claude and friends join over MCP and edit with a visible cursor
-          &mdash; a place to iterate in the browser instead of the scrollback.
-        </p>
-        <p className="mt-8 text-muted">Or make it a habit</p>
-        <CommandRow command="claude plugin marketplace add arfct/vapor && claude plugin install vapor@vapor" />
-        <p className="mt-2 max-w-md text-center text-base text-muted">
-          The plugin connects MCP and adds a skill: Claude drafts plans here,
-          answers your comments, and saves the result to your repo before the
-          doc expires.
-        </p>
       </div>
       <footer className="fixed bottom-0 left-0 right-0 z-10 flex items-baseline justify-between border-t border-border bg-paper px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-base text-muted">
         <span>

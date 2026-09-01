@@ -34,7 +34,10 @@ function AuthorHeader({
       />
       <div className="flex min-w-0 flex-col justify-center">
         <span className="truncate text-base font-bold leading-tight">{author.name}</span>
-        <span className="text-sm leading-tight text-muted">{timeAgo(timestamp)}</span>
+        <span className="truncate text-sm leading-tight text-muted">
+          {author.agentClient ? `${author.agentClient} • ` : ""}
+          {timeAgo(timestamp)}
+        </span>
       </div>
       {children}
     </div>

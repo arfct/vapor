@@ -1500,7 +1500,7 @@ class DocumentAgent extends Agent {
       id,
       commentText: args.text,
       highlightText: args.quote,
-      author: { name: label ?? name, color, colorLight: color, animal: animalGlyphForLabel(label ?? name) },
+      author: { name: label ?? name, color, colorLight: color, animal: animalGlyphForLabel(label ?? name), agentClient: identity.client },
       createdAt: Date.now(),
       resolved: false,
       replies: [],
@@ -1549,7 +1549,7 @@ class DocumentAgent extends Agent {
     const { name, label, color } = verified.entry;
     const reply: ThreadReply = {
       id: crypto.randomUUID(),
-      author: { name: label ?? name, color, colorLight: color, animal: animalGlyphForLabel(label ?? name) },
+      author: { name: label ?? name, color, colorLight: color, animal: animalGlyphForLabel(label ?? name), agentClient: identity.client },
       text: args.text,
       createdAt: Date.now(),
     };

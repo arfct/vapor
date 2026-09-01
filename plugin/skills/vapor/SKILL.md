@@ -20,10 +20,10 @@ vapor (https://vapor.fyi) hosts live markdown documents that people and agents e
 3. **Discuss.** The user comments and suggests in the browser. To respond in place, connect over MCP and use vapor's tools — `read_document`, `comment`, `reply`, `suggest`; `await_events` blocks until something happens, and an `@mention` in the doc wakes a waiting agent. One-time setup (already done if this skill came from the vapor plugin):
 
    ```bash
-   claude mcp add --transport http vapor https://vapor.fyi/mcp/anonymous
+   claude mcp add --transport http vapor https://vapor.fyi/mcp
    ```
 
-   (Use `/mcp` instead of `/mcp/anonymous` for OAuth identity and full write access; anonymous agents can suggest and comment only.)
+   `/mcp` is OAuth-gated: the first tool call opens a browser consent screen (Google sign-in, then a grant for read-only or write access). Comment and suggest work either way; only `insert`/`replace` need the write grant. For a zero-setup connection with no identity, use `/mcp/anonymous` instead — comment and suggest still work, but as an anonymous animal, not the signed-in name.
 
    After sharing, return to chat — the user comes back with feedback there. Block on `await_events` only when asked to stay in the doc.
 4. **Save.** When the discussion settles, export back over the local file and commit it:

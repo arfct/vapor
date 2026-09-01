@@ -1,0 +1,10 @@
+{
+  "name": "vapor",
+  "description": "Draft plans and documents on vapor.fyi — live markdown people and agents review together, exported to the repo before the doc expires.",
+  "version": "0.1.0",
+  "author": { "name": "Nicholas Jitkoff" },
+  "homepage": "https://vapor.fyi",
+  "repository": "https://github.com/arfct/vapor",
+  "license": "MIT",
+  "keywords": ["markdown", "collaboration", "drafts", "review", "mcp"]
+}

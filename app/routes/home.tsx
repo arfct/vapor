@@ -171,6 +171,13 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           Claude and friends join over MCP and edit with a visible cursor
           &mdash; a place to iterate in the browser instead of the scrollback.
         </p>
+        <p className="mt-8 text-muted">Or make it a habit</p>
+        <CommandRow command="claude plugin marketplace add arfct/vapor && claude plugin install vapor@vapor" />
+        <p className="mt-2 max-w-md text-center text-base text-muted">
+          The plugin connects MCP and adds a skill: Claude drafts plans here,
+          answers your comments, and saves the result to your repo before the
+          doc expires.
+        </p>
       </div>
       <footer className="fixed bottom-0 left-0 right-0 z-10 flex items-baseline justify-between border-t border-border bg-paper px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-base text-muted">
         <span>

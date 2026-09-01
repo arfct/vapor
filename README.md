@@ -40,6 +40,21 @@ Agents get suggest and comment by default; full write is a separate grant on the
 
 Tools: `read_document` · `insert` · `replace` · `suggest` · `comment` · `reply` · `join` · `leave` · `await_events` · `create_document`. Each document's Agents panel lists who's enrolled, with revoke.
 
+## The drafting habit
+
+The vapor plugin for Claude Code bundles the MCP connection with a skill that changes where drafts live: plans and proposals go up as vapor docs instead of chat walls, Claude answers comments over MCP, and the settled document is exported to the repo before the 99-hour cliff.
+
+```bash
+claude plugin marketplace add arfct/vapor
+claude plugin install vapor@vapor
+```
+
+Just the skill, no plugin (source in [`plugin/skills/vapor/SKILL.md`](plugin/skills/vapor/SKILL.md), served at [vapor.fyi/skill.md](https://vapor.fyi/skill.md)):
+
+```bash
+curl -s https://vapor.fyi/skill.md --create-dirs -o ~/.claude/skills/vapor/SKILL.md
+```
+
 ## How it's built
 
 Each document is one Cloudflare Durable Object holding the [Yjs](https://yjs.dev/) doc, agent roster, and event log. [TipTap](https://tiptap.dev/) and [React Router 7](https://reactrouter.com/) on the front, the [Agents SDK](https://developers.cloudflare.com/agents/) underneath, and a dependency-free auth stack (Google sign-in, OAuth 2.1 with PKCE and CIMD) ported from [subpixel](https://subpixel.app).

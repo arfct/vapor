@@ -1,25 +1,12 @@
-import { useState } from "react";
-import { data, Link } from "react-router";
+import { data } from "react-router";
 import type { Route } from "./+types/doc.$id";
 import { getAgentByName } from "agents";
-import { isValidDocumentId, DOCUMENT_TTL_MS } from "~/shared/constants";
+import { isValidDocumentId } from "~/shared/constants";
 import { isReservedSlug } from "~/shared/agent-protocol";
 import { getCloudflare } from "~/lib/cloudflare.server";
 import { useYjsEditor } from "~/lib/useYjsEditor";
-import { DocumentProvider, useDocument } from "~/lib/DocumentContext";
-import Editor from "~/components/Editor";
-import Preview from "~/components/Preview";
-import ShareButton from "~/components/ShareButton";
-import AgentsPanel from "~/components/AgentsPanel";
-import ModeMenu from "~/components/ModeMenu";
-import FormatToolbar from "~/components/FormatToolbar";
-import ConnectionStatus from "~/components/ConnectionStatus";
-import HeaderMenu from "~/components/HeaderMenu";
-import CommentInput from "~/components/CommentInput";
-import ThreadList from "~/components/ThreadList";
-import MobilePanel from "~/components/MobilePanel";
-import OnboardingBanner from "~/components/OnboardingBanner";
-import Icon from "~/components/Icon";
+import { DocumentProvider } from "~/lib/DocumentContext";
+import DocumentLayout from "~/components/DocumentLayout";
 
 export function meta(_args: Route.MetaArgs) {
   return [{ title: "vapor" }];
@@ -52,126 +39,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   return { id, createdAt };
 }
 
-function formatRemainingTime(createdAt: number): string {
-  const elapsed = Date.now() - createdAt;
-  const remainingMs = DOCUMENT_TTL_MS - elapsed;
-  if (remainingMs <= 0) return "soon";
-  const hours = Math.floor(remainingMs / (60 * 60 * 1000));
-  if (hours >= 1) return `${hours}h`;
-  const minutes = Math.ceil(remainingMs / (60 * 1000));
-  return `${minutes}m`;
-}
-
 export default function DocumentPage({ loaderData }: Route.ComponentProps) {
   const { id, createdAt } = loaderData;
   const yjs = useYjsEditor(id);
 
   return (
     <DocumentProvider docId={id} createdAt={createdAt} yjs={yjs}>
-      <DocumentLayout id={id} createdAt={createdAt} />
+      <DocumentLayout surface={{ kind: "doc", id, createdAt }} />
     </DocumentProvider>
-  );
-}
-
-function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | null }) {
-  const {
-    yjs,
-    showPreview,
-    handleEditorReady,
-    handleCommentClick,
-    commentHighlight,
-    activeCommentRange,
-    openCommentInput,
-    handleResolveAtCursor,
-    handleDeleteAtCursor,
-    isOnboarding,
-  } = useDocument();
-  const [agentsOpen, setAgentsOpen] = useState(false);
-  const [commentsOpen, setCommentsOpen] = useState(true);
-
-  return (
-    <div className="flex h-screen flex-col">
-      <header className="flex items-stretch overflow-x-auto scrollbar-none border-b border-border">
-        <Link
-          to="/"
-          className="flex items-center bg-ink px-4 py-2 font-medium text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
-        >
-          vapor
-        </Link>
-        {isOnboarding ? (
-          <div className="shrink-0 border-r border-border">
-            <OnboardingBanner />
-          </div>
-        ) : (
-          <>
-            <div className="shrink-0 border-r border-border">
-              <ModeMenu />
-            </div>
-            <div className="shrink-0 border-r border-border">
-              <ShareButton onOpenAgents={() => setAgentsOpen(true)} />
-            </div>
-          </>
-        )}
-        <div className="shrink-0 border-r border-border">
-          <FormatToolbar />
-        </div>
-        <div className="flex shrink-0 items-center whitespace-nowrap px-4">
-          <span className="font-mono font-bold">{id}</span>
-          {createdAt && (
-            <span className="ml-2 whitespace-nowrap text-muted">
-              auto-deletes in {formatRemainingTime(createdAt)}
-            </span>
-          )}
-        </div>
-        <div className="grow" />
-        <div className="flex shrink-0 items-center border-l border-border px-3">
-          <ConnectionStatus />
-        </div>
-        <div className="hidden shrink-0 border-l border-border lg:block">
-          <button
-            onClick={() => setCommentsOpen((v) => !v)}
-            aria-label={commentsOpen ? "Hide comments" : "Show comments"}
-            aria-pressed={commentsOpen}
-            title={commentsOpen ? "Hide comments" : "Show comments"}
-            className={`flex h-full cursor-pointer items-center px-3 transition-colors hover:bg-border ${
-              commentsOpen ? "text-ink" : "text-muted"
-            }`}
-          >
-            <Icon name="comment" />
-          </button>
-        </div>
-        <div className="shrink-0 border-l border-border">
-          <HeaderMenu />
-        </div>
-      </header>
-      <AgentsPanel open={agentsOpen} onClose={() => setAgentsOpen(false)} />
-      <div className="flex flex-1 overflow-hidden">
-        <main className="flex-1 overflow-y-auto pb-[33vh] lg:pb-0">
-          <Editor
-            yjs={yjs}
-            hidden={showPreview}
-            onEditorReady={handleEditorReady}
-            onCommentClick={handleCommentClick}
-            commentHighlight={commentHighlight}
-            activeCommentRange={activeCommentRange}
-            onNewComment={openCommentInput}
-            onResolveAtCursor={handleResolveAtCursor}
-            onDeleteAtCursor={handleDeleteAtCursor}
-          />
-          {showPreview && <Preview />}
-        </main>
-        <aside
-          className={`hidden w-96 flex-col overflow-hidden border-l border-border ${
-            commentsOpen ? "lg:flex" : ""
-          }`}
-        >
-          <div className="flex-1 overflow-y-auto">
-            <CommentInput />
-            <ThreadList />
-          </div>
-        </aside>
-      </div>
-      <MobilePanel className="lg:hidden" />
-    </div>
   );
 }

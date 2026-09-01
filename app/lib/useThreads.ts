@@ -96,8 +96,8 @@ export function useThreads({
             if (threadsMapRef.current.get(id) !== undefined) return;
             const existing = readAllThreads(threadsMapRef.current);
             if (existing.some((t) => t.commentText === comment.commentText)) return;
-            // Re-scan: the mark may be gone by now (e.g. Start Editing
-            // cleared the onboarding doc). Ground truth is the document.
+            // Re-scan: the mark may be gone by now (the author deleted
+            // the text). Ground truth is the document.
             const live = scanDocumentComments(editor);
             if (!live.some((c) => c.commentText === comment.commentText)) return;
             reconcilingRef.current = true;

@@ -71,8 +71,6 @@ export function createMockDocumentContext(
     addReply: vi.fn(),
     resolveThread: vi.fn(),
     deleteThread: vi.fn(),
-    isOnboarding: false,
-    clearDocument: vi.fn(),
     handleEditorReady: vi.fn(),
     handleCommentClick: vi.fn(),
     ...overrides,

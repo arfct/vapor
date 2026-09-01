@@ -603,7 +603,7 @@ class DocumentAgent extends Agent {
       const contentType = request.headers.get("Content-Type") || "";
       if (contentType.includes("application/json")) {
         try {
-          const body = await request.json() as { content?: string; threads?: unknown[]; onboarding?: boolean };
+          const body = await request.json() as { content?: string; threads?: unknown[] };
 
           // Parse before the transaction: Yjs cannot roll back, and a parse
           // failure must not commit a half-imported document.
@@ -637,10 +637,6 @@ class DocumentAgent extends Agent {
                   threadsMap.set(t.id, JSON.stringify(thread));
                 }
               }
-            }
-            if (body.onboarding) {
-              const docState = doc.getMap<string>("docState");
-              docState.set("onboarding", "true");
             }
           }, "agent");
         } catch {

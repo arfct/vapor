@@ -12,8 +12,9 @@ import Preview from "~/components/Preview";
 import ShareButton from "~/components/ShareButton";
 import AgentsPanel from "~/components/AgentsPanel";
 import ModeMenu from "~/components/ModeMenu";
+import FormatToolbar from "~/components/FormatToolbar";
+import ConnectionStatus from "~/components/ConnectionStatus";
 import HeaderMenu from "~/components/HeaderMenu";
-import CleanViewToggle from "~/components/CleanViewToggle";
 import CommentInput from "~/components/CommentInput";
 import ThreadList from "~/components/ThreadList";
 import MobilePanel from "~/components/MobilePanel";
@@ -79,11 +80,9 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
     handleCommentClick,
     commentHighlight,
     activeCommentRange,
-    cleanView,
     openCommentInput,
     handleResolveAtCursor,
     handleDeleteAtCursor,
-    mode,
   } = useDocument();
   const [agentsOpen, setAgentsOpen] = useState(false);
 
@@ -96,7 +95,16 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
         >
           vapor
         </Link>
-        <div className="flex grow shrink-0 items-center px-4">
+        <div className="shrink-0 border-r border-border">
+          <FormatToolbar />
+        </div>
+        <div className="shrink-0 border-r border-border">
+          <ModeMenu />
+        </div>
+        <div className="shrink-0 border-r border-border">
+          <ShareButton />
+        </div>
+        <div className="flex shrink-0 items-center whitespace-nowrap px-4">
           <span className="font-mono font-bold">{id}</span>
           {createdAt && (
             <span className="ml-2 whitespace-nowrap text-muted">
@@ -104,11 +112,9 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
             </span>
           )}
         </div>
-        <div className="shrink-0 border-l border-border">
-          <ModeMenu />
-        </div>
-        <div className="shrink-0 border-l border-border">
-          <ShareButton />
+        <div className="grow" />
+        <div className="flex shrink-0 items-center border-l border-border px-3">
+          <ConnectionStatus />
         </div>
         <div className="shrink-0 border-l border-border">
           <HeaderMenu onOpenAgents={() => setAgentsOpen(true)} />
@@ -124,7 +130,6 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
             onCommentClick={handleCommentClick}
             commentHighlight={commentHighlight}
             activeCommentRange={activeCommentRange}
-            cleanView={cleanView}
             onNewComment={openCommentInput}
             onResolveAtCursor={handleResolveAtCursor}
             onDeleteAtCursor={handleDeleteAtCursor}
@@ -134,7 +139,6 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
         <aside className="hidden w-96 flex-col overflow-hidden lg:flex">
           <div className="flex-1 overflow-y-auto">
             <OnboardingBanner />
-            {mode === "suggest" && <CleanViewToggle />}
             <CommentInput />
             <ThreadList />
           </div>

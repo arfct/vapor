@@ -103,11 +103,13 @@ export default {
     // tokenless sessions run as per-session anonymous identities.
     if (url.pathname === "/mcp/anonymous" || url.pathname.startsWith("/mcp/anonymous/")) {
       const props: VaporMcpProps = { auth: null, origin: url.origin };
-      const mcpCtx: ExecutionContext<VaporMcpProps> = {
+      // tracing/abort (new in recent workers-types) are unused by the MCP
+      // handler, so a structural cast keeps this shim minimal.
+      const mcpCtx = {
         props,
-        waitUntil: (promise) => ctx.waitUntil(promise),
+        waitUntil: (promise: Promise<unknown>) => ctx.waitUntil(promise),
         passThroughOnException: () => ctx.passThroughOnException(),
-      };
+      } as unknown as ExecutionContext<VaporMcpProps>;
       return anonMcpHandler.fetch(request, env, mcpCtx);
     }
 
@@ -139,11 +141,13 @@ export default {
       };
       // ExecutionContext.props is readonly, so hand the MCP handler its own
       // context carrying the props it plumbs through to the Durable Object.
-      const mcpCtx: ExecutionContext<VaporMcpProps> = {
+      // tracing/abort (new in recent workers-types) are unused by the MCP
+      // handler, so a structural cast keeps this shim minimal.
+      const mcpCtx = {
         props,
-        waitUntil: (promise) => ctx.waitUntil(promise),
+        waitUntil: (promise: Promise<unknown>) => ctx.waitUntil(promise),
         passThroughOnException: () => ctx.passThroughOnException(),
-      };
+      } as unknown as ExecutionContext<VaporMcpProps>;
       return mcpHandler.fetch(request, env, mcpCtx);
     }
 

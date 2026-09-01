@@ -3,23 +3,15 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import { Extension, getMarkRange, type Editor as TiptapEditor } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import Document from "@tiptap/extension-document";
-import Paragraph from "@tiptap/extension-paragraph";
-import Text from "@tiptap/extension-text";
+import StarterKit from "@tiptap/starter-kit";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
-import { CriticAddition, CriticDeletion, CriticComment, CriticHighlight, CriticDelimiters } from "~/lib/critic-marks";
-import { markdownDecorations, cleanViewKey } from "~/lib/markdown-decorations";
+import { CriticAddition, CriticDeletion, CriticComment, CriticHighlight, CriticPointMarkers } from "~/lib/critic-marks";
+import { BlockId } from "~/lib/block-id";
+import { parseMarkdown } from "~/shared/rich-markdown";
 import { suggestModePlugin } from "~/lib/suggest-mode";
 import BubbleToolbar from "~/components/BubbleToolbar";
 import type { useYjsEditor } from "~/lib/useYjsEditor";
-
-const MarkdownDecorations = Extension.create({
-  name: "markdownDecorations",
-  addProseMirrorPlugins() {
-    return markdownDecorations();
-  },
-});
 
 const SuggestMode = Extension.create<{ docState: ReturnType<typeof useYjsEditor>["docState"] | null }>({
   name: "suggestMode",
@@ -212,7 +204,6 @@ export default function Editor({
   onCommentClick,
   commentHighlight,
   activeCommentRange,
-  cleanView,
   onNewComment,
   onResolveAtCursor,
   onDeleteAtCursor,
@@ -223,7 +214,6 @@ export default function Editor({
   onCommentClick?: (commentText: string) => void;
   commentHighlight?: { from: number; to: number } | null;
   activeCommentRange?: { from: number; to: number } | null;
-  cleanView?: boolean;
   onNewComment?: () => void;
   onResolveAtCursor?: () => void;
   onDeleteAtCursor?: () => void;
@@ -231,27 +221,35 @@ export default function Editor({
   const { doc, awareness, user, docState } = yjs;
   const prevHighlightRef = useRef<{ from: number; to: number } | null>(null);
   const prevActiveRangeRef = useRef<{ from: number; to: number } | null>(null);
-  const prevCleanViewRef = useRef<boolean>(false);
 
   const editor = useEditor(
     {
       immediatelyRender: false,
       extensions: [
-        Document,
-        Paragraph,
-        Text,
+        StarterKit.configure({
+          // Collaboration owns history; underline has no markdown form
+          // (see the markdown-completeness rule in the WYSIWYG plan).
+          undoRedo: false,
+          underline: false,
+          heading: { levels: [1, 2, 3] },
+          link: {
+            openOnClick: false,
+            autolink: true,
+            linkOnPaste: true,
+          },
+        }),
+        BlockId,
         CriticAddition,
         CriticDeletion,
         CriticComment,
         CriticHighlight,
-        CriticDelimiters,
+        CriticPointMarkers,
         Collaboration.configure({ document: doc }),
         CollaborationCaret.configure({
           provider: { awareness },
           user,
           render: renderCaret,
         }),
-        MarkdownDecorations,
         SuggestMode.configure({ docState }),
         CommentClickHandler.configure({ onCommentClick }),
         CommentHighlight,
@@ -260,6 +258,20 @@ export default function Editor({
       editorProps: {
         attributes: {
           class: "tiptap",
+        },
+        // Pasted plain text that looks like markdown parses to rich nodes —
+        // matching the old model where all text was markdown source.
+        handlePaste(view, event) {
+          const html = event.clipboardData?.getData("text/html");
+          if (html) return false;
+          const text = event.clipboardData?.getData("text/plain");
+          if (!text || !/[*_#>`~[\]]|\n|^-|\{[+\-=>]/m.test(text)) return false;
+          const parsed = parseMarkdown(text);
+          if (!parsed.ok) return false;
+          const { state, dispatch } = view;
+          const slice = parsed.doc.slice(0, parsed.doc.content.size);
+          dispatch(state.tr.replaceSelection(slice).scrollIntoView());
+          return true;
         },
       },
     },
@@ -300,16 +312,6 @@ export default function Editor({
     }
   }, [editor, activeCommentRange]);
 
-  // Update clean view state when prop changes
-  useEffect(() => {
-    if (!editor) return;
-    const isClean = cleanView ?? false;
-    if (isClean === prevCleanViewRef.current) return;
-    prevCleanViewRef.current = isClean;
-    const tr = editor.state.tr.setMeta(cleanViewKey, isClean);
-    editor.view.dispatch(tr);
-  }, [editor, cleanView]);
-
   useEffect(() => {
     if (editor && onEditorReady) {
       onEditorReady(editor);
@@ -329,7 +331,7 @@ export default function Editor({
   return (
     <>
       <div
-        className={`min-h-full cursor-text ${hidden ? "hidden" : ""} ${cleanView ? "clean-view" : ""}`}
+        className={`min-h-full cursor-text ${hidden ? "hidden" : ""}`}
         onClick={handleClick}
       >
         <EditorContent editor={editor} />

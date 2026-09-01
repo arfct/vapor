@@ -41,8 +41,8 @@ The core (event log + cursor + subscription store + dispatcher) is protocol-agno
 - **Store**: a `subscriptions` table in the document's own DO (`id, principal, url, secret, name, arguments, cursor_floor, expires_at, failures, active`) — doc-scoped subscriptions live and die with the doc, which also gives TTL cleanup and the 99h expiry for free.
 - **Auth**: per the sketch, webhook mode requires a principal — so `events_subscribe` works **only through the OAuth door** (`/mcp`); the anonymous door gets poll only, refused with `-32012 Forbidden`. This also keeps the public-doc abuse surface closed (no anonymous "make vapor POST to arbitrary URLs").
 - **Dispatch**: `recordEvent` → after the row insert, look up matching active subscriptions and POST each `EventOccurrence` with Standard Webhooks signatures via `waitUntil`. Coalescing: `document.changed` digests are already debounced server-side; mention/reply send immediately.
-- **Retries & hygiene**: 2 retries with short backoff per delivery; `failures` increments on exhaustion and `active` flips false after 5 consecutive failures (the sketch's suspension semantics — a successful re-subscribe reactivates). HTTPS-only URLs; reject private-network literals (`localhost`, RFC1918, `.internal`) to keep the dispatcher from being an SSRF primitive.
-- **TTL policy**: grant `min(suggested, 24h)` with a 5-minute floor; never grant no-expiry in v1 (the sketch lets servers refuse by granting finite). `refreshBefore` returned as ISO 8601; refresh is the idempotent re-subscribe the sketch specifies, including secret rotation semantics (replace; skip dual-signing in v1, documented).
+- **Retries & hygiene**: 2 retries with short backoff per delivery; `active` flips false only after *sustained* failure — consecutive failures spanning at least an hour — so a receiver's deploy blip self-heals via retries instead of silently killing a set-and-forget subscription (a successful re-subscribe reactivates, per the sketch). HTTPS-only URLs; reject private-network literals (`localhost`, RFC1918, `.internal`) to keep the dispatcher from being an SSRF primitive.
+- **TTL policy**: grant `min(suggested, remaining document lifetime)` with a 5-minute floor — subscriptions die with the document anyway, so short TTLs buy nothing while their refresh choreography breaks set-and-forget consumers (a wake-on-webhook agent has no daemon to refresh, and a lapsed subscription is exactly what would have woken it). Always finite, so never a no-expiry grant (the sketch lets servers refuse by granting finite). `refreshBefore` returned as ISO 8601; refresh is the idempotent re-subscribe the sketch specifies, including secret rotation semantics (replace; skip dual-signing in v1, documented).
 
 ## Tasks
 
@@ -51,7 +51,7 @@ The core (event log + cursor + subscription store + dispatcher) is protocol-agno
 3. **Layer 2 tools** in mcp-tools.ts (schema transliteration; `await_events` deprecation note).
 4. **Layer 1 methods** in agents/mcp.ts via `setRequestHandler` + `capabilities.events` declaration + `_meta` draft tag.
 5. **Tests**: signing vectors against the Standard Webhooks spec examples; subscribe/refresh/expire lifecycle; dispatch retry/suspend; poll parity with `await_events`; anonymous-door refusal; SSRF guard.
-6. **Docs**: `/mcp` help page gains an events section; a short note filed to the WG repo as field-report feedback once it's running (they're soliciting exactly this).
+6. **Docs & discovery**: `/mcp` help page gains an events section; the MCP server's `instructions` string gains an events paragraph (prefer `events_subscribe` over polling; respect `retryAfterMs`); a short note filed to the WG repo as field-report feedback once it's running (they're soliciting exactly this).
 
 ## Drift management (this is a draft, and it will move)
 

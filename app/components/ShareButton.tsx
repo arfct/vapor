@@ -28,13 +28,10 @@ export default function ShareButton() {
     <Menu>
       <MenuTrigger>
         <button
-          className="flex h-full cursor-pointer items-center gap-1 px-3 text-sm uppercase tracking-wider transition-colors hover:bg-border"
+          className="flex h-full cursor-pointer items-center px-3 text-sm uppercase tracking-wider transition-colors hover:bg-border"
           aria-label="Share options"
         >
           Share
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
         </button>
       </MenuTrigger>
       <MenuContent align="end">

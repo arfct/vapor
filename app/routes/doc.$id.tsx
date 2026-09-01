@@ -104,6 +104,9 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
         <div className="shrink-0 border-r border-border">
           <ShareButton />
         </div>
+        <div className="shrink-0 border-r border-border empty:hidden">
+          <OnboardingBanner />
+        </div>
         <div className="flex shrink-0 items-center whitespace-nowrap px-4">
           <span className="font-mono font-bold">{id}</span>
           {createdAt && (
@@ -138,7 +141,6 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
         </main>
         <aside className="hidden w-96 flex-col overflow-hidden lg:flex">
           <div className="flex-1 overflow-y-auto">
-            <OnboardingBanner />
             <CommentInput />
             <ThreadList />
           </div>

@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { serializeThreads } from "~/lib/thread-serialization";
 import { useDocument } from "~/lib/DocumentContext";
 import { Menu, MenuTrigger, MenuContent, MenuItem } from "~/components/ui/menu";
+import Icon from "~/components/Icon";
 
 export default function ShareButton() {
   const { docId, markdown, threads } = useDocument();
@@ -35,8 +36,14 @@ export default function ShareButton() {
         </button>
       </MenuTrigger>
       <MenuContent align="end">
-        <MenuItem onClick={handleCopy}>{copied ? "✓ Copied" : "Copy link"}</MenuItem>
-        <MenuItem onClick={handleDownload}>Download</MenuItem>
+        <MenuItem className="gap-2" onClick={handleCopy}>
+          <Icon name={copied ? "check" : "link"} />
+          <span>{copied ? "Copied" : "Copy link"}</span>
+        </MenuItem>
+        <MenuItem className="gap-2" onClick={handleDownload}>
+          <Icon name="download" />
+          <span>Download</span>
+        </MenuItem>
       </MenuContent>
     </Menu>
   );

@@ -14,24 +14,67 @@ export function loader({ request }: Route.LoaderArgs) {
 export function meta(_args: Route.MetaArgs) {
   return [
     { title: "vapor" },
-    { name: "description", content: "Collaborative markdown editor" },
+    { name: "description", content: "Live markdown documents for people and AI agents" },
     { property: "og:image", content: "https://vapor.fyi/logo-512.png" },
   ];
+}
+
+function CommandRow({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(command);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="mt-2 flex max-w-full items-center gap-1.5">
+      <code className="flex min-w-0 items-center overflow-x-auto rounded bg-border px-2 py-0.5 font-mono text-base">
+        <span className="whitespace-nowrap">{command}</span>
+      </code>
+      <button
+        onClick={handleCopy}
+        className="shrink-0 cursor-pointer p-1 text-muted hover:text-ink transition-colors"
+        aria-label={copied ? "Copied" : "Copy command"}
+      >
+        {copied ? (
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        ) : (
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+        )}
+      </button>
+    </div>
+  );
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
   const { origin } = loaderData;
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [copied, setCopied] = useState(false);
-
-  const curlCommand = `curl ${origin}/new -T file.md`;
-
-  function handleCopy() {
-    navigator.clipboard.writeText(curlCommand);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
 
   async function handleNewDocument() {
     const { body, threads, onboarding } = deserializeThreads(demoDocument);
@@ -95,7 +138,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         </div>
         <h1 className="mb-1 font-bold">{APP_NAME}</h1>
         <p className="mb-8 text-muted">
-          Share and edit Markdown together, quickly
+          Live Markdown for people and agents, side by side
         </p>
         <div className="flex flex-col gap-3 sm:flex-row">
           <button
@@ -119,45 +162,15 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           className="hidden"
         />
         <p className="mt-8 text-muted">Or from your terminal</p>
-        <div className="mt-2 flex max-w-full items-center gap-1.5">
-          <code className="flex min-w-0 items-center overflow-x-auto rounded bg-border px-2 py-0.5 font-mono text-base">
-            <span className="whitespace-nowrap">{curlCommand}</span>
-          </code>
-          <button
-            onClick={handleCopy}
-            className="shrink-0 cursor-pointer p-1 text-muted hover:text-ink transition-colors"
-            aria-label={copied ? "Copied" : "Copy command"}
-          >
-            {copied ? (
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            ) : (
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
-            )}
-          </button>
-        </div>
+        <CommandRow command={`curl ${origin}/new -T file.md`} />
+        <p className="mt-8 text-muted">Or send your agent</p>
+        <CommandRow
+          command={`claude mcp add --transport http vapor ${origin}/mcp`}
+        />
+        <p className="mt-2 max-w-md text-center text-base text-muted">
+          Claude and friends join over MCP and edit with a visible cursor
+          &mdash; a place to iterate in the browser instead of the scrollback.
+        </p>
       </div>
       <footer className="fixed bottom-0 left-0 right-0 z-10 flex items-baseline justify-between border-t border-border bg-paper px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-base text-muted">
         <span>

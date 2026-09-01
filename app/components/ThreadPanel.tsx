@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { ThreadData } from "~/shared/types";
 import Icon from "~/components/Icon";
+import Avatar from "~/components/Avatar";
 
 function timeAgo(ts: number): string {
   const seconds = Math.floor((Date.now() - ts) / 1000);
@@ -24,18 +25,12 @@ function AuthorHeader({
 }) {
   return (
     <div className="flex items-start gap-2">
-      {author.avatar ? (
-        <img className="h-7 w-7 shrink-0 rounded-full object-cover" src={author.avatar} alt="" />
-      ) : author.animal ? (
-        <span
-          className="anon-animal flex h-7 w-7 shrink-0 items-center justify-center text-xl"
-          style={{ color: author.color }}
-        >
-          {author.animal}
-        </span>
-      ) : (
-        <span className="h-7 w-7 shrink-0" />
-      )}
+      <Avatar
+        name={author.name}
+        avatar={author.avatar}
+        animal={author.animal}
+        color={author.color}
+      />
       <div className="flex min-w-0 flex-col leading-tight">
         <span className="truncate text-base font-medium">{author.name}</span>
         <span className="text-sm text-muted">{timeAgo(timestamp)}</span>
@@ -95,13 +90,15 @@ export default function ThreadPanel({
 
   return (
     <div
-      className={`cursor-pointer p-3 ${active ? "bg-canary/15" : ""}`}
+      className={`group cursor-pointer p-3 ${active ? "bg-canary/15" : ""}`}
       onClick={() => onSelect(active ? null : thread.id)}
     >
       {/* Author + timestamp + actions */}
       <AuthorHeader author={thread.author} timestamp={thread.createdAt}>
         <div
-          className="ml-auto flex items-center gap-1"
+          className={`ml-auto flex items-center gap-1 transition-opacity focus-within:opacity-100 group-hover:opacity-100 ${
+            menuOpen ? "opacity-100" : "opacity-0"
+          }`}
           onClick={(e) => e.stopPropagation()}
         >
           <button

@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "vapor-mention-relay",
+  "main": "index.ts",
+  "compatibility_date": "2026-08-01",
+  "vars": {
+    "ROUTINE_ID": "trig_01SV2swZ5wW32LRWAfF1zpC9"
+  }
+}

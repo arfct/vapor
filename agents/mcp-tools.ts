@@ -97,7 +97,8 @@ const pace = z
   .enum(["natural", "fast", "instant"])
   .optional()
   .describe("How the edit is performed: natural (human-paced typing), fast, or instant.");
-const anchorDesc = "A block anchor from read_document, e.g. b3-a91f0c2d.";
+const anchorDesc =
+  "A block anchor from read_document, e.g. k3f0a9x2-a91f0c2d: a persistent block id plus the block's content hash. The id survives edits; a changed hash returns stale_block with the block's current state so you can retry without a full re-read.";
 
 /**
  * Builds a tool that resolves `doc_id` to a stub before calling an RPC.
@@ -180,7 +181,11 @@ export const TOOLS: ToolDef[] = [
       "Suggest a change inside a block as tracked CriticMarkup: find is marked deleted and replacement is marked added, for a human to accept or reject. Requires the suggest capability.",
     schema: {
       anchor: z.string().describe(anchorDesc),
-      find: z.string().describe("The exact text within that block to replace."),
+      find: z
+        .string()
+        .describe(
+          "The exact PLAIN text within that block to replace — match against the block's rendered text, not its markdown syntax.",
+        ),
       replacement: z.string().describe("The suggested replacement text (empty string to delete)."),
       pace,
     },
@@ -244,7 +249,7 @@ export const TOOLS: ToolDef[] = [
   docTool({
     name: "await_events",
     description:
-      "Long-poll for document events (mentions, thread replies, change digests) after a cursor. Returns as soon as anything is waiting, or empty when the timeout elapses.",
+      "Poll for document events (mentions, thread replies, change digests) after a cursor. Returns as soon as anything is waiting, or empty when the timeout (capped at 15s) elapses. An empty result includes retryAfterMs — wait at least that long before polling again; hot-looping this tool keeps the document's server pinned.",
     schema: {
       since_cursor: z
         .number()

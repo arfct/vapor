@@ -5,7 +5,7 @@ import type { MatchedThread } from "~/lib/comment-threads";
 import type { useYjsEditor } from "~/lib/useYjsEditor";
 import { useThreads } from "~/lib/useThreads";
 import { findCommentTextAtCursor } from "~/lib/comment-threads";
-import { serializeWithCriticMarkup } from "~/lib/critic-serializer";
+import { serializePmDoc } from "~/shared/rich-markdown";
 
 export interface DocumentContextValue {
   docId: string;
@@ -23,10 +23,6 @@ export interface DocumentContextValue {
   showPreview: boolean;
   togglePreview: () => void;
   setPreviewHeld: (held: boolean) => void;
-
-  // Clean view
-  cleanView: boolean;
-  toggleCleanView: () => void;
 
   // Comments
   commentActive: boolean;
@@ -85,7 +81,6 @@ export function DocumentProvider({
   const [commentActive, setCommentActive] = useState(false);
   const [commentSelection, setCommentSelection] = useState<CapturedSelection | null>(null);
   const [commentHighlight, setCommentHighlight] = useState<{ from: number; to: number } | null>(null);
-  const [cleanView, setCleanView] = useState(true);
 
   const showPreview = previewToggled || previewHeld;
 
@@ -108,13 +103,9 @@ export function DocumentProvider({
     setPreviewToggled((v) => !v);
   }, []);
 
-  const toggleCleanView = useCallback(() => {
-    setCleanView((v) => !v);
-  }, []);
-
   const handleEditorReady = useCallback((editor: TiptapEditor) => {
     setEditorInstance(editor);
-    const update = () => setMarkdown(serializeWithCriticMarkup(editor.state.doc));
+    const update = () => setMarkdown(serializePmDoc(editor.state.doc));
     update();
     editor.on("update", update);
   }, []);
@@ -228,8 +219,6 @@ export function DocumentProvider({
     showPreview,
     togglePreview,
     setPreviewHeld,
-    cleanView,
-    toggleCleanView,
     commentActive,
     commentSelection,
     commentHighlight,

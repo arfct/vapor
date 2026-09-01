@@ -21,7 +21,7 @@ export default function MobilePanel({ className }: { className?: string }) {
   // Switch to comments tab when a thread is activated (e.g. clicking in editor)
   useEffect(() => {
     if (activeThreadId && activeThreadId !== prevThreadIdRef.current) {
-      setActiveTab("comments"); // eslint-disable-line react-hooks/set-state-in-effect
+      setActiveTab("comments");
     }
     prevThreadIdRef.current = activeThreadId;
   }, [activeThreadId]);

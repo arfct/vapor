@@ -23,14 +23,13 @@ describe("HeaderMenu", () => {
     vi.restoreAllMocks();
   });
 
-  it("opens with status, Agents, and theme rows", async () => {
+  it("opens with Agents and theme rows", async () => {
     const onOpenAgents = vi.fn();
     renderWithDocument(createElement(HeaderMenu, { onOpenAgents }));
     fireEvent.click(screen.getByLabelText("Menu"));
 
     expect(screen.getByText("Agents")).toBeTruthy();
     expect(screen.getByText("Theme")).toBeTruthy();
-    expect(screen.getByText("Connecting")).toBeTruthy();
     expect(screen.getByLabelText("Light")).toBeTruthy();
     expect(screen.getByLabelText("Dark")).toBeTruthy();
     expect(screen.getByLabelText("Auto")).toBeTruthy();

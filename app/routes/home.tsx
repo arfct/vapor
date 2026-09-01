@@ -120,10 +120,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         />
         <p className="mt-8 text-muted">Or from your terminal</p>
         <div className="mt-2 flex max-w-full items-center gap-1.5">
-          <code className="flex min-w-0 items-center overflow-x-auto font-mono text-base">
-            <span className="md-delimiter shrink-0">`</span>
-            <span className="md-code whitespace-nowrap">{curlCommand}</span>
-            <span className="md-delimiter shrink-0">`</span>
+          <code className="flex min-w-0 items-center overflow-x-auto rounded bg-border px-2 py-0.5 font-mono text-base">
+            <span className="whitespace-nowrap">{curlCommand}</span>
           </code>
           <button
             onClick={handleCopy}

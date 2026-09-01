@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useSession, notifyAuthChanged } from "~/lib/useSession";
 import { useTheme, type Theme } from "~/lib/useTheme";
-import ConnectionStatus from "~/components/ConnectionStatus";
 import Icon from "~/components/Icon";
 
 declare global {
@@ -99,15 +98,12 @@ export default function HeaderMenu({ onOpenAgents }: { onOpenAgents: () => void 
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="fixed right-2 top-12 z-50 w-64 border border-border bg-paper shadow-lg">
-            <div className="flex items-center px-4 py-3">
-              <ConnectionStatus />
-            </div>
             <button
               onClick={() => {
                 setOpen(false);
                 onOpenAgents();
               }}
-              className="flex w-full cursor-pointer items-center gap-2 border-t border-border px-4 py-3 text-left text-sm transition-colors hover:bg-border"
+              className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left text-sm transition-colors hover:bg-border"
             >
               <Icon name="smart_toy" className="text-muted" />
               Agents

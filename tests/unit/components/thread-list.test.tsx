@@ -22,7 +22,7 @@ describe("ThreadList", () => {
     expect(container.textContent).toBe("");
   });
 
-  it("renders ThreadPanel for each open thread with separator borders", () => {
+  it("renders ThreadPanel for each open thread without separator borders", () => {
     const threads = [
       makeThread({ id: "t1", commentText: "First" }),
       makeThread({ id: "t2", commentText: "Second" }),
@@ -33,9 +33,9 @@ describe("ThreadList", () => {
     expect(getByText("First")).toBeTruthy();
     expect(getByText("Second")).toBeTruthy();
 
-    // Each thread wrapper has border-b separator
-    const separators = container.querySelectorAll(".border-b.border-border");
-    expect(separators.length).toBe(2);
+    // Threads only show a border while hovered or selected
+    expect(container.querySelectorAll(".border-b.border-border").length).toBe(0);
+    expect(container.querySelectorAll(".border-transparent").length).toBe(2);
   });
 
   it("'Show resolved' toggle reveals resolved threads", () => {

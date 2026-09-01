@@ -111,7 +111,9 @@ export default function ThreadPanel({
 
   return (
     <div
-      className={`group cursor-pointer p-3 ${active ? "bg-canary/15" : ""}`}
+      className={`group cursor-pointer border p-3 transition-colors ${
+        active ? "border-border bg-canary/15" : "border-transparent hover:border-border"
+      }`}
       onClick={() => onSelect(active ? null : thread.id)}
     >
       {/* Author + timestamp + actions */}

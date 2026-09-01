@@ -143,10 +143,15 @@ describe("ThreadPanel", () => {
     expect(props.onResolve).toHaveBeenCalledWith("t1");
   });
 
-  it("reply pill is always visible and submits on Enter", () => {
+  it("reply input is hidden until the Reply link is clicked, then submits on Enter", () => {
     const props = defaultProps();
-    const { getByPlaceholderText } = render(createElement(ThreadPanel, props));
+    const { getByText, queryByPlaceholderText, getByPlaceholderText } = render(
+      createElement(ThreadPanel, props),
+    );
 
+    expect(queryByPlaceholderText("Reply...")).toBeFalsy();
+
+    fireEvent.click(getByText("Reply"));
     const input = getByPlaceholderText("Reply...");
     expect(input.className).toContain("rounded-full");
 

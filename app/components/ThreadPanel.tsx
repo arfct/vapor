@@ -30,11 +30,11 @@ function AuthorHeader({
         avatar={author.avatar}
         animal={author.animal}
         color={author.color}
-        className="h-8 w-8"
+        className="h-[25px] w-[25px]"
       />
-      <div className="flex min-w-0 flex-col justify-center">
-        <span className="truncate text-base font-bold leading-tight">{author.name}</span>
-        <span className="truncate text-sm leading-tight text-muted">
+      <div className="flex min-w-0 items-baseline gap-2">
+        <span className="truncate text-base font-bold">{author.name}</span>
+        <span className="shrink-0 text-sm text-muted">
           {author.agentClient ? `${author.agentClient} • ` : ""}
           {timeAgo(timestamp)}
         </span>
@@ -158,7 +158,7 @@ export default function ThreadPanel({
       </AuthorHeader>
 
       {/* Comment text */}
-      <p className="mt-1.5 text-base">{thread.commentText}</p>
+      <p className="mt-1 pl-[33px] text-base">{thread.commentText}</p>
 
       {/* Replies */}
       {thread.replies.length > 0 && (
@@ -166,7 +166,7 @@ export default function ThreadPanel({
           {thread.replies.map((reply) => (
             <div key={reply.id}>
               <AuthorHeader author={reply.author} timestamp={reply.createdAt} />
-              <p className="mt-1 text-base">{reply.text}</p>
+              <p className="mt-1 pl-[33px] text-base">{reply.text}</p>
             </div>
           ))}
         </div>
@@ -174,7 +174,7 @@ export default function ThreadPanel({
 
       {/* Reply link, shown only while the thread is selected; input appears on click */}
       {active && (
-      <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+      <div className="mt-3 pl-[33px]" onClick={(e) => e.stopPropagation()}>
         {showReplyInput ? (
           <input
             ref={replyInputRef}

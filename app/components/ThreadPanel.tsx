@@ -32,9 +32,9 @@ function AuthorHeader({
         color={author.color}
         className="h-8 w-8"
       />
-      <div className="flex min-w-0 flex-col justify-center leading-tight">
-        <span className="truncate text-base font-bold">{author.name}</span>
-        <span className="text-base text-muted">{timeAgo(timestamp)}</span>
+      <div className="flex min-w-0 flex-col justify-center">
+        <span className="truncate text-base font-bold leading-tight">{author.name}</span>
+        <span className="text-sm leading-tight text-muted">{timeAgo(timestamp)}</span>
       </div>
       {children}
     </div>
@@ -67,6 +67,11 @@ export default function ThreadPanel({
   useEffect(() => {
     if (showReplyInput) replyInputRef.current?.focus();
   }, [showReplyInput]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!active) setShowReplyInput(false);
+  }, [active]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -164,7 +169,8 @@ export default function ThreadPanel({
         </div>
       )}
 
-      {/* Reply input, hidden behind a link until clicked */}
+      {/* Reply link, shown only while the thread is selected; input appears on click */}
+      {active && (
       <div className="mt-3" onClick={(e) => e.stopPropagation()}>
         {showReplyInput ? (
           <input
@@ -186,6 +192,7 @@ export default function ThreadPanel({
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }

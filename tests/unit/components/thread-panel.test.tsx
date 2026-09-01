@@ -143,8 +143,14 @@ describe("ThreadPanel", () => {
     expect(props.onResolve).toHaveBeenCalledWith("t1");
   });
 
-  it("reply input is hidden until the Reply link is clicked, then submits on Enter", () => {
+  it("reply link only appears on an active thread", () => {
     const props = defaultProps();
+    const { queryByText } = render(createElement(ThreadPanel, props));
+    expect(queryByText("Reply")).toBeFalsy();
+  });
+
+  it("reply input is hidden until the Reply link is clicked, then submits on Enter", () => {
+    const props = { ...defaultProps(), active: true };
     const { getByText, queryByPlaceholderText, getByPlaceholderText } = render(
       createElement(ThreadPanel, props),
     );

@@ -77,3 +77,13 @@ export const ANON_ANIMALS: readonly AnonAnimal[] = [
   { glyph: "🦞", name: "Lobster" },
   { glyph: "🐌", name: "Snail" },
 ] as const;
+
+/**
+ * Glyph for a display label whose last word is an animal name — covers
+ * both "Heroic Otter" visitors and "Agentic Lobster" agents. Undefined
+ * for labels that aren't animal-flavoured (e.g. "Ada's Agent").
+ */
+export function animalGlyphForLabel(label: string): string | undefined {
+  const lastWord = label.trim().split(/\s+/).pop();
+  return ANON_ANIMALS.find((a) => a.name === lastWord)?.glyph;
+}

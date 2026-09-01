@@ -8,9 +8,13 @@
  *   node tools/do-usage.mjs [--days 7]
  *
  * Needs:
- *   CLOUDFLARE_ACCOUNT_ID   (already set for deploys)
- *   CLOUDFLARE_API_TOKEN    an API token with "Account Analytics: Read"
- *                           (dash.cloudflare.com → My Profile → API Tokens)
+ *   CLOUDFLARE_ACCOUNT_ID        (already set for deploys)
+ *   CLOUDFLARE_ANALYTICS_TOKEN   an API token with "Account Analytics: Read"
+ *                                (dash.cloudflare.com → My Profile → API Tokens).
+ *                                Named distinctly because an exported
+ *                                CLOUDFLARE_API_TOKEN shadows wrangler's OAuth
+ *                                login and can break deploys; that name still
+ *                                works here as a fallback.
  *
  * Reads the GraphQL Analytics API: DO active time (the duration meter that
  * exhausted on 2026-08-31) and request counts, per day, with headroom
@@ -22,12 +26,12 @@ const FREE_REQUESTS_PER_DAY = 100_000;
 const DO_MEMORY_GB = 0.128; // every DO is billed at 128 MB
 
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-const token = process.env.CLOUDFLARE_API_TOKEN;
+const token = process.env.CLOUDFLARE_ANALYTICS_TOKEN ?? process.env.CLOUDFLARE_API_TOKEN;
 const days = Math.max(1, Number(process.argv[process.argv.indexOf("--days") + 1]) || 7);
 
 if (!accountId || !token) {
   console.error(
-    "Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN (Account Analytics: Read).",
+    "Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_ANALYTICS_TOKEN (Account Analytics: Read).",
   );
   process.exit(1);
 }

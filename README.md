@@ -42,7 +42,7 @@ Tools: `read_document` · `insert` · `replace` · `suggest` · `comment` · `re
 
 ## The drafting habit
 
-The vapor plugin for Claude Code bundles the MCP connection with a skill that changes where drafts live: plans and proposals go up as vapor docs instead of chat walls, Claude answers comments over MCP, and the settled document is exported to the repo before the 99-hour cliff.
+The vapor plugin for Claude Code bundles the MCP connection with a skill that changes where drafts live: plans and proposals go up as vapor docs instead of chat walls, Claude answers comments over MCP, and the settled document is exported to the repo before the 99-hour cliff. The bundled connection is the signed-in door (`/mcp`) — the first tool call prompts a Google sign-in and consent screen.
 
 ```bash
 claude plugin marketplace add arfct/vapor

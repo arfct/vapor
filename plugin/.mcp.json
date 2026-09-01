@@ -2,7 +2,7 @@
   "mcpServers": {
     "vapor": {
       "type": "http",
-      "url": "https://vapor.fyi/mcp/anonymous"
+      "url": "https://vapor.fyi/mcp"
     }
   }
 }

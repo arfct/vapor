@@ -144,7 +144,7 @@ export function clientDisplayName(raw: string | undefined): string | undefined {
   if (!raw?.trim()) return undefined;
   const slug = slugifyAgentName(raw);
   if (slug === "agent") return undefined;
-  if (slug.startsWith("claude")) return "Claude";
+  if (slug.includes("claude")) return "Claude";
   return slug
     .split("-")
     .map((w) => w[0].toUpperCase() + w.slice(1))

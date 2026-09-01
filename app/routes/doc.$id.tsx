@@ -19,6 +19,7 @@ import CommentInput from "~/components/CommentInput";
 import ThreadList from "~/components/ThreadList";
 import MobilePanel from "~/components/MobilePanel";
 import OnboardingBanner from "~/components/OnboardingBanner";
+import Icon from "~/components/Icon";
 
 export function meta(_args: Route.MetaArgs) {
   return [{ title: "vapor" }];
@@ -86,6 +87,7 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
     isOnboarding,
   } = useDocument();
   const [agentsOpen, setAgentsOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(true);
 
   return (
     <div className="flex h-screen flex-col">
@@ -125,6 +127,19 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
         <div className="flex shrink-0 items-center border-l border-border px-3">
           <ConnectionStatus />
         </div>
+        <div className="hidden shrink-0 border-l border-border lg:block">
+          <button
+            onClick={() => setCommentsOpen((v) => !v)}
+            aria-label={commentsOpen ? "Hide comments" : "Show comments"}
+            aria-pressed={commentsOpen}
+            title={commentsOpen ? "Hide comments" : "Show comments"}
+            className={`flex h-full cursor-pointer items-center px-3 transition-colors hover:bg-border ${
+              commentsOpen ? "text-ink" : "text-muted"
+            }`}
+          >
+            <Icon name="comment" />
+          </button>
+        </div>
         <div className="shrink-0 border-l border-border">
           <HeaderMenu />
         </div>
@@ -145,7 +160,11 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
           />
           {showPreview && <Preview />}
         </main>
-        <aside className="hidden w-96 flex-col overflow-hidden border-l border-border lg:flex">
+        <aside
+          className={`hidden w-96 flex-col overflow-hidden border-l border-border ${
+            commentsOpen ? "lg:flex" : ""
+          }`}
+        >
           <div className="flex-1 overflow-y-auto">
             <CommentInput />
             <ThreadList />

@@ -2,6 +2,8 @@
 
 **Goal:** An open vapor tab stops costing money when nobody is using it. Today every open tab — and every idling agent — pins its document's Durable Object in memory around the clock, which exhausted the free tier's daily duration quota on 2026-08-31 and took the whole product down for the day.
 
+**Status:** Phases 1 and 2 shipped on the notes-import branch (PR #6, "Free-tier safeguards: sleeping tabs and DO wake hygiene") and are deployed. Phase 3's usage script lives at [tools/do-usage.mjs](../../tools/do-usage.mjs) — it needs a `CLOUDFLARE_API_TOKEN` with *Account Analytics: Read* (not yet provisioned; runs and fails cleanly without it). The webhook successor to `await_events` polling has its own plan: [MCP Events polyfill](2026-08-31-mcp-events-polyfill-plan.md).
+
 ## Why documents never sleep
 
 The Agents SDK already serves connections through the WebSocket **hibernation API** (`hibernate: true` is its default), and `ensureInitialised()` already rebuilds the Y.Doc from SQLite on wake — the architecture *can* sleep. Four things prevent it in practice:
@@ -50,7 +52,7 @@ Make the DO's awake time proportional to actual work, so hibernation between mes
 
 ## Phase 3 — Measurement and guardrails (S, ongoing)
 
-- A weekly (or on-demand) GraphQL query of DO duration/requests/rows against budget, recorded in the repo (script in `tools/` or a doc), so the next quota cliff is visible days out, not at 500-time.
+- `tools/do-usage.mjs`: per-day DO active time (converted to GB-s at the 128 MB billing size) and request counts from the GraphQL Analytics API, printed against the free-tier daily budgets with a warning at 70% and a failure exit at 100% — runnable ad hoc or from CI/cron. Requires `CLOUDFLARE_ACCOUNT_ID` plus a `CLOUDFLARE_API_TOKEN` scoped to *Account Analytics: Read*.
 - Revisit the awareness heartbeat cadence only if analytics show wake-per-message still dominating after Phases 1–2 (thinning presence updates trades cursor liveness for cost; not worth it until measured).
 
 ## Sequencing and expected effect

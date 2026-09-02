@@ -53,19 +53,31 @@ describe("TitleBlock", () => {
     editor.destroy();
   });
 
-  it("shows Title and Body placeholders on the empty first and second lines only", () => {
-    const editor = makeEditor("<h1></h1><p></p>");
+  it("shows both placeholders on an empty document, the title at heading size", () => {
+    const editor = makeEditor("<p></p>");
+    const first = editor.view.dom.querySelector(".is-empty");
+    expect(first?.getAttribute("data-placeholder")).toBe("Title");
+    expect(first?.classList.contains("is-title")).toBe(true);
+    const body = editor.view.dom.querySelector(".placeholder-body");
+    expect(body?.textContent).toBe("Body");
+    expect(body?.getAttribute("contenteditable")).toBe("false");
+    editor.destroy();
+  });
+
+  it("moves the body hint onto the real second line once it exists", () => {
+    const editor = makeEditor("<h1>Plan</h1><p></p>");
+    expect(editor.view.dom.querySelector(".placeholder-body")).toBeNull();
     const placeholders = [...editor.view.dom.querySelectorAll(".is-empty")].map((el) =>
       el.getAttribute("data-placeholder"),
     );
-    // A trailing paragraph (StarterKit's TrailingNode) shows no placeholder.
-    expect(placeholders.slice(0, 2)).toEqual(["Title", "Body"]);
-    expect(placeholders.slice(2).every((p) => p === "")).toBe(true);
+    expect(placeholders[0]).toBe("Body");
+    editor.destroy();
+  });
 
-    // Once the body has text, no block carries a placeholder at all.
+  it("shows no placeholders once the body has text", () => {
     const longer = makeEditor("<h1>Plan</h1><p>Body</p><p></p>");
     expect(longer.view.dom.querySelector(".is-empty")).toBeNull();
-    editor.destroy();
+    expect(longer.view.dom.querySelector(".placeholder-body")).toBeNull();
     longer.destroy();
   });
 });

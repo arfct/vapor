@@ -28,6 +28,18 @@ export const PLACEHOLDER_PRESETS: readonly PlaceholderPreset[] = [
   { title: "Make it work, make it right,", body: "make it fast." },
   { title: "All happy families are alike;", body: "each unhappy family is unhappy in its own way." },
   { title: "It's not the years, honey.", body: "It's the mileage." },
+  { title: "Ask not what your country can do for you;", body: "ask what you can do for your country." },
+  { title: "To be, or not to be:", body: "that is the question." },
+  { title: "The only thing we have to fear", body: "is fear itself." },
+  { title: "A journey of a thousand miles", body: "begins with a single step." },
+  { title: "The unexamined life", body: "is not worth living." },
+  { title: "I think,", body: "therefore I am." },
+  { title: "Man is born free,", body: "and everywhere he is in chains." },
+  { title: "Hope is the thing with feathers", body: "that perches in the soul." },
+  { title: "So we beat on, boats against the current,", body: "borne back ceaselessly into the past." },
+  { title: "Two roads diverged in a wood, and I —", body: "I took the one less traveled by." },
+  { title: "Do I dare", body: "disturb the universe?" },
+  { title: "Programs must be written for people to read,", body: "and only incidentally for machines to execute." },
 ];
 
 /** The preset for a document, stable per id. */

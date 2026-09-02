@@ -559,6 +559,35 @@ body {
   background-color: color-mix(in srgb, #3b82f6 20%, transparent);
 }
 
+/* Suggest-mode notice toast (see suggest-notice.ts) */
+.suggest-notice {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  z-index: 60;
+  padding: 0.5rem 0.875rem;
+  border-radius: 0.5rem;
+  background-color: var(--color-ink);
+  color: var(--color-paper);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  animation: suggest-notice-in 150ms ease-out both;
+}
+
+@keyframes suggest-notice-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
 /* Dark theme — explicit dark mode */
 [data-theme="dark"] {
   --color-ink: #e5e5e5;

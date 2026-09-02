@@ -1,31 +1,26 @@
 ---
 vapor:
   threads:
-    - comment: "Docs are ephemeral. Export anything you want to keep."
+    - comment: "Docs are ephemeral. Export what you want to keep."
       highlight: "99 hours"
       author: "Curious Fox"
       animal: "🦊"
       color: "#E57373"
       created: "2026-08-30T09:12:00Z"
       resolved: false
-    - comment: "Should we use a stronger word here?"
+    - comment: "Stronger word?"
       highlight: "good"
       author: "Alice"
       color: "#BA68C8"
       created: "2026-08-30T10:00:00Z"
       resolved: false
       replies:
-        - author: "Bob"
+        - author: "Agentic Badger"
+          animal: "🦡"
+          client: "Claude"
           color: "#64B5F6"
-          text: "How about 'clear'?"
+          text: "Try \"clear\" — it says what the sentence means."
           created: "2026-08-30T10:05:00Z"
-    - comment: "Agents leave comments the same way. This one came in over MCP."
-      author: "Agentic Otter"
-      animal: "🦦"
-      client: "Claude"
-      color: "#4DB6AC"
-      created: "2026-08-30T10:20:00Z"
-      resolved: false
     - comment: "Every collaborator gets a name and a color, agents included."
       highlight: "visible cursor"
       author: "Agentic Otter"
@@ -38,27 +33,21 @@ vapor:
 
 # vapor
 
-Live Markdown for people and agents, side by side. Every document is public by URL and deletes itself after {==99 hours==}{>>Docs are ephemeral. Export anything you want to keep.<<}. Export or save what you want to keep.
+Live Markdown for people and agents, side by side. Public by URL, gone after {==99 hours==}{>>Docs are ephemeral. Export what you want to keep.<<}.
 
-## What you're looking at
-
-This page is a live vapor document. Type in it, comment on it, or switch to suggest mode. Your changes stay in this browser only. **New document** in the header starts a blank document with a shareable link.
+This page is a live document: type, comment, or switch to **Suggest** in the header. Changes stay in this browser; **+** starts a real one.
 
 ## Markdown
 
-You can write **bold text**, _italic text_, ~~strikethrough~~, and `inline code`. Add [links](https://github.com/arfct/vapor), bullet lists, and fenced code blocks. Standard Markdown works, except images.
+**Bold**, _italic_, ~~strike~~, `code`, [links](https://github.com/arfct/vapor), lists, and fenced code blocks. No images.
 
 ## Suggestions
 
-Switch from **Edit** to **Suggest** in the header menu. Here is {++added text++} that a reviewer proposed, and here is {--removed text--} marked for deletion. Anyone in the document can accept or reject each change.
+In suggest mode, edits become {++proposals++} and {--deletions--} that anyone can accept or reject.
 
 ## Comments
 
-Comments can be anchored to a {==good==}{>>Should we use a stronger word here?<<} span of text, or placed inline without a selection.
-
-Select some text and use the bubble menu to comment on it. {>>Agents leave comments the same way. This one came in over MCP.<<} Click a highlight or a comment to open its thread. Threads support replies and can be resolved when the discussion is done.
-
-Export as Markdown from the Share menu. Suggestions and threads travel with the file, and importing it back into vapor restores them.
+Select text and use the bubble menu to comment on a {==good==}{>>Stronger word?<<} span. Tap a highlight to open its thread.
 
 ## From your terminal
 
@@ -66,15 +55,13 @@ Export as Markdown from the Share menu. Suggestions and threads travel with the 
 curl https://vapor.fyi/new -T file.md
 ```
 
-The response is the URL of your new document.
-
 ## From your agent
 
 ```bash
 claude mcp add --transport http vapor https://vapor.fyi/mcp
 ```
 
-Agents join with a {==visible cursor==}{>>Every collaborator gets a name and a color, agents included.<<} and edit like a person would.
+Agents join with a {==visible cursor==}{>>Every collaborator gets a name and a color, agents included.<<} and edit like a person.
 
 ## As a habit
 
@@ -82,4 +69,4 @@ Agents join with a {==visible cursor==}{>>Every collaborator gets a name and a c
 claude plugin marketplace add arfct/vapor && claude plugin install vapor@vapor
 ```
 
-The plugin bundles the MCP connection with a skill: Claude drafts here, discusses in comments, and saves back to your repo before the doc expires.
+MCP plus a skill: Claude drafts here, discusses in comments, and saves back to your repo before the doc expires.

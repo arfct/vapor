@@ -53,6 +53,25 @@ body {
   min-height: 100dvh;
 }
 
+/* 48px header buttons; a button whose menu is open inverts to match the
+   VAPOR mark, and the menu hangs flush beneath it. */
+.header-button {
+  display: flex;
+  height: 100%;
+  width: 48px;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+.header-button:hover {
+  background-color: var(--color-border);
+}
+.header-button[data-popup-open] {
+  background-color: var(--color-ink);
+  color: var(--color-paper);
+}
+
 /* Editor styles */
 .tiptap {
   outline: none;

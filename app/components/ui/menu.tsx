@@ -31,7 +31,13 @@ export const MenuContent = React.forwardRef<HTMLDivElement, MenuContentProps>(
   ({ className, align = "start", children, ...props }, ref) => {
     return (
       <BaseMenu.Portal>
-        <BaseMenu.Positioner align={align} side="bottom" sideOffset={4} className="z-50">
+        <BaseMenu.Positioner
+          align={align}
+          side="bottom"
+          sideOffset={0}
+          collisionPadding={0}
+          className="z-50"
+        >
           <BaseMenu.Popup
             ref={ref}
             className={cn(

@@ -169,7 +169,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
                   <button
                     aria-label="Create"
                     title="Create"
-                    className="flex h-full w-[48px] cursor-pointer items-center justify-center transition-colors hover:bg-border"
+                    className="header-button"
                   >
                     <Icon name="add" />
                   </button>

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { Popover } from "@base-ui/react/popover";
 import { useSession, notifyAuthChanged } from "~/lib/useSession";
 import { useTheme, type Theme } from "~/lib/useTheme";
 import Icon from "~/components/Icon";
@@ -37,19 +38,21 @@ export default function HeaderMenu() {
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const [signInUnavailable, setSignInUnavailable] = useState(false);
-  const buttonHost = useRef<HTMLDivElement | null>(null);
+  // State, not a ref: the popover portal mounts a render after `open`
+  // flips, so the effect must re-run once the host element exists.
+  const [buttonHost, setButtonHost] = useState<HTMLDivElement | null>(null);
 
-  function toggleMenu() {
-    setSignInUnavailable(false);
-    setOpen((v) => !v);
+  function handleOpenChange(next: boolean) {
+    if (next) setSignInUnavailable(false);
+    setOpen(next);
   }
 
   // Load Google Identity Services and render its button only while the menu
   // is open with no active session.
   useEffect(() => {
-    if (!open || session?.signedIn || !buttonHost.current) return;
+    if (!open || session?.signedIn || !buttonHost) return;
     let cancelled = false;
-    const host = buttonHost.current;
+    const host = buttonHost;
 
     const markUnavailable = () => {
       if (!cancelled) setSignInUnavailable(true);
@@ -74,7 +77,7 @@ export default function HeaderMenu() {
       }
 
       const render = () => {
-        if (cancelled || !window.google || !buttonHost.current) return;
+        if (cancelled || !window.google) return;
         window.google.accounts.id.initialize({
           client_id: config.googleClientId as string,
           callback: async (r) => {
@@ -89,7 +92,7 @@ export default function HeaderMenu() {
         const dark =
           theme === "dark" ||
           (theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-        window.google.accounts.id.renderButton(buttonHost.current, {
+        window.google.accounts.id.renderButton(host, {
           theme: dark ? "filled_black" : "outline",
           width: 220,
         });
@@ -111,7 +114,7 @@ export default function HeaderMenu() {
       cancelled = true;
       clearTimeout(fallbackTimer);
     };
-  }, [open, session?.signedIn, theme]);
+  }, [open, session?.signedIn, theme, buttonHost]);
 
   async function signOut() {
     await fetch("/auth/logout", { method: "POST" });
@@ -119,28 +122,33 @@ export default function HeaderMenu() {
   }
 
   return (
-    <>
-      <button
-        onClick={toggleMenu}
-        aria-label="Menu"
-        className="flex h-full w-[48px] shrink-0 cursor-pointer items-center justify-center transition-colors hover:bg-border"
-      >
-        {session?.signedIn ? (
-          <Avatar
-            name={session.displayName ?? "?"}
-            avatar={session.avatar}
-            className="h-8 w-8"
-          />
-        ) : (
-          <span className="flex h-8 w-8 items-center justify-center text-2xl leading-none text-muted">
-            <Icon name="account_circle" />
-          </span>
-        )}
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="fixed right-2 top-12 z-50 w-64 border border-border bg-paper shadow-lg">
+    <Popover.Root open={open} onOpenChange={handleOpenChange}>
+      <Popover.Trigger
+        render={
+          <button aria-label="Menu" className="header-button shrink-0">
+            {session?.signedIn ? (
+              <Avatar
+                name={session.displayName ?? "?"}
+                avatar={session.avatar}
+                className="h-8 w-8"
+              />
+            ) : (
+              <span className="flex h-8 w-8 items-center justify-center text-2xl leading-none">
+                <Icon name="account_circle" />
+              </span>
+            )}
+          </button>
+        }
+      />
+      <Popover.Portal>
+        <Popover.Positioner
+          side="bottom"
+          align="end"
+          sideOffset={0}
+          collisionPadding={0}
+          className="z-50"
+        >
+          <Popover.Popup className="w-64 border border-border bg-paper shadow-md outline-none">
             {session?.signedIn ? (
               <div className="flex items-center gap-2 px-4 py-3">
                 <Avatar
@@ -165,7 +173,7 @@ export default function HeaderMenu() {
                     Sign-in needs a full browser — open this page in Safari or Chrome.
                   </p>
                 ) : (
-                  <div ref={buttonHost} />
+                  <div ref={setButtonHost} />
                 )}
               </div>
             )}
@@ -187,9 +195,9 @@ export default function HeaderMenu() {
                 ))}
               </div>
             </div>
-          </div>
-        </>
-      )}
-    </>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }

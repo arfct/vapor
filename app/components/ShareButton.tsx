@@ -43,6 +43,17 @@ export default function ShareButton({
     setTimeout(() => setCopyState("idle"), COPY_FEEDBACK_MS);
   }, []);
 
+  // The menu only renders client-side once opened, so reading navigator
+  // here can't mismatch the server render.
+  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+  const handleShare = useCallback(async () => {
+    try {
+      await navigator.share({ title: document.title, url: window.location.href });
+    } catch {
+      // Dismissed share sheet.
+    }
+  }, []);
+
   const handleDownload = useCallback(() => {
     const content = serializeThreads(markdown, threads);
     const blob = new Blob([content], { type: "text/markdown" });
@@ -58,7 +69,7 @@ export default function ShareButton({
     <Menu>
       <MenuTrigger>
         <button
-          className="flex h-full w-[48px] cursor-pointer items-center justify-center transition-colors hover:bg-border"
+          className="header-button"
           aria-label="Share options"
           title="Share"
         >
@@ -76,6 +87,12 @@ export default function ShareButton({
             </div>
             <MenuSeparator className="lg:hidden" />
           </>
+        )}
+        {copyLink && canShare && (
+          <MenuItem className="gap-2" onClick={handleShare}>
+            <Icon name="ios_share" />
+            <span>Share link</span>
+          </MenuItem>
         )}
         {copyLink && (
           <MenuItem className="gap-2" onClick={handleCopy}>

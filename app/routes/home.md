@@ -61,7 +61,11 @@ curl https://vapor.fyi/new -T file.md
 claude mcp add --transport http vapor https://vapor.fyi/mcp
 ```
 
-Agents join with a {==visible cursor==}{>>Every collaborator gets a name and a color, agents included.<<} and edit like a person.
+Agents join with a {==visible cursor==}{>>Every collaborator gets a name and a color, agents included.<<} and edit like a person. Leave them standing instructions in a block like this one:
+
+```agent
+Keep suggestions short. Ask in a comment before rewriting a whole section.
+```
 
 ## As a habit
 

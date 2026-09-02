@@ -133,7 +133,7 @@ export const TOOLS: ToolDef[] = [
   docTool({
     name: "read_document",
     description:
-      "Read a vapor document: its full markdown, per-block anchors for editing, who is present, and open comment threads.",
+      "Read a vapor document: its full markdown, per-block anchors for editing, who is present, open comment threads, and `instructions` — standing guidance the document's authors wrote for agents (null if none). Follow it while working in the document.",
     schema: {},
     call: (stub, identity) => stub.agentRead(identity),
   }),

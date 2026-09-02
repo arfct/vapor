@@ -40,6 +40,16 @@ export const richSchema = new Schema({
       code: true,
       defining: true,
     },
+    // Standing instructions addressed to agents; serializes as a ```agent fence.
+    agentInstructions: {
+      content: "text*",
+      group: "block",
+      attrs: blockIdAttr,
+      marks: "",
+      code: true,
+      defining: true,
+      isolating: true,
+    },
     bulletList: { content: "listItem+", group: "block", attrs: blockIdAttr },
     orderedList: {
       content: "listItem+",
@@ -89,6 +99,7 @@ export const BLOCK_ID_TYPES = [
   "heading",
   "blockquote",
   "codeBlock",
+  "agentInstructions",
   "bulletList",
   "orderedList",
   "horizontalRule",
@@ -135,11 +146,21 @@ function criticRule(state: MdState, silent: boolean): boolean {
   return false;
 }
 
+export const AGENT_FENCE_INFO = "agent";
+
 function makeMarkdownIt() {
   const md = new MarkdownIt({ html: false, linkify: true });
   // Not representable in the schema — leave their syntax as literal text.
   md.disable(["image", "table"]);
   md.inline.ruler.before("emphasis", "critic", criticRule as never);
+  // A fence whose info string is exactly `agent` is an agent-instructions
+  // block, not code. Retyping the token lets the parser map it to its own
+  // node while every other markdown tool still sees a plain code fence.
+  md.core.ruler.push("agent_fence", (state: { tokens: { type: string; info: string }[] }) => {
+    for (const tok of state.tokens) {
+      if (tok.type === "fence" && tok.info.trim() === AGENT_FENCE_INFO) tok.type = "agent_fence";
+    }
+  });
   return md;
 }
 
@@ -164,6 +185,7 @@ export const markdownParser = new MarkdownParser(richSchema, makeMarkdownIt() as
     getAttrs: (tok) => ({ language: tok.info.trim() || null }),
     noCloseToken: true,
   },
+  agent_fence: { block: "agentInstructions", noCloseToken: true },
   hr: { node: "horizontalRule" },
   hardbreak: { node: "hardBreak" },
   em: { mark: "italic" },
@@ -202,6 +224,13 @@ export const markdownSerializer = new MarkdownSerializer(
     },
     codeBlock(state, node) {
       state.write("```" + (node.attrs.language ?? "") + "\n");
+      state.text(node.textContent, false);
+      state.ensureNewLine();
+      state.write("```");
+      state.closeBlock(node);
+    },
+    agentInstructions(state, node) {
+      state.write("```" + AGENT_FENCE_INFO + "\n");
       state.text(node.textContent, false);
       state.ensureNewLine();
       state.write("```");
@@ -326,6 +355,22 @@ export function getBlocks(doc: Y.Doc): DocBlock[] {
     });
   });
   return blocks;
+}
+
+/**
+ * The document's standing instructions for agents: the text of every
+ * agentInstructions block, in document order. Empty when there are none.
+ */
+export function getAgentInstructions(doc: Y.Doc): string[] {
+  const root = pmRootFromY(doc);
+  if (!root) return [];
+  const out: string[] = [];
+  root.forEach((child) => {
+    if (child.type.name === "agentInstructions" && child.textContent.trim()) {
+      out.push(child.textContent.trim());
+    }
+  });
+  return out;
 }
 
 export function formatAnchor(b: DocBlock): string {

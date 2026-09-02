@@ -912,6 +912,22 @@ describe("DocumentAgent", () => {
       expect(entry.lastSeenAt).not.toBeNull();
     });
 
+    it("read_document returns the document's agent instructions", async () => {
+      await agent.onRequest(
+        new Request("https://do/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: "# Doc\n\n```agent\nKeep suggestions short.\n```\n\nBody text.",
+          }),
+        }),
+      );
+      const read = await agent.agentRead(identity({ caps: ["suggest", "comment"] }));
+      if ("error" in read) throw new Error(read.error.message);
+      expect(read.instructions).toBe("Keep suggestions short.");
+      expect(read.markdown).toContain("```agent");
+    });
+
     it("updates lastSeenAt even when the capability check denies the call", async () => {
       await agent.onRequest(new Request("https://do/", { method: "POST" }));
       const id = identity({ caps: ["suggest", "comment"] }); // no write

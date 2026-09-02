@@ -17,6 +17,7 @@ import {
 } from "../app/shared/agent-protocol";
 import {
   getBlocks,
+  getAgentInstructions,
   yDocToMarkdown,
   resolveAnchor,
   buildMarkdownBlocks,
@@ -1322,6 +1323,8 @@ class DocumentAgent extends Agent {
     | {
         markdown: string;
         blocks: { anchor: string; text: string }[];
+        /** Standing per-document guidance addressed to agents; null when the document has none. */
+        instructions: string | null;
         presence: { name: string; isAgent: boolean }[];
         threads: ThreadData[];
       }
@@ -1334,6 +1337,8 @@ class DocumentAgent extends Agent {
 
     const markdown = yDocToMarkdown(doc);
     const blocks = getBlocks(doc).map((b) => ({ anchor: formatAnchor(b), text: b.text }));
+    const instructionBlocks = getAgentInstructions(doc);
+    const instructions = instructionBlocks.length > 0 ? instructionBlocks.join("\n\n") : null;
 
     const presence: { name: string; isAgent: boolean }[] = [];
     for (const state of awareness.getStates().values()) {
@@ -1362,7 +1367,7 @@ class DocumentAgent extends Agent {
       }
     });
 
-    return { markdown, blocks, presence, threads };
+    return { markdown, blocks, instructions, presence, threads };
   }
 
   /**

@@ -21,7 +21,6 @@ export const PLACEHOLDER_PRESETS: readonly PlaceholderPreset[] = [
   { title: "I have made this longer than usual", body: "because I have not had time to make it shorter." },
   { title: "Everything should be made as simple as possible,", body: "but not simpler." },
   { title: "The medium", body: "is the message." },
-  { title: "Talk is cheap.", body: "Show me the code." },
   { title: "Premature optimization", body: "is the root of all evil." },
   { title: "There are only two hard things in computer science:", body: "cache invalidation and naming things." },
   { title: "Any sufficiently advanced technology", body: "is indistinguishable from magic." },

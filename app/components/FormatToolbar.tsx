@@ -5,6 +5,7 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import Icon from "~/components/Icon";
 import { cn } from "~/lib/cn";
+import { showSuggestNotice } from "~/lib/suggest-notice";
 
 function useEditorTick() {
   const { editorInstance: editor } = useDocument();
@@ -34,6 +35,7 @@ const triggerClass =
  */
 export default function FormatToolbar() {
   const editor = useEditorTick();
+  const { mode } = useDocument();
   const [openMenus, setOpenMenus] = useState(0);
   const [hovered, setHovered] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
@@ -58,13 +60,20 @@ export default function FormatToolbar() {
     </Button>
   );
 
+  // Structure has no tracked form; in suggest mode block changes wait for
+  // Edit mode (inline marks go through SuggestFormatting and are tracked).
+  const structural = (run: () => void) => () => {
+    if (mode === "suggest") showSuggestNotice();
+    else run();
+  };
+
   const blockItem = (
     icon: string,
     label: string,
     active: boolean,
     run: () => void,
   ) => (
-    <MenuItem className="gap-2" onClick={run}>
+    <MenuItem className="gap-2" onClick={structural(run)}>
       <Icon name={icon} />
       <span className={active ? "font-semibold" : undefined}>{label}</span>
       {active && <span className="ml-auto pl-3 text-muted">{"✓"}</span>}
@@ -79,11 +88,8 @@ export default function FormatToolbar() {
       editor.chain().focus().setLink({ href }).run();
     } else {
       const label = linkTitle.trim() || href;
-      editor
-        .chain()
-        .focus()
-        .insertContent({ type: "text", text: label, marks: [{ type: "link", attrs: { href } }] })
-        .run();
+      const marks = [{ type: "link", attrs: { href } }, ...(mode === "suggest" ? [{ type: "criticAddition" }] : [])];
+      editor.chain().focus().insertContent({ type: "text", text: label, marks }).run();
     }
     setShowLinkDialog(false);
     setLinkUrl("");
@@ -143,11 +149,11 @@ export default function FormatToolbar() {
             <Icon name="link" />
             Link…
           </MenuItem>
-          <MenuItem className="gap-2" onClick={() => editor.chain().focus().setHorizontalRule().run()}>
+          <MenuItem className="gap-2" onClick={structural(() => editor.chain().focus().setHorizontalRule().run())}>
             <Icon name="horizontal_rule" />
             Divider
           </MenuItem>
-          <MenuItem className="gap-2" onClick={() => editor.chain().focus().toggleCodeBlock().run()}>
+          <MenuItem className="gap-2" onClick={structural(() => editor.chain().focus().toggleCodeBlock().run())}>
             <Icon name="code" />
             Code block
           </MenuItem>

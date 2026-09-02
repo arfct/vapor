@@ -18,6 +18,7 @@ import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table
 const InlineTableCell = TableCell.extend({ content: "inline*" });
 const InlineTableHeader = TableHeader.extend({ content: "inline*" });
 import { KeyboardShortcuts } from "~/lib/keyboard-shortcuts";
+import { SuggestFormatting, SuggestStructureGuard } from "~/lib/suggest-formatting";
 import { parseMarkdown } from "~/shared/rich-markdown";
 import { suggestModePlugin } from "~/lib/suggest-mode";
 import BubbleToolbar from "~/components/BubbleToolbar";
@@ -290,6 +291,8 @@ export default function Editor({
         }),
         SuggestMode.configure({ docState }),
         KeyboardShortcuts.configure({ docState }),
+        SuggestFormatting.configure({ docState }),
+        SuggestStructureGuard.configure({ docState }),
         CommentClickHandler.configure({ onCommentClick }),
         CommentHighlight,
         ActiveCommentHighlight,

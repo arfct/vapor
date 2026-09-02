@@ -4,6 +4,7 @@ import { useDocument } from "~/lib/DocumentContext";
 import { deserializeThreads } from "~/lib/thread-serialization";
 import { generateDocumentId } from "~/shared/constants";
 import { formatRemainingTime } from "~/lib/format-remaining";
+import { placeholderPreset } from "~/lib/placeholder-presets";
 import type { ThreadData } from "~/shared/types";
 import Editor from "~/components/Editor";
 import Preview from "~/components/Preview";
@@ -216,6 +217,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           <Editor
             yjs={yjs}
             autofocus={surface.kind === "doc" && fresh}
+            placeholders={surface.kind === "doc" ? placeholderPreset(surface.id) : undefined}
             hidden={showPreview}
             onEditorReady={handleEditorReady}
             onCommentClick={handleCommentClick}

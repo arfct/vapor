@@ -10,23 +10,30 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
  * StarterKit's TrailingNode keeps an empty paragraph after the last block,
  * so "nothing else" means every block after the first is empty.
  */
-export function placeholderFor(doc: PMNode, index: number): string {
-  if (index === 0) return doc.childCount <= 2 ? "Title" : "";
+export interface TitleBlockOptions {
+  /** Placeholder for the empty first line. */
+  title: string;
+  /** Placeholder for the empty line after a title. */
+  body: string;
+}
+
+export function placeholderFor(doc: PMNode, index: number, text: TitleBlockOptions): string {
+  if (index === 0) return doc.childCount <= 2 ? text.title : "";
   if (index !== 1) return "";
   const first = doc.firstChild;
   if (!first || first.type.name !== "heading" || doc.child(1).type.name !== "paragraph") return "";
   for (let i = 1; i < doc.childCount; i++) if (doc.child(i).textContent.length > 0) return "";
-  return "Body";
+  return text.body;
 }
 
-function placeholderDecorations(doc: PMNode): DecorationSet {
+function placeholderDecorations(doc: PMNode, text: TitleBlockOptions): DecorationSet {
   const decorations: Decoration[] = [];
   doc.forEach((node, offset, index) => {
     if (node.childCount > 0 || node.isLeaf) return;
-    const text = placeholderFor(doc, index);
-    if (!text) return;
+    const placeholder = placeholderFor(doc, index, text);
+    if (!placeholder) return;
     decorations.push(
-      Decoration.node(offset, offset + node.nodeSize, { class: "is-empty", "data-placeholder": text }),
+      Decoration.node(offset, offset + node.nodeSize, { class: "is-empty", "data-placeholder": placeholder }),
     );
   });
   return DecorationSet.create(doc, decorations);
@@ -40,10 +47,15 @@ function placeholderDecorations(doc: PMNode): DecorationSet {
  * text. "Title" / "Body" placeholders are node decorations computed from
  * the rendered state — never content, never selectable.
  */
-export const TitleBlock = Extension.create({
+export const TitleBlock = Extension.create<TitleBlockOptions>({
   name: "titleBlock",
 
+  addOptions() {
+    return { title: "Title", body: "Body" };
+  },
+
   addProseMirrorPlugins() {
+    const text = this.options;
     return [
       new Plugin({
         key: new PluginKey("titleBlock"),
@@ -62,7 +74,7 @@ export const TitleBlock = Extension.create({
         },
         props: {
           decorations(state) {
-            return placeholderDecorations(state.doc);
+            return placeholderDecorations(state.doc, text);
           },
         },
       }),

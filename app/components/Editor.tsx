@@ -8,6 +8,7 @@ import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { CriticAddition, CriticDeletion, CriticComment, CriticHighlight, CriticPointMarkers } from "~/lib/critic-marks";
 import { BlockId } from "~/lib/block-id";
+import { CodeBlock } from "~/lib/code-block";
 import { CodeBlockCopy } from "~/lib/code-block-copy";
 import { AgentInstructions } from "~/lib/agent-instructions";
 import { parseMarkdown } from "~/shared/rich-markdown";
@@ -250,6 +251,8 @@ export default function Editor({
           // (see the markdown-completeness rule in the WYSIWYG plan).
           undoRedo: false,
           underline: false,
+          // Replaced by CodeBlock (lowlight highlighting + language selector).
+          codeBlock: false,
           heading: { levels: [1, 2, 3] },
           link: {
             openOnClick: false,
@@ -257,6 +260,7 @@ export default function Editor({
             linkOnPaste: true,
           },
         }),
+        CodeBlock,
         BlockId,
         CodeBlockCopy,
         AgentInstructions,

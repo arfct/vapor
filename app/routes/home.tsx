@@ -10,7 +10,8 @@ import homeDocument from "./home.md?raw";
 export function meta(_args: Route.MetaArgs) {
   return [
     { title: "vapor" },
-    { name: "description", content: "Live markdown documents for people and AI agents" },
+    { name: "description", content: "Shared markdown documents for people and agents" },
+    { property: "og:description", content: "Shared markdown documents for people and agents" },
     { property: "og:image", content: "https://vapor.fyi/logo-512.png" },
   ];
 }

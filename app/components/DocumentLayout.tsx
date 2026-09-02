@@ -205,7 +205,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           {showPreview && <Preview />}
         </main>
         <aside
-          className={`hidden w-96 flex-col overflow-hidden border-l border-border ${
+          className={`hidden w-[280px] flex-col overflow-hidden ${
             commentsOpen ? "lg:flex" : ""
           }`}
         >

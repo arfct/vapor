@@ -17,6 +17,7 @@ import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table
 // One line per cell, as GFM can express — matches the shared schema.
 const InlineTableCell = TableCell.extend({ content: "inline*" });
 const InlineTableHeader = TableHeader.extend({ content: "inline*" });
+import { KeyboardShortcuts } from "~/lib/keyboard-shortcuts";
 import { parseMarkdown } from "~/shared/rich-markdown";
 import { suggestModePlugin } from "~/lib/suggest-mode";
 import BubbleToolbar from "~/components/BubbleToolbar";
@@ -288,6 +289,7 @@ export default function Editor({
           render: renderCaret,
         }),
         SuggestMode.configure({ docState }),
+        KeyboardShortcuts.configure({ docState }),
         CommentClickHandler.configure({ onCommentClick }),
         CommentHighlight,
         ActiveCommentHighlight,

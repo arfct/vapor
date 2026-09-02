@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { Link, useNavigate, useLocation } from "react-router";
 import { useDocument } from "~/lib/DocumentContext";
 import { deserializeThreads } from "~/lib/thread-serialization";
@@ -80,6 +80,12 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   }, [activeThreadId, commentActive]);
   const openThreads = threads.filter((t) => !t.resolved).length;
   const isHome = surface.kind === "home";
+  // The tour's cast is fictional; showing them as present makes the pile
+  // demonstrate what it's for instead of listing people who left days ago.
+  const demoPresence = useMemo(
+    () => (isHome ? threads.flatMap((t) => [t.author, ...t.replies.map((r) => r.author)]) : undefined),
+    [isHome, threads],
+  );
 
   // With text selected the header button means "comment on this": iOS's
   // own edit menu covers the bubble menu, so this is the reliable path.
@@ -216,7 +222,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
               </span>
             )}
           </button>
-          <FacePile />
+          <FacePile alsoOnline={demoPresence} />
           <HeaderMenu />
         </div>
       </header>

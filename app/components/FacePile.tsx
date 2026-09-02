@@ -2,7 +2,7 @@ import { Popover } from "@base-ui/react/popover";
 import { useDocument } from "~/lib/DocumentContext";
 import { usePeople } from "~/lib/usePeople";
 import { timeAgo } from "~/lib/time-ago";
-import type { Person } from "~/lib/people";
+import type { Person, PresenceUser } from "~/lib/people";
 import Avatar from "~/components/Avatar";
 
 const MAX_FACES = 4;
@@ -41,9 +41,9 @@ function Face({ person, className }: { person: Person; className: string }) {
  * a "+N" for the rest. Opens a list with each person's status. Header
  * space is tight on phones, so it shows from lg up.
  */
-export default function FacePile() {
+export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }) {
   const { yjs, threads } = useDocument();
-  const people = usePeople(yjs, threads);
+  const people = usePeople(yjs, threads, alsoOnline);
   if (people.length === 0) return null;
 
   const shown = people.slice(0, MAX_FACES);

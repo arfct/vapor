@@ -19,8 +19,14 @@ function othersOnline(awareness: Awareness): PresenceUser[] {
  * commented (threads), or has viewed it (the shared `viewers` map). Also
  * records the local user's own visit, so others see them later; a sign-in
  * mid-visit moves the record from the anonymous id to the principal.
+ * `alsoOnline` adds people to treat as connected — the homepage tour uses
+ * it so its cast looks present rather than long gone.
  */
-export function usePeople(yjs: YjsEditorState, threads: ThreadData[]): Person[] {
+export function usePeople(
+  yjs: YjsEditorState,
+  threads: ThreadData[],
+  alsoOnline: PresenceUser[] = [],
+): Person[] {
   const { doc, awareness, user } = yjs;
   const [tick, setTick] = useState(0);
   const [people, setPeople] = useState<Person[]>([]);
@@ -48,13 +54,13 @@ export function usePeople(yjs: YjsEditorState, threads: ThreadData[]): Person[] 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPeople(
       mergePeople({
-        online: othersOnline(awareness),
+        online: [...othersOnline(awareness), ...alsoOnline],
         viewers: new Map(viewersMap(doc).entries()),
         threads,
         self: user,
       }),
     );
-  }, [doc, awareness, user, threads, tick]);
+  }, [doc, awareness, user, threads, alsoOnline, tick]);
 
   return people;
 }

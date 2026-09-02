@@ -9,13 +9,13 @@ describe("ModeMenu", () => {
     const { getByLabelText } = renderWithDocument(createElement(ModeMenu), {
       context: { mode: "edit" },
     });
-    expect(getByLabelText("Editing mode").textContent).toContain("Edit");
+    expect(getByLabelText("Editing mode").getAttribute("title")).toBe("Edit");
   });
 
   it("trigger shows Suggest when mode is suggest", () => {
     const { getByLabelText } = renderWithDocument(createElement(ModeMenu), {
       context: { mode: "suggest" },
     });
-    expect(getByLabelText("Editing mode").textContent).toContain("Suggest");
+    expect(getByLabelText("Editing mode").getAttribute("title")).toBe("Suggest");
   });
 });

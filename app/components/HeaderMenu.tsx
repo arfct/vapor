@@ -87,7 +87,7 @@ export default function HeaderMenu() {
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label="Menu"
-        className="flex h-full shrink-0 cursor-pointer items-center px-3 transition-colors hover:bg-border"
+        className="flex h-full w-[60px] shrink-0 cursor-pointer items-center justify-center transition-colors hover:bg-border"
       >
         {session?.signedIn ? (
           <Avatar

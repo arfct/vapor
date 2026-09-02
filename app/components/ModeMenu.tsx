@@ -29,10 +29,11 @@ export default function ModeMenu() {
     <Menu>
       <MenuTrigger>
         <button
-          className="flex h-full cursor-pointer items-center px-3 text-sm uppercase tracking-wider transition-colors hover:bg-border"
+          className="flex h-full w-[60px] cursor-pointer items-center justify-center transition-colors hover:bg-border"
           aria-label="Editing mode"
+          title={showPreview ? "Markdown" : mode === "suggest" ? "Suggest" : "Edit"}
         >
-          {showPreview ? "Markdown" : mode === "suggest" ? "Suggest" : "Edit"}
+          <Icon name={showPreview ? "visibility" : mode === "suggest" ? "rate_review" : "edit"} />
         </button>
       </MenuTrigger>
       <MenuContent>

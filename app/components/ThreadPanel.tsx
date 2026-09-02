@@ -120,7 +120,7 @@ export default function ThreadPanel({
       <AuthorHeader author={thread.author} timestamp={thread.createdAt}>
         <div
           className={`ml-auto flex items-center gap-1 transition-opacity focus-within:opacity-100 group-hover:opacity-100 ${
-            menuOpen ? "opacity-100" : "opacity-0"
+            menuOpen || active ? "opacity-100" : "opacity-0"
           }`}
           onClick={(e) => e.stopPropagation()}
         >
@@ -128,7 +128,7 @@ export default function ThreadPanel({
             onClick={() => onResolve(thread.id)}
             title={thread.resolved ? "Reopen" : "Resolve"}
             aria-label={thread.resolved ? "Reopen" : "Resolve"}
-            className="cursor-pointer p-1 text-muted transition-colors hover:text-ink"
+            className="cursor-pointer p-2.5 text-muted transition-colors hover:text-ink"
           >
             <Icon name={thread.resolved ? "undo" : "check"} />
           </button>
@@ -137,7 +137,7 @@ export default function ThreadPanel({
               onClick={() => setMenuOpen((v) => !v)}
               title="More actions"
               aria-label="More actions"
-              className="cursor-pointer p-1 text-muted transition-colors hover:text-ink"
+              className="cursor-pointer p-2.5 text-muted transition-colors hover:text-ink"
             >
               <Icon name="more_vert" />
             </button>
@@ -185,13 +185,14 @@ export default function ThreadPanel({
             onChange={(e) => setReplyText(e.target.value)}
             onKeyDown={handleReplyKeyDown}
             onBlur={handleReplyBlur}
+            enterKeyHint="send"
             placeholder="Reply..."
             className="w-full rounded-full border border-border bg-paper px-3 py-1.5 text-base outline-none focus:border-coral"
           />
         ) : (
           <button
             onClick={() => setShowReplyInput(true)}
-            className="cursor-pointer text-base text-muted transition-colors hover:text-ink"
+            className="cursor-pointer py-2.5 text-base text-muted transition-colors hover:text-ink"
           >
             Reply
           </button>

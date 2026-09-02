@@ -114,6 +114,24 @@ describe("ThreadPanel", () => {
     expect(moreBtn.querySelector(".material-symbols-outlined")).toBeTruthy();
   });
 
+  it("actions are hidden until hover on an inactive thread", () => {
+    const props = defaultProps();
+    const { getByLabelText } = render(createElement(ThreadPanel, props));
+
+    const actions = getByLabelText("Resolve").parentElement as HTMLElement;
+    expect(actions.className).toContain("opacity-0");
+    expect(actions.className).toContain("group-hover:opacity-100");
+  });
+
+  it("actions are visible when the thread is active", () => {
+    const props = { ...defaultProps(), active: true };
+    const { getByLabelText } = render(createElement(ThreadPanel, props));
+
+    const actions = getByLabelText("Resolve").parentElement as HTMLElement;
+    expect(actions.className).toContain("opacity-100");
+    expect(actions.className).not.toContain("opacity-0");
+  });
+
   it("Delete lives in the overflow menu", () => {
     const props = defaultProps();
     const { getByLabelText, getByText, queryByText } = render(

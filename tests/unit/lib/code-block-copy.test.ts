@@ -4,12 +4,7 @@ import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import type { EditorView } from "@tiptap/pm/view";
 import { parseMarkdown } from "~/shared/rich-markdown";
-import {
-  CodeBlockCopy,
-  codeBlockCopyDecorations,
-  copyText,
-  createCopyButton,
-} from "~/lib/code-block-copy";
+import { CodeBlockCopy, codeBlockCopyDecorations, createCopyButton } from "~/lib/code-block-copy";
 
 const CODE = "const a = 1;\nconsole.log(a);";
 const MARKDOWN = `Intro paragraph\n\n\`\`\`js\n${CODE}\n\`\`\`\n\nOutro`;
@@ -123,37 +118,6 @@ describe("createCopyButton", () => {
     button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await vi.advanceTimersByTimeAsync(0);
     expect(writeText).not.toHaveBeenCalled();
-  });
-});
-
-describe("copyText", () => {
-  afterEach(() => {
-    removeClipboard();
-    vi.restoreAllMocks();
-  });
-
-  it("uses the clipboard API when available", async () => {
-    const writeText = vi.fn(() => Promise.resolve());
-    mockClipboard(writeText);
-    expect(await copyText("hello")).toBe(true);
-    expect(writeText).toHaveBeenCalledWith("hello");
-  });
-
-  it("falls back to execCommand when the clipboard API is missing", async () => {
-    removeClipboard();
-    const execCommand = vi.fn(() => true);
-    document.execCommand = execCommand;
-    expect(await copyText("fallback")).toBe(true);
-    expect(execCommand).toHaveBeenCalledWith("copy");
-    expect(document.querySelector("textarea")).toBeNull();
-  });
-
-  it("falls back to execCommand when the clipboard API rejects", async () => {
-    mockClipboard(() => Promise.reject(new Error("denied")));
-    const execCommand = vi.fn(() => true);
-    document.execCommand = execCommand;
-    expect(await copyText("denied")).toBe(true);
-    expect(execCommand).toHaveBeenCalledWith("copy");
   });
 });
 

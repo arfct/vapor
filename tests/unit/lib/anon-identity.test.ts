@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { getAnonIdentity, retireAnonId, formerAnonId } from "~/lib/anon-identity";
 import { ANON_ANIMALS, ANON_ADJECTIVES } from "~/shared/anon-animals";
 import { USER_COLOURS } from "~/shared/constants";
@@ -7,6 +7,9 @@ import { USER_COLOURS } from "~/shared/constants";
 describe("anon identity", () => {
   beforeEach(() => {
     localStorage.clear();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("creates and persists a stable identity", () => {
@@ -38,6 +41,20 @@ describe("anon identity", () => {
     localStorage.setItem("vapor-anon", "{not json");
     const identity = getAnonIdentity();
     expect(identity.id).toBeTruthy();
+  });
+
+  it("returns an ephemeral identity when storage throws", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("denied", "SecurityError");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("denied", "SecurityError");
+    });
+    const identity = getAnonIdentity();
+    expect(identity.id).toBeTruthy();
+    expect(ANON_ADJECTIVES).toContain(identity.adjective);
+    expect(retireAnonId()).toBeNull();
+    expect(formerAnonId()).toBeNull();
   });
 
   it("retire moves the id to formerAnonId and clears the identity", () => {

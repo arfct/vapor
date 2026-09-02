@@ -48,7 +48,9 @@ select {
 body {
   background-color: var(--color-paper);
   color: var(--color-ink);
+  /* dvh tracks mobile Safari's collapsing toolbar; vh is the fallback. */
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* Editor styles */

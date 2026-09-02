@@ -54,8 +54,6 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   const {
     yjs,
     editorInstance,
-    markdown,
-    threads,
     showPreview,
     handleEditorReady,
     handleCommentClick,
@@ -71,20 +69,10 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   const [commentsOpen, setCommentsOpen] = useState(true);
   const isHome = surface.kind === "home";
 
-  // Promote the tour: whatever the visitor has done to the homepage doc
-  // becomes the first version of their real, shareable document.
-  const promoteToDocument = useCallback(async () => {
-    const plain: ThreadData[] = threads.map((t) => ({
-      id: t.id,
-      commentText: t.commentText,
-      highlightText: t.highlightText,
-      author: t.author,
-      createdAt: t.createdAt,
-      resolved: t.resolved,
-      replies: t.replies,
-    }));
-    navigate(`/${await createDocument(markdown, plain)}`);
-  }, [markdown, threads, navigate]);
+  // A new document starts empty; the tour stays on the homepage.
+  const createBlankDocument = useCallback(async () => {
+    navigate(`/${await createDocument("", [])}`);
+  }, [navigate]);
 
   const uploadFile = useCallback(
     async (file: File) => {
@@ -143,7 +131,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           <>
             <div className="shrink-0 border-r border-border">
               <button
-                onClick={promoteToDocument}
+                onClick={createBlankDocument}
                 className={`${headerCell} whitespace-nowrap font-medium text-ink`}
               >
                 New document

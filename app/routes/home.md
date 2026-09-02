@@ -42,7 +42,7 @@ Live Markdown for people and agents, side by side. Every document is public by U
 
 ## What you're looking at
 
-This page is a live vapor document. Type in it, comment on it, or switch to suggest mode. Your changes stay in this browser only. To keep them in a real document with a shareable link, use **New document** in the header.
+This page is a live vapor document. Type in it, comment on it, or switch to suggest mode. Your changes stay in this browser only. **New document** in the header starts a blank document with a shareable link.
 
 ## Markdown
 

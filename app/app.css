@@ -65,8 +65,10 @@ body {
   cursor: pointer;
   transition: background-color 0.15s, color 0.15s;
 }
-.header-button:hover {
-  background-color: var(--color-border);
+@media (hover: hover) {
+  .header-button:hover {
+    background-color: var(--color-border);
+  }
 }
 .header-button[data-popup-open] {
   background-color: var(--color-ink);

@@ -5,6 +5,7 @@ import { deserializeThreads } from "~/lib/thread-serialization";
 import { generateDocumentId } from "~/shared/constants";
 import { formatRemainingTime } from "~/lib/format-remaining";
 import { placeholderPreset } from "~/lib/placeholder-presets";
+import { useVisualViewportHeight } from "~/lib/useVisualViewport";
 import type { ThreadData } from "~/shared/types";
 import Editor from "~/components/Editor";
 import Preview from "~/components/Preview";
@@ -79,6 +80,9 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   }, [activeThreadId, commentActive]);
   const openThreads = threads.filter((t) => !t.resolved).length;
   const isHome = surface.kind === "home";
+  // The shell is fixed and sized to the visible viewport so the header
+  // stays put when a mobile keyboard scrolls the page. 100dvh until mount.
+  const viewportHeight = useVisualViewportHeight();
 
   // With text selected the header button means "comment on this": iOS's
   // own edit menu covers the bubble menu, so this is the reliable path.
@@ -116,7 +120,8 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
 
   return (
     <div
-      className="flex h-[100dvh] flex-col pt-[env(safe-area-inset-top)]"
+      className="fixed inset-x-0 top-0 flex flex-col pt-[env(safe-area-inset-top)]"
+      style={{ height: viewportHeight ?? "100dvh" }}
       onDrop={handleDrop}
       onDragOver={isHome ? (e) => e.preventDefault() : undefined}
     >

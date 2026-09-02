@@ -14,6 +14,7 @@ import ConnectionStatus from "~/components/ConnectionStatus";
 import HeaderMenu from "~/components/HeaderMenu";
 import CommentInput from "~/components/CommentInput";
 import ThreadList from "~/components/ThreadList";
+import CommentSheet from "~/components/CommentSheet";
 import Icon from "~/components/Icon";
 import { Menu, MenuTrigger, MenuContent, MenuItem } from "~/components/ui/menu";
 
@@ -233,9 +234,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           {showPreview && <Preview />}
         </main>
         {commentsOpen && (
-          <aside
-            className={`${mounted ? "flex" : "hidden lg:flex"} fixed inset-x-0 bottom-0 top-[48px] z-30 flex-col overflow-hidden bg-paper pb-[env(safe-area-inset-bottom)] lg:static lg:inset-auto lg:z-auto lg:w-[280px] lg:pb-0`}
-          >
+          <aside className="hidden w-[280px] flex-col overflow-hidden lg:flex">
             <div className="flex-1 overflow-y-auto">
               <CommentInput />
               <ThreadList />
@@ -243,6 +242,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           </aside>
         )}
       </div>
+      <CommentSheet open={commentsOpen && mounted} onClose={() => setCommentsOpen(false)} />
     </div>
   );
 }

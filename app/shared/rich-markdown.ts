@@ -47,6 +47,15 @@ export const richSchema = new Schema({
       attrs: { ...blockIdAttr, start: { default: 1 } },
     },
     listItem: { content: "paragraph block*", defining: true },
+    // GFM task lists: `- [ ] todo` / `- [x] done`. Kept as their own nodes
+    // (TipTap's TaskList/TaskItem) so the checkbox is a real attribute
+    // that toggles through a transaction, not a text convention.
+    taskList: { content: "taskItem+", group: "block", attrs: blockIdAttr },
+    taskItem: {
+      content: "paragraph block*",
+      attrs: { checked: { default: false } },
+      defining: true,
+    },
     horizontalRule: { group: "block", attrs: blockIdAttr },
     hardBreak: { inline: true, group: "inline", selectable: false },
     text: { inline: true, group: "inline" },
@@ -91,6 +100,7 @@ export const BLOCK_ID_TYPES = [
   "codeBlock",
   "bulletList",
   "orderedList",
+  "taskList",
   "horizontalRule",
 ];
 
@@ -135,11 +145,79 @@ function criticRule(state: MdState, silent: boolean): boolean {
   return false;
 }
 
+type MdToken = {
+  type: string;
+  level: number;
+  content: string;
+  attrs: [string, string][] | null;
+  attrSet: (name: string, value: string) => void;
+};
+
+const TASK_PREFIX_RE = /^\[([ xX])\]\s+/;
+
+/**
+ * Retypes a bullet list whose every item starts with `[ ]` / `[x]` into
+ * task_list / task_item tokens (stripping the marker from the paragraph
+ * text), so the parser maps it to taskList/taskItem. Runs before inline
+ * tokenization while paragraph content is still a plain string. Lists
+ * that mix task and plain items stay ordinary bullet lists, as in GFM.
+ */
+function taskListRule(state: { tokens: MdToken[] }): void {
+  const toks = state.tokens;
+  for (let i = 0; i < toks.length; i++) {
+    if (toks[i].type !== "bullet_list_open") continue;
+    const level = toks[i].level;
+    let close = -1;
+    for (let j = i + 1; j < toks.length; j++) {
+      if (toks[j].type === "bullet_list_close" && toks[j].level === level) {
+        close = j;
+        break;
+      }
+    }
+    if (close < 0) continue;
+
+    // Each direct item must open with a paragraph whose text carries a marker.
+    const items: { open: number; inline: number; checked: boolean }[] = [];
+    let allTasks = true;
+    for (let j = i + 1; j < close; j++) {
+      const t = toks[j];
+      if (t.type !== "list_item_open" || t.level !== level + 1) continue;
+      const para = toks[j + 1];
+      const inline = toks[j + 2];
+      const m =
+        para?.type === "paragraph_open" && inline?.type === "inline"
+          ? TASK_PREFIX_RE.exec(inline.content)
+          : null;
+      if (!m) {
+        allTasks = false;
+        break;
+      }
+      items.push({ open: j, inline: j + 2, checked: m[1] !== " " });
+    }
+    if (!allTasks || items.length === 0) continue;
+
+    toks[i].type = "task_list_open";
+    toks[close].type = "task_list_close";
+    for (const item of items) {
+      toks[item.open].type = "task_item_open";
+      toks[item.open].attrSet("checked", String(item.checked));
+      toks[item.inline].content = toks[item.inline].content.replace(TASK_PREFIX_RE, "");
+      for (let j = item.open + 1; j < close; j++) {
+        if (toks[j].type === "list_item_close" && toks[j].level === level + 1) {
+          toks[j].type = "task_item_close";
+          break;
+        }
+      }
+    }
+  }
+}
+
 function makeMarkdownIt() {
   const md = new MarkdownIt({ html: false, linkify: true });
   // Not representable in the schema — leave their syntax as literal text.
   md.disable(["image", "table"]);
   md.inline.ruler.before("emphasis", "critic", criticRule as never);
+  md.core.ruler.before("inline", "task_list", taskListRule as never);
   return md;
 }
 
@@ -163,6 +241,11 @@ export const markdownParser = new MarkdownParser(richSchema, makeMarkdownIt() as
     block: "codeBlock",
     getAttrs: (tok) => ({ language: tok.info.trim() || null }),
     noCloseToken: true,
+  },
+  task_list: { block: "taskList" },
+  task_item: {
+    block: "taskItem",
+    getAttrs: (tok) => ({ checked: tok.attrGet("checked") === "true" }),
   },
   hr: { node: "horizontalRule" },
   hardbreak: { node: "hardBreak" },
@@ -229,6 +312,13 @@ export const markdownSerializer = new MarkdownSerializer(
       });
     },
     listItem(state, node) {
+      state.renderContent(node);
+    },
+    taskList(state, node) {
+      state.renderList(node, "  ", () => "- ");
+    },
+    taskItem(state, node) {
+      state.write(node.attrs.checked ? "[x] " : "[ ] ");
       state.renderContent(node);
     },
     paragraph(state, node) {

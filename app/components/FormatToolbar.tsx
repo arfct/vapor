@@ -127,6 +127,8 @@ export default function FormatToolbar() {
             editor.chain().focus().toggleBulletList().run())}
           {blockItem("format_list_numbered", "Numbered list", editor.isActive("orderedList"), () =>
             editor.chain().focus().toggleOrderedList().run())}
+          {blockItem("checklist", "Task list", editor.isActive("taskList"), () =>
+            editor.chain().focus().toggleTaskList().run())}
           {blockItem("format_quote", "Quote", editor.isActive("blockquote"), () =>
             editor.chain().focus().toggleBlockquote().run())}
           <MenuSeparator />

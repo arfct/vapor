@@ -37,7 +37,7 @@ export const links: Route.LinksFunction = () => [
     // Subset to the icon names actually used — keep this list sorted and in
     // sync with <Icon name> usages or new glyphs render as raw text.
     rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=account_circle,add,check,chevron_left,chevron_right,close,code,comment,computer,content_copy,dark_mode,delete,done_all,download,edit,format_bold,format_h1,format_h2,format_h3,format_italic,format_list_bulleted,format_list_numbered,format_paragraph,format_quote,format_size,horizontal_rule,ios_share,light_mode,link,logout,more_vert,note_add,rate_review,remove_done,robot_2,strikethrough_s,undo,upload_file,visibility&display=block",
+    href: "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=account_circle,add,check,checklist,chevron_left,chevron_right,close,code,comment,computer,content_copy,dark_mode,delete,done_all,download,edit,format_bold,format_h1,format_h2,format_h3,format_italic,format_list_bulleted,format_list_numbered,format_paragraph,format_quote,format_size,horizontal_rule,ios_share,light_mode,link,logout,more_vert,note_add,rate_review,remove_done,robot_2,strikethrough_s,undo,upload_file,visibility&display=block",
   },
 ];
 

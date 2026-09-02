@@ -193,6 +193,14 @@ const ActiveCommentHighlight = Extension.create({
 
 type YjsEditorState = ReturnType<typeof useYjsEditor>;
 
+/** True when `el` sits inside its scroll container with some breathing room. */
+function isComfortablyInView(el: Element, margin = 48): boolean {
+  const scroller = el.closest("main") ?? document.documentElement;
+  const bounds = scroller.getBoundingClientRect();
+  const rect = el.getBoundingClientRect();
+  return rect.top >= bounds.top + margin && rect.bottom <= bounds.bottom - margin;
+}
+
 function renderCaret(user: Record<string, unknown>) {
   const cursor = document.createElement("span");
   cursor.classList.add("collaboration-cursor__caret");
@@ -350,8 +358,10 @@ export default function Editor({
     const tr = editor.state.tr.setMeta(activeCommentHighlightKey, range);
     editor.view.dispatch(tr);
 
-    // Bring the highlighted phrase into view when a thread is selected.
-    // The dispatch above renders the active decoration synchronously.
+    // Bring the highlighted phrase into view when a thread is selected —
+    // smoothly, and only if it's off screen, so picking a visible comment
+    // doesn't yank the text the reader is looking at. The dispatch above
+    // renders the active decoration synchronously.
     if (range) {
       let el: Element | null = editor.view.dom.querySelector(".cm-comment-active");
       if (!el) {
@@ -359,7 +369,7 @@ export default function Editor({
         const dom = editor.view.domAtPos(pos).node;
         el = dom instanceof HTMLElement ? dom : dom.parentElement;
       }
-      el?.scrollIntoView({ block: "center" });
+      if (el && !isComfortablyInView(el)) el.scrollIntoView({ block: "center", behavior: "smooth" });
     }
   }, [editor, activeCommentRange]);
 

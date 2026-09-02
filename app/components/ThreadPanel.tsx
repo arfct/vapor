@@ -4,32 +4,49 @@ import Icon from "~/components/Icon";
 import Avatar from "~/components/Avatar";
 import { timeAgo } from "~/lib/time-ago";
 
-function AuthorHeader({
+/**
+ * One comment in a thread: avatar in a narrow left column, name, time,
+ * and text beside it. `connected` draws a line from this avatar down to
+ * the next comment's, tying a thread's replies together.
+ */
+function CommentRow({
   author,
   timestamp,
+  text,
+  connected,
   children,
 }: {
   author: ThreadData["author"];
   timestamp: number;
+  text: string;
+  connected: boolean;
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <Avatar
-        name={author.name}
-        avatar={author.avatar}
-        animal={author.animal}
-        color={author.color}
-        className="h-[25px] w-[25px]"
-      />
-      <div className="flex min-w-0 items-baseline gap-2">
-        <span className="truncate text-base font-bold">{author.name}</span>
-        <span className="shrink-0 text-sm text-muted">
-          {author.agentClient ? `${author.agentClient} • ` : ""}
-          {timeAgo(timestamp)}
-        </span>
+    <div className="flex gap-2">
+      <div className="flex w-[25px] shrink-0 flex-col items-center">
+        <Avatar
+          name={author.name}
+          avatar={author.avatar}
+          animal={author.animal}
+          color={author.color}
+          className="h-[25px] w-[25px]"
+        />
+        {connected && <div className="mt-1 w-px flex-1 bg-border" />}
       </div>
-      {children}
+      <div className={`min-w-0 flex-1 ${connected ? "pb-4" : ""}`}>
+        <div className="flex min-h-[25px] items-center gap-2">
+          <div className="flex min-w-0 items-baseline gap-2">
+            <span className="truncate text-base font-bold">{author.name}</span>
+            <span className="shrink-0 text-sm text-muted">
+              {author.agentClient ? `${author.agentClient} • ` : ""}
+              {timeAgo(timestamp)}
+            </span>
+          </div>
+          {children}
+        </div>
+        <p className="mt-1 text-base">{text}</p>
+      </div>
     </div>
   );
 }
@@ -101,13 +118,17 @@ export default function ThreadPanel({
 
   return (
     <div
-      className={`group cursor-pointer border p-3 transition-colors ${
+      className={`group cursor-pointer border px-3 py-4 transition-colors ${
         active ? "border-border bg-canary/15" : "border-transparent hover:border-border"
       }`}
       onClick={() => onSelect(active ? null : thread.id)}
     >
-      {/* Author + timestamp + actions */}
-      <AuthorHeader author={thread.author} timestamp={thread.createdAt}>
+      <CommentRow
+        author={thread.author}
+        timestamp={thread.createdAt}
+        text={thread.commentText}
+        connected={thread.replies.length > 0}
+      >
         <div
           className={`ml-auto flex items-center gap-1 transition-opacity focus-within:opacity-100 group-hover:opacity-100 ${
             menuOpen || active ? "opacity-100" : "opacity-0"
@@ -147,22 +168,17 @@ export default function ThreadPanel({
             )}
           </div>
         </div>
-      </AuthorHeader>
+      </CommentRow>
 
-      {/* Comment text */}
-      <p className="mt-1 pl-[33px] text-base">{thread.commentText}</p>
-
-      {/* Replies */}
-      {thread.replies.length > 0 && (
-        <div className="mt-3 space-y-3">
-          {thread.replies.map((reply) => (
-            <div key={reply.id}>
-              <AuthorHeader author={reply.author} timestamp={reply.createdAt} />
-              <p className="mt-1 pl-[33px] text-base">{reply.text}</p>
-            </div>
-          ))}
-        </div>
-      )}
+      {thread.replies.map((reply, i) => (
+        <CommentRow
+          key={reply.id}
+          author={reply.author}
+          timestamp={reply.createdAt}
+          text={reply.text}
+          connected={i < thread.replies.length - 1}
+        />
+      ))}
 
       {/* Reply link, shown only while the thread is selected; input appears on click */}
       {active && (

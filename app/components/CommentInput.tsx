@@ -29,8 +29,9 @@ export default function CommentInput() {
   // runs inside the tap's own task, so a deferred focus lands silently.
   useEffect(() => {
     if (!active) return;
-    if (inputRef.current) inputRef.current.focus();
-    else requestAnimationFrame(() => inputRef.current?.focus());
+    // No scroll on focus: the box is placed beside its selection already.
+    if (inputRef.current) inputRef.current.focus({ preventScroll: true });
+    else requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
   }, [active]);
 
   const handleSubmit = useCallback(() => {

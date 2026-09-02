@@ -15,8 +15,7 @@ import FormatToolbar from "~/components/FormatToolbar";
 import ConnectionStatus from "~/components/ConnectionStatus";
 import HeaderMenu from "~/components/HeaderMenu";
 import FacePile from "~/components/FacePile";
-import CommentInput from "~/components/CommentInput";
-import ThreadList from "~/components/ThreadList";
+import CommentRail from "~/components/CommentRail";
 import CommentSheet from "~/components/CommentSheet";
 import Icon from "~/components/Icon";
 import { Menu, MenuTrigger, MenuContent, MenuItem } from "~/components/ui/menu";
@@ -61,16 +60,23 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   // A document the visitor just created gets focus so they can type at once.
   const fresh = Boolean((useLocation().state as { fresh?: boolean } | null)?.fresh);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
   const [agentsOpen, setAgentsOpen] = useState(false);
   // One comments panel, two presentations: a rail beside the document at
   // lg and up, a full-height sheet over it below. Open by default only where
   // the rail fits; the sheet renders client-side so narrow SSR shows nothing.
   const [commentsOpen, setCommentsOpen] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [wide, setWide] = useState(true);
   useEffect(() => {
+    const query = window.matchMedia("(min-width: 1024px)");
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setCommentsOpen(window.matchMedia("(min-width: 1024px)").matches);
+    setCommentsOpen(query.matches);
+    setWide(query.matches);
     setMounted(true);
+    const onChange = (e: MediaQueryListEvent) => setWide(e.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
   }, []);
   // Tapping a highlight opens its thread, and starting a comment opens the
   // input, wherever the panel lives — the sheet is closed by default.
@@ -229,39 +235,42 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
       {surface.kind === "doc" && (
         <AgentsPanel open={agentsOpen} onClose={() => setAgentsOpen(false)} />
       )}
-      <div className="flex flex-1 overflow-hidden">
-        <main className="flex-1 overflow-y-auto">
-          {/* Server-rendered stand-in until TipTap mounts: keeps the tour's copy indexable. */}
-          {isHome && !editorInstance && (
-            <pre className="mx-auto w-full max-w-3xl whitespace-pre-wrap p-6 font-sans text-base leading-relaxed text-ink">
-              {surface.fallbackMarkdown}
-            </pre>
+      {/* One scroller for document and comments, so the rail's cards ride
+          along with the text they annotate. */}
+      <main ref={mainRef} className="flex-1 overflow-y-auto">
+        <div className="flex min-h-full items-start">
+          <div className="min-w-0 flex-1">
+            {/* Server-rendered stand-in until TipTap mounts: keeps the tour's copy indexable. */}
+            {isHome && !editorInstance && (
+              <pre className="mx-auto w-full max-w-3xl whitespace-pre-wrap p-6 font-sans text-base leading-relaxed text-ink">
+                {surface.fallbackMarkdown}
+              </pre>
+            )}
+            <Editor
+              yjs={yjs}
+              autofocus={surface.kind === "doc" && fresh}
+              placeholders={surface.kind === "doc" ? placeholderPreset(surface.id) : undefined}
+              hidden={showPreview}
+              onEditorReady={handleEditorReady}
+              onCommentClick={handleCommentClick}
+              commentHighlight={commentHighlight}
+              activeCommentRange={activeCommentRange}
+              onNewComment={openCommentInput}
+              onResolveAtCursor={handleResolveAtCursor}
+              onDeleteAtCursor={handleDeleteAtCursor}
+            />
+            {showPreview && <Preview />}
+          </div>
+          {commentsOpen && (
+            <aside className="hidden w-[280px] shrink-0 lg:block">
+              <CommentRail scrollRef={mainRef} />
+            </aside>
           )}
-          <Editor
-            yjs={yjs}
-            autofocus={surface.kind === "doc" && fresh}
-            placeholders={surface.kind === "doc" ? placeholderPreset(surface.id) : undefined}
-            hidden={showPreview}
-            onEditorReady={handleEditorReady}
-            onCommentClick={handleCommentClick}
-            commentHighlight={commentHighlight}
-            activeCommentRange={activeCommentRange}
-            onNewComment={openCommentInput}
-            onResolveAtCursor={handleResolveAtCursor}
-            onDeleteAtCursor={handleDeleteAtCursor}
-          />
-          {showPreview && <Preview />}
-        </main>
-        {commentsOpen && (
-          <aside className="hidden w-[280px] flex-col overflow-hidden lg:flex">
-            <div className="flex-1 overflow-y-auto">
-              <CommentInput />
-              <ThreadList />
-            </div>
-          </aside>
-        )}
-      </div>
-      <CommentSheet open={commentsOpen && mounted} onClose={() => setCommentsOpen(false)} />
+        </div>
+      </main>
+      {/* Only where the sheet is the comments UI: mounted on desktop it
+          would auto-select the first thread and pin it in the rail. */}
+      <CommentSheet open={commentsOpen && mounted && !wide} onClose={() => setCommentsOpen(false)} />
     </div>
   );
 }

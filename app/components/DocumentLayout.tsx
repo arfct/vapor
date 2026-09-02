@@ -14,6 +14,7 @@ import ModeMenu from "~/components/ModeMenu";
 import FormatToolbar from "~/components/FormatToolbar";
 import ConnectionStatus from "~/components/ConnectionStatus";
 import HeaderMenu from "~/components/HeaderMenu";
+import FacePile from "~/components/FacePile";
 import CommentInput from "~/components/CommentInput";
 import ThreadList from "~/components/ThreadList";
 import CommentSheet from "~/components/CommentSheet";
@@ -215,6 +216,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
               </span>
             )}
           </button>
+          <FacePile />
           <HeaderMenu />
         </div>
       </header>

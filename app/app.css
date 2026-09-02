@@ -59,7 +59,7 @@ body {
   min-height: 100%;
   font-size: 1.15rem;
   line-height: 1.6;
-  padding: 1.5rem;
+  padding: 100px 1.5rem 1.5rem;
 }
 
 .tiptap p {
@@ -161,7 +161,7 @@ body {
 }
 
 .tiptap .agent-instructions::before {
-  content: "Instructions for agents";
+  content: "Agent instructions";
   display: block;
   margin-bottom: 0.35rem;
   font-size: 0.75rem;
@@ -385,13 +385,14 @@ body {
   background-color: color-mix(in srgb, var(--color-canary) 18%, transparent);
 }
 
-/* Empty-document placeholder */
-.tiptap p.is-editor-empty:first-child::before {
+/* Placeholders ("Title", "Body") on empty blocks — decoration-only, never content. */
+.tiptap .is-empty::before {
   color: var(--color-muted);
   content: attr(data-placeholder);
   float: left;
   height: 0;
   pointer-events: none;
+  user-select: none;
 }
 
 .tiptap .collaboration-cursor__caret {

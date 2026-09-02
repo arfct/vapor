@@ -51,7 +51,7 @@ export default function FormatToolbar() {
     <Button
       variant="ghost"
       size="icon"
-      className={cn("h-9 w-9", editor.isActive(mark) && "bg-accent")}
+      className={cn("h-[36px] w-[36px]", editor.isActive(mark) && "bg-accent")}
       onClick={toggle}
       title={label}
       aria-label={label}

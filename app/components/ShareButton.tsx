@@ -4,6 +4,8 @@ import { useDocument } from "~/lib/DocumentContext";
 import { copyText } from "~/lib/clipboard";
 import { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from "~/components/ui/menu";
 import Icon from "~/components/Icon";
+import ConnectionStatus from "~/components/ConnectionStatus";
+import { formatRemainingTime } from "~/lib/format-remaining";
 
 const COPY_FEEDBACK_MS = 2000;
 
@@ -32,7 +34,7 @@ export default function ShareButton({
   onOpenAgents?: () => void;
   copyLink?: boolean;
 }) {
-  const { docId, markdown, threads } = useDocument();
+  const { docId, createdAt, markdown, threads } = useDocument();
   const [copyState, setCopyState] = useState<CopyState>("idle");
 
   const handleCopy = useCallback(async () => {
@@ -64,6 +66,17 @@ export default function ShareButton({
         </button>
       </MenuTrigger>
       <MenuContent>
+        {copyLink && (
+          <>
+            {/* On phones the header has no room for these; they live here instead. */}
+            <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted lg:hidden">
+              <ConnectionStatus compact />
+              <span className="font-mono font-bold text-ink">{docId}</span>
+              {createdAt && <span>vaporized in {formatRemainingTime(createdAt)}</span>}
+            </div>
+            <MenuSeparator className="lg:hidden" />
+          </>
+        )}
         {copyLink && (
           <MenuItem className="gap-2" onClick={handleCopy}>
             <Icon name={COPY_ICON[copyState]} />

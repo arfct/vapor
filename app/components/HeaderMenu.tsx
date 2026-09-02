@@ -86,7 +86,13 @@ export default function HeaderMenu() {
             if (res.ok) notifyAuthChanged();
           },
         });
-        window.google.accounts.id.renderButton(buttonHost.current, { theme: "outline" });
+        const dark =
+          theme === "dark" ||
+          (theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        window.google.accounts.id.renderButton(buttonHost.current, {
+          theme: dark ? "filled_black" : "outline",
+          width: 220,
+        });
       };
 
       if (window.google) {
@@ -105,7 +111,7 @@ export default function HeaderMenu() {
       cancelled = true;
       clearTimeout(fallbackTimer);
     };
-  }, [open, session?.signedIn]);
+  }, [open, session?.signedIn, theme]);
 
   async function signOut() {
     await fetch("/auth/logout", { method: "POST" });
@@ -153,7 +159,7 @@ export default function HeaderMenu() {
                 </button>
               </div>
             ) : (
-              <div className="px-4 py-3">
+              <div className="flex h-[64px] items-center px-4">
                 {signInUnavailable ? (
                   <p className="text-sm text-muted">
                     Sign-in needs a full browser — open this page in Safari or Chrome.

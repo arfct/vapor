@@ -1,8 +1,9 @@
 import { useRef, useState, useCallback, useEffect } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useLocation } from "react-router";
 import { useDocument } from "~/lib/DocumentContext";
 import { deserializeThreads } from "~/lib/thread-serialization";
-import { generateDocumentId, DOCUMENT_TTL_MS } from "~/shared/constants";
+import { generateDocumentId } from "~/shared/constants";
+import { formatRemainingTime } from "~/lib/format-remaining";
 import type { ThreadData } from "~/shared/types";
 import Editor from "~/components/Editor";
 import Preview from "~/components/Preview";
@@ -27,16 +28,6 @@ import { Menu, MenuTrigger, MenuContent, MenuItem } from "~/components/ui/menu";
 export type Surface =
   | { kind: "doc"; id: string; createdAt: number | null }
   | { kind: "home"; fallbackMarkdown: string };
-
-function formatRemainingTime(createdAt: number): string {
-  const elapsed = Date.now() - createdAt;
-  const remainingMs = DOCUMENT_TTL_MS - elapsed;
-  if (remainingMs <= 0) return "soon";
-  const hours = Math.floor(remainingMs / (60 * 60 * 1000));
-  if (hours >= 1) return `${hours}h`;
-  const minutes = Math.ceil(remainingMs / (60 * 1000));
-  return `${minutes}m`;
-}
 
 async function createDocument(content: string, threads: ThreadData[]): Promise<string> {
   const id = generateDocumentId();
@@ -64,6 +55,8 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     handleDeleteAtCursor,
   } = useDocument();
   const navigate = useNavigate();
+  // A document the visitor just created gets focus so they can type at once.
+  const fresh = Boolean((useLocation().state as { fresh?: boolean } | null)?.fresh);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [agentsOpen, setAgentsOpen] = useState(false);
   // One comments panel, two presentations: a rail beside the document at
@@ -86,13 +79,13 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
 
   // A new document starts empty; the tour stays on the homepage.
   const createBlankDocument = useCallback(async () => {
-    navigate(`/${await createDocument("", [])}`);
+    navigate(`/${await createDocument("", [])}`, { state: { fresh: true } });
   }, [navigate]);
 
   const uploadFile = useCallback(
     async (file: File) => {
       const { body, threads: imported } = deserializeThreads(await file.text());
-      navigate(`/${await createDocument(body, imported)}`);
+      navigate(`/${await createDocument(body, imported)}`, { state: { fresh: true } });
     },
     [navigate],
   );
@@ -136,7 +129,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
         {surface.kind === "doc" ? (
           // The one cell allowed to shrink: on narrow screens the id and
           // expiry truncate so the controls on the right stay put.
-          <div className="flex min-w-0 shrink items-center px-3">
+          <div className="hidden min-w-0 shrink items-center px-3 lg:flex">
             <span className="mr-2 shrink-0">
               <ConnectionStatus compact />
             </span>
@@ -222,6 +215,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           )}
           <Editor
             yjs={yjs}
+            autofocus={surface.kind === "doc" && fresh}
             hidden={showPreview}
             onEditorReady={handleEditorReady}
             onCommentClick={handleCommentClick}

@@ -19,6 +19,7 @@ const InlineTableCell = TableCell.extend({ content: "inline*" });
 const InlineTableHeader = TableHeader.extend({ content: "inline*" });
 import { KeyboardShortcuts } from "~/lib/keyboard-shortcuts";
 import { SuggestFormatting, SuggestStructureGuard } from "~/lib/suggest-formatting";
+import { TitleBlock } from "~/lib/title-block";
 import { parseMarkdown } from "~/shared/rich-markdown";
 import { suggestModePlugin } from "~/lib/suggest-mode";
 import BubbleToolbar from "~/components/BubbleToolbar";
@@ -228,6 +229,7 @@ function renderCaret(user: Record<string, unknown>) {
 export default function Editor({
   yjs,
   hidden,
+  autofocus = false,
   onEditorReady,
   onCommentClick,
   commentHighlight,
@@ -238,6 +240,8 @@ export default function Editor({
 }: {
   yjs: YjsEditorState;
   hidden?: boolean;
+  /** Focus the editor on mount — for a document the user just created. */
+  autofocus?: boolean;
   onEditorReady?: (editor: TiptapEditor) => void;
   onCommentClick?: (commentText: string) => void;
   commentHighlight?: { from: number; to: number } | null;
@@ -253,6 +257,7 @@ export default function Editor({
   const editor = useEditor(
     {
       immediatelyRender: false,
+      autofocus: autofocus ? "end" : false,
       extensions: [
         StarterKit.configure({
           // Collaboration owns history; underline has no markdown form
@@ -293,6 +298,7 @@ export default function Editor({
         KeyboardShortcuts.configure({ docState }),
         SuggestFormatting.configure({ docState }),
         SuggestStructureGuard.configure({ docState }),
+        TitleBlock,
         CommentClickHandler.configure({ onCommentClick }),
         CommentHighlight,
         ActiveCommentHighlight,

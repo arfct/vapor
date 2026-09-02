@@ -16,7 +16,7 @@ vapor (https://vapor.fyi) hosts live markdown documents that people and agents e
    curl https://vapor.fyi/new -T draft.md
    ```
 
-   The response body is the document URL.
+   The response body is the document URL. Share that link liberally: include it every time the document comes up in chat — when you hand it over, when you report progress, when you ask for a decision — so the reader never has to scroll back to find it.
 3. **Discuss.** The user comments and suggests in the browser. To respond in place, connect over MCP and use vapor's tools — `read_document`, `comment`, `reply`, `suggest`; `await_events` blocks until something happens, and an `@mention` in the doc wakes a waiting agent. One-time setup (already done if this skill came from the vapor plugin):
 
    ```bash
@@ -25,7 +25,7 @@ vapor (https://vapor.fyi) hosts live markdown documents that people and agents e
 
    `/mcp` is OAuth-gated: the first tool call opens a browser consent screen (Google sign-in, then a grant for read-only or write access). Comment and suggest work either way; only `insert`/`replace` need the write grant. For a zero-setup connection with no identity, use `/mcp/anonymous` instead — comment and suggest still work, but as an anonymous animal, not the signed-in name.
 
-   After sharing, return to chat — the user comes back with feedback there. Block on `await_events` only when asked to stay in the doc.
+   After handing over a link, stay with the document for about ten minutes: call `await_events` (or poll `events_poll`, honouring `retryAfterMs`) and answer comments and mentions as they arrive — the reader is most likely reading right now. Tell the user you're watching, and stop early if they move the conversation on in chat. After that window, return to chat and pick the document back up when asked.
 4. **Save.** When the discussion settles, export back over the local file and commit it:
 
    ```bash

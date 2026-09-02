@@ -25,7 +25,7 @@ function useEditorTick() {
 }
 
 const triggerClass =
-  "flex h-full w-12 cursor-pointer items-center justify-center transition-colors hover:bg-border";
+  "flex h-full w-[48px] cursor-pointer items-center justify-center transition-colors hover:bg-border";
 
 /**
  * The formatting toolbar, imported from the notes app: Format, Lists, and

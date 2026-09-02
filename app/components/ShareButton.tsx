@@ -39,7 +39,7 @@ export default function ShareButton({
     <Menu>
       <MenuTrigger>
         <button
-          className="flex h-full w-12 cursor-pointer items-center justify-center transition-colors hover:bg-border"
+          className="flex h-full w-[48px] cursor-pointer items-center justify-center transition-colors hover:bg-border"
           aria-label="Share options"
           title="Share"
         >

@@ -96,7 +96,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
       onDrop={handleDrop}
       onDragOver={isHome ? (e) => e.preventDefault() : undefined}
     >
-      <header className="flex h-12 shrink-0 items-stretch overflow-x-auto scrollbar-none border-b border-border">
+      <header className="flex h-[48px] shrink-0 items-stretch overflow-x-auto scrollbar-none border-b border-border">
         <Link
           to="/"
           className="flex items-center bg-ink px-4 py-2 font-medium text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
@@ -133,7 +133,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
                   <button
                     aria-label="Create"
                     title="Create"
-                    className="flex h-full w-12 cursor-pointer items-center justify-center transition-colors hover:bg-border"
+                    className="flex h-full w-[48px] cursor-pointer items-center justify-center transition-colors hover:bg-border"
                   >
                     <Icon name="add" />
                   </button>
@@ -174,7 +174,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
             aria-label={commentsOpen ? "Hide comments" : "Show comments"}
             aria-pressed={commentsOpen}
             title={commentsOpen ? "Hide comments" : "Show comments"}
-            className={`flex h-full w-12 cursor-pointer items-center justify-center transition-colors hover:bg-border ${
+            className={`flex h-full w-[48px] cursor-pointer items-center justify-center transition-colors hover:bg-border ${
               commentsOpen ? "text-ink" : "text-muted"
             }`}
           >

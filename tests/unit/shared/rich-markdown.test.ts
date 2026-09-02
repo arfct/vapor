@@ -12,6 +12,7 @@ import {
   buildTypedBlock,
   mintBlockId,
   BLOCK_ID_RE,
+  getAgentInstructions,
 } from "~/shared/rich-markdown";
 import { blockHash } from "~/shared/agent-protocol";
 
@@ -177,5 +178,30 @@ describe("buildTypedBlock", () => {
 describe("mintBlockId", () => {
   it("mints 8-char ids", () => {
     for (let i = 0; i < 50; i++) expect(mintBlockId()).toMatch(BLOCK_ID_RE);
+  });
+});
+
+describe("agent instructions block", () => {
+  const md = "# Title\n\n```agent\nKeep suggestions short.\nAsk before rewriting.\n```\n\n```js\nconsole.log(1);\n```";
+
+  it("parses an `agent` fence to agentInstructions and leaves other fences as code", () => {
+    const parsed = parseMarkdown(md);
+    if (!parsed.ok) throw new Error(parsed.message);
+    const types = parsed.doc.content.content.map((n) => n.type.name);
+    expect(types).toEqual(["heading", "agentInstructions", "codeBlock"]);
+    expect(parsed.doc.child(1).textContent).toBe("Keep suggestions short.\nAsk before rewriting.");
+  });
+
+  it("round-trips through markdown unchanged", () => {
+    expect(roundTrip(md)).toBe(md);
+  });
+
+  it("getAgentInstructions collects block text in order, ignoring code", () => {
+    const doc = docFromMarkdown(md + "\n\n```agent\nSecond note.\n```");
+    expect(getAgentInstructions(doc)).toEqual([
+      "Keep suggestions short.\nAsk before rewriting.",
+      "Second note.",
+    ]);
+    expect(getAgentInstructions(docFromMarkdown("Just prose."))).toEqual([]);
   });
 });

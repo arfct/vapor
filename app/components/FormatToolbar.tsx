@@ -149,6 +149,10 @@ export default function FormatToolbar() {
             <Icon name="code" />
             Code block
           </MenuItem>
+          <MenuItem className="gap-2" onClick={() => editor.chain().focus().toggleAgentInstructions().run()}>
+            <Icon name="robot_2" />
+            Agent instructions
+          </MenuItem>
         </MenuContent>
       </Menu>
 

@@ -9,6 +9,7 @@ import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { CriticAddition, CriticDeletion, CriticComment, CriticHighlight, CriticPointMarkers } from "~/lib/critic-marks";
 import { BlockId } from "~/lib/block-id";
 import { CodeBlockCopy } from "~/lib/code-block-copy";
+import { AgentInstructions } from "~/lib/agent-instructions";
 import { parseMarkdown } from "~/shared/rich-markdown";
 import { suggestModePlugin } from "~/lib/suggest-mode";
 import BubbleToolbar from "~/components/BubbleToolbar";
@@ -258,6 +259,7 @@ export default function Editor({
         }),
         BlockId,
         CodeBlockCopy,
+        AgentInstructions,
         CriticAddition,
         CriticDeletion,
         CriticComment,

@@ -179,13 +179,84 @@ body {
   color: inherit;
 }
 
-/* Copy button (widget decoration, see code-block-copy.ts) */
-.tiptap pre .code-copy {
+/* Syntax highlighting (lowlight, see code-block.ts). One Light on paper,
+   One Dark in the dark; comments and variables reuse the palette. */
+:root {
+  --code-comment: var(--color-muted);
+  --code-keyword: #a626a4;
+  --code-string: #50a14f;
+  --code-number: #986801;
+  --code-title: #4078f2;
+  --code-type: #c18401;
+  --code-variable: var(--color-coral);
+}
+
+.tiptap pre .hljs-comment,
+.tiptap pre .hljs-quote {
+  color: var(--code-comment);
+  font-style: italic;
+}
+
+.tiptap pre .hljs-keyword,
+.tiptap pre .hljs-selector-tag,
+.tiptap pre .hljs-doctag,
+.tiptap pre .hljs-tag,
+.tiptap pre .hljs-name {
+  color: var(--code-keyword);
+}
+
+.tiptap pre .hljs-string,
+.tiptap pre .hljs-regexp,
+.tiptap pre .hljs-link,
+.tiptap pre .hljs-addition {
+  color: var(--code-string);
+}
+
+.tiptap pre .hljs-number,
+.tiptap pre .hljs-literal,
+.tiptap pre .hljs-symbol,
+.tiptap pre .hljs-bullet,
+.tiptap pre .hljs-meta {
+  color: var(--code-number);
+}
+
+.tiptap pre .hljs-title,
+.tiptap pre .hljs-section {
+  color: var(--code-title);
+}
+
+.tiptap pre .hljs-type,
+.tiptap pre .hljs-built_in,
+.tiptap pre .hljs-title.class_ {
+  color: var(--code-type);
+}
+
+.tiptap pre .hljs-variable,
+.tiptap pre .hljs-template-variable,
+.tiptap pre .hljs-attr,
+.tiptap pre .hljs-attribute,
+.tiptap pre .hljs-property,
+.tiptap pre .hljs-selector-class,
+.tiptap pre .hljs-selector-id,
+.tiptap pre .hljs-deletion {
+  color: var(--code-variable);
+}
+
+.tiptap pre .hljs-emphasis {
+  font-style: italic;
+}
+
+.tiptap pre .hljs-strong {
+  font-weight: 600;
+}
+
+/* Corner controls: copy button (widget decoration, code-block-copy.ts) at
+   top right, language selector (node view, code-block.ts) at bottom right.
+   Both hide until hover; touch devices always show them. */
+.tiptap pre .code-copy,
+.tiptap pre .code-lang {
   position: absolute;
-  top: 0.5rem;
   right: 0.5rem;
-  display: flex;
-  padding: 0.25rem;
   border: none;
   border-radius: 0.25rem;
   background: none;
@@ -196,19 +267,41 @@ body {
   user-select: none;
 }
 
+.tiptap pre .code-copy {
+  top: 0.5rem;
+  display: flex;
+  padding: 0.25rem;
+}
+
+.tiptap pre .code-lang {
+  bottom: 0.5rem;
+  appearance: none;
+  padding: 0.125rem 0.375rem;
+  font: 12px/16px var(--font-sans);
+}
+
 .tiptap pre:hover .code-copy,
-.tiptap pre .code-copy:focus-visible {
+.tiptap pre:hover .code-lang,
+.tiptap pre .code-copy:focus-visible,
+.tiptap pre .code-lang:focus-visible {
   opacity: 1;
 }
 
-.tiptap pre .code-copy:hover {
+.tiptap pre .code-copy:hover,
+.tiptap pre .code-lang:hover {
   color: var(--color-ink);
   background-color: color-mix(in srgb, var(--color-ink) 8%, transparent);
 }
 
 @media (pointer: coarse) {
-  .tiptap pre .code-copy {
+  .tiptap pre .code-copy,
+  .tiptap pre .code-lang {
     opacity: 1;
+  }
+
+  /* Under 16px iOS zooms the page when a control gets focus. */
+  .tiptap pre .code-lang {
+    font-size: 16px;
   }
 }
 
@@ -474,6 +567,11 @@ body {
   --color-border: #2a2a2a;
   --color-accent: #262626;
   --color-destructive: #f87171;
+  --code-keyword: #c678dd;
+  --code-string: #98c379;
+  --code-number: #d19a66;
+  --code-title: #61afef;
+  --code-type: #e5c07b;
   color-scheme: dark;
 }
 
@@ -489,6 +587,11 @@ body {
     --color-border: #2a2a2a;
     --color-accent: #262626;
     --color-destructive: #f87171;
+    --code-keyword: #c678dd;
+    --code-string: #98c379;
+    --code-number: #d19a66;
+    --code-title: #61afef;
+    --code-type: #e5c07b;
     color-scheme: dark;
   }
 

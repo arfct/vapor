@@ -155,8 +155,53 @@ export default function FormatToolbar() {
             <Icon name="robot_2" />
             Agent instructions
           </MenuItem>
+          <MenuItem
+            className="gap-2"
+            onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+          >
+            <Icon name="table" />
+            Table
+          </MenuItem>
         </MenuContent>
       </Menu>
+
+      {/* Contextual: only while the selection is inside a table. */}
+      {editor.isActive("table") && (
+        <Menu onOpenChange={onOpenChange}>
+          <MenuTrigger>
+            <button className={triggerClass} title="Table" aria-label="Table">
+              <Icon name="table" />
+            </button>
+          </MenuTrigger>
+          <MenuContent>
+            <MenuItem className="gap-2" onClick={() => editor.chain().focus().addRowAfter().run()}>
+              <Icon name="add" />
+              Add row below
+            </MenuItem>
+            <MenuItem className="gap-2" onClick={() => editor.chain().focus().addColumnAfter().run()}>
+              <Icon name="add" />
+              Add column right
+            </MenuItem>
+            <MenuItem className="gap-2" onClick={() => editor.chain().focus().toggleHeaderRow().run()}>
+              <Icon name="format_h1" />
+              Toggle header row
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem className="gap-2" onClick={() => editor.chain().focus().deleteRow().run()}>
+              <Icon name="delete" />
+              Delete row
+            </MenuItem>
+            <MenuItem className="gap-2" onClick={() => editor.chain().focus().deleteColumn().run()}>
+              <Icon name="delete" />
+              Delete column
+            </MenuItem>
+            <MenuItem className="gap-2" destructive onClick={() => editor.chain().focus().deleteTable().run()}>
+              <Icon name="delete" />
+              Delete table
+            </MenuItem>
+          </MenuContent>
+        </Menu>
+      )}
 
       {showLinkDialog && (
         <>

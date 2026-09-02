@@ -22,6 +22,7 @@ export default function CommentSheet({ open, onClose }: { open: boolean; onClose
     resolveThread,
     deleteThread,
     commentActive,
+    openCommentInput,
   } = useDocument();
 
   // Open threads, plus the active one even if it has been resolved so a
@@ -67,6 +68,14 @@ export default function CommentSheet({ open, onClose }: { open: boolean; onClose
           className={navButton}
         >
           <Icon name="chevron_right" />
+        </button>
+        <button
+          onClick={openCommentInput}
+          disabled={commentActive}
+          aria-label="New comment"
+          className={navButton}
+        >
+          <Icon name="add_comment" />
         </button>
         <button onClick={onClose} aria-label="Close comments" className={navButton}>
           <Icon name="close" />

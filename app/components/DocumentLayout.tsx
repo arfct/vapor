@@ -80,6 +80,17 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   const openThreads = threads.filter((t) => !t.resolved).length;
   const isHome = surface.kind === "home";
 
+  // With text selected the header button means "comment on this": iOS's
+  // own edit menu covers the bubble menu, so this is the reliable path.
+  const toggleComments = useCallback(() => {
+    const selection = editorInstance?.state.selection;
+    if (selection && !selection.empty) {
+      openCommentInput();
+      return;
+    }
+    setCommentsOpen((v) => !v);
+  }, [editorInstance, openCommentInput]);
+
   // A new document starts empty; the tour stays on the homepage.
   const createBlankDocument = useCallback(async () => {
     navigate(`/${await createDocument("", [])}`, { state: { fresh: true } });
@@ -185,7 +196,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
         <div className="grow" />
         <div className="shrink-0 border-l border-border">
           <button
-            onClick={() => setCommentsOpen((v) => !v)}
+            onClick={toggleComments}
             aria-label={commentsOpen ? "Hide comments" : "Show comments"}
             aria-pressed={commentsOpen}
             title={commentsOpen ? "Hide comments" : "Show comments"}

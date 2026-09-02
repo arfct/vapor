@@ -54,9 +54,11 @@ export default function CommentSheet({ open, onClose }: { open: boolean; onClose
           <Icon name="chevron_left" />
         </button>
         <span className="min-w-0 flex-1 truncate text-center text-sm text-muted">
-          {visible.length === 0
-            ? "No comments"
-            : `${at + 1} of ${visible.length}`}
+          {commentActive
+            ? "New comment"
+            : visible.length === 0
+              ? "No comments"
+              : `${at + 1} of ${visible.length}`}
         </span>
         <button
           onClick={() => step(1)}

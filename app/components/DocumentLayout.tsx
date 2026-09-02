@@ -52,6 +52,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     commentHighlight,
     activeCommentRange,
     openCommentInput,
+    commentActive,
     handleResolveAtCursor,
     handleDeleteAtCursor,
   } = useDocument();
@@ -70,11 +71,12 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     setCommentsOpen(window.matchMedia("(min-width: 1024px)").matches);
     setMounted(true);
   }, []);
-  // Tapping a highlight in the document opens its thread, wherever it lives.
+  // Tapping a highlight opens its thread, and starting a comment opens the
+  // input, wherever the panel lives — the sheet is closed by default.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (activeThreadId) setCommentsOpen(true);
-  }, [activeThreadId]);
+    if (activeThreadId || commentActive) setCommentsOpen(true);
+  }, [activeThreadId, commentActive]);
   const openThreads = threads.filter((t) => !t.resolved).length;
   const isHome = surface.kind === "home";
 

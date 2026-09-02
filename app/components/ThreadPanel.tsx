@@ -30,11 +30,14 @@ function AuthorHeader({
         avatar={author.avatar}
         animal={author.animal}
         color={author.color}
-        className="h-8 w-8"
+        className="h-[25px] w-[25px]"
       />
-      <div className="flex min-w-0 flex-col justify-center leading-tight">
+      <div className="flex min-w-0 items-baseline gap-2">
         <span className="truncate text-base font-bold">{author.name}</span>
-        <span className="text-base text-muted">{timeAgo(timestamp)}</span>
+        <span className="shrink-0 text-sm text-muted">
+          {author.agentClient ? `${author.agentClient} • ` : ""}
+          {timeAgo(timestamp)}
+        </span>
       </div>
       {children}
     </div>
@@ -67,6 +70,11 @@ export default function ThreadPanel({
   useEffect(() => {
     if (showReplyInput) replyInputRef.current?.focus();
   }, [showReplyInput]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!active) setShowReplyInput(false);
+  }, [active]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -103,7 +111,9 @@ export default function ThreadPanel({
 
   return (
     <div
-      className={`group cursor-pointer p-3 ${active ? "bg-canary/15" : ""}`}
+      className={`group cursor-pointer border p-3 transition-colors ${
+        active ? "border-border bg-canary/15" : "border-transparent hover:border-border"
+      }`}
       onClick={() => onSelect(active ? null : thread.id)}
     >
       {/* Author + timestamp + actions */}
@@ -150,7 +160,7 @@ export default function ThreadPanel({
       </AuthorHeader>
 
       {/* Comment text */}
-      <p className="mt-1.5 text-base">{thread.commentText}</p>
+      <p className="mt-1 pl-[33px] text-base">{thread.commentText}</p>
 
       {/* Replies */}
       {thread.replies.length > 0 && (
@@ -158,14 +168,15 @@ export default function ThreadPanel({
           {thread.replies.map((reply) => (
             <div key={reply.id}>
               <AuthorHeader author={reply.author} timestamp={reply.createdAt} />
-              <p className="mt-1 text-base">{reply.text}</p>
+              <p className="mt-1 pl-[33px] text-base">{reply.text}</p>
             </div>
           ))}
         </div>
       )}
 
-      {/* Reply input, hidden behind a link until clicked */}
-      <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+      {/* Reply link, shown only while the thread is selected; input appears on click */}
+      {active && (
+      <div className="mt-3 pl-[33px]" onClick={(e) => e.stopPropagation()}>
         {showReplyInput ? (
           <input
             ref={replyInputRef}
@@ -186,6 +197,7 @@ export default function ThreadPanel({
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }

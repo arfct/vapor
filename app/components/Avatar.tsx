@@ -1,3 +1,5 @@
+import { animalGlyphForLabel } from "~/shared/anon-animals";
+
 function initials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return "?";
@@ -25,13 +27,19 @@ export default function Avatar({
   if (avatar) {
     return <img className={`${className} shrink-0 rounded-full object-cover`} src={avatar} alt="" />;
   }
-  if (animal) {
+  // Older agent-authored comments predate the stored animal field; the
+  // label ("Agentic Lobster") still names the creature.
+  const glyph = animal ?? animalGlyphForLabel(name);
+  if (glyph) {
     return (
       <span
-        className={`${className} anon-animal flex shrink-0 items-center justify-center text-xl`}
-        style={{ color }}
+        className={`${className} anon-animal flex shrink-0 items-center justify-center rounded-full text-xl`}
+        style={{
+          color,
+          backgroundColor: color ? `color-mix(in srgb, ${color} 10%, transparent)` : undefined,
+        }}
       >
-        {animal}
+        {glyph}
       </span>
     );
   }

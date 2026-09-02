@@ -6,6 +6,7 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import { MSG_SYNC, MSG_AWARENESS, DOCUMENT_TTL_MS, DOC_FORMAT_VERSION, USER_COLOURS } from "../app/shared/constants";
+import { animalGlyphForLabel } from "../app/shared/anon-animals";
 import type { AgentIdentity, AgentCapability, AgentRosterEntry, AgentError, Pace } from "../app/shared/agent-protocol";
 import {
   AGENT_NAME_RE,
@@ -602,7 +603,7 @@ class DocumentAgent extends Agent {
       const contentType = request.headers.get("Content-Type") || "";
       if (contentType.includes("application/json")) {
         try {
-          const body = await request.json() as { content?: string; threads?: unknown[]; onboarding?: boolean };
+          const body = await request.json() as { content?: string; threads?: unknown[] };
 
           // Parse before the transaction: Yjs cannot roll back, and a parse
           // failure must not commit a half-imported document.
@@ -636,10 +637,6 @@ class DocumentAgent extends Agent {
                   threadsMap.set(t.id, JSON.stringify(thread));
                 }
               }
-            }
-            if (body.onboarding) {
-              const docState = doc.getMap<string>("docState");
-              docState.set("onboarding", "true");
             }
           }, "agent");
         } catch {
@@ -1499,7 +1496,7 @@ class DocumentAgent extends Agent {
       id,
       commentText: args.text,
       highlightText: args.quote,
-      author: { name: label ?? name, color, colorLight: color },
+      author: { name: label ?? name, color, colorLight: color, animal: animalGlyphForLabel(label ?? name), agentClient: identity.client },
       createdAt: Date.now(),
       resolved: false,
       replies: [],
@@ -1548,7 +1545,7 @@ class DocumentAgent extends Agent {
     const { name, label, color } = verified.entry;
     const reply: ThreadReply = {
       id: crypto.randomUUID(),
-      author: { name: label ?? name, color, colorLight: color },
+      author: { name: label ?? name, color, colorLight: color, animal: animalGlyphForLabel(label ?? name), agentClient: identity.client },
       text: args.text,
       createdAt: Date.now(),
     };

@@ -18,19 +18,41 @@ export function stripFrontmatter(markdown: string): string {
   return markdown.replace(FRONTMATTER_RE, "");
 }
 
-interface SerializedThread {
-  comment: string;
-  highlight?: string;
+interface SerializedAuthor {
   author: string;
   color: string;
+  /** Anonymous-animal glyph, e.g. "🦦". */
+  animal?: string;
+  /** Agent authors: the connecting client's display name, e.g. "Claude". */
+  client?: string;
+}
+
+interface SerializedThread extends SerializedAuthor {
+  comment: string;
+  highlight?: string;
   created: string;
   resolved: boolean;
-  replies?: {
-    author: string;
-    color: string;
+  replies?: (SerializedAuthor & {
     text: string;
     created: string;
-  }[];
+  })[];
+}
+
+function authorFrom(raw: SerializedAuthor): ThreadData["author"] {
+  return {
+    name: raw.author ?? "Unknown",
+    color: raw.color ?? "#999",
+    colorLight: raw.color ?? "#999",
+    animal: raw.animal,
+    agentClient: raw.client,
+  };
+}
+
+function authorTo(a: ThreadData["author"]): SerializedAuthor {
+  const out: SerializedAuthor = { author: a.name, color: a.color };
+  if (a.animal) out.animal = a.animal;
+  if (a.agentClient) out.client = a.agentClient;
+  return out;
 }
 
 export function serializeThreads(
@@ -45,8 +67,7 @@ export function serializeThreads(
   const serialized: SerializedThread[] = threads.map((t) => {
     const entry: SerializedThread = {
       comment: t.commentText,
-      author: t.author.name,
-      color: t.author.color,
+      ...authorTo(t.author),
       created: new Date(t.createdAt).toISOString(),
       resolved: t.resolved,
     };
@@ -55,8 +76,7 @@ export function serializeThreads(
     }
     if (t.replies.length > 0) {
       entry.replies = t.replies.map((r) => ({
-        author: r.author.name,
-        color: r.author.color,
+        ...authorTo(r.author),
         text: r.text,
         created: new Date(r.createdAt).toISOString(),
       }));
@@ -78,15 +98,13 @@ export function serializeThreads(
 export function deserializeThreads(markdown: string): {
   body: string;
   threads: ThreadData[];
-  onboarding: boolean;
 } {
   const body = stripFrontmatter(markdown);
   const fm = parseFrontmatter(markdown);
 
   const vapor = fm.vapor as Record<string, unknown> | undefined;
-  const onboarding = vapor?.onboarding === true;
   if (!vapor || !Array.isArray(vapor.threads)) {
-    return { body, threads: [], onboarding };
+    return { body, threads: [] };
   }
 
   const threads: ThreadData[] = vapor.threads.map(
@@ -94,27 +112,17 @@ export function deserializeThreads(markdown: string): {
       id: `imported-${i}`,
       commentText: raw.comment ?? "",
       highlightText: raw.highlight,
-      author: {
-        name: raw.author ?? "Unknown",
-        color: raw.color ?? "#999",
-        colorLight: raw.color ?? "#999",
-      },
+      author: authorFrom(raw),
       createdAt: raw.created ? new Date(raw.created).getTime() : Date.now(),
       resolved: raw.resolved ?? false,
-      replies: (raw.replies ?? []).map(
-        (r: { author: string; color: string; text: string; created: string }, j: number) => ({
-          id: `imported-${i}-r${j}`,
-          author: {
-            name: r.author ?? "Unknown",
-            color: r.color ?? "#999",
-            colorLight: r.color ?? "#999",
-          },
-          text: r.text ?? "",
-          createdAt: r.created ? new Date(r.created).getTime() : Date.now(),
-        }),
-      ),
+      replies: (raw.replies ?? []).map((r, j) => ({
+        id: `imported-${i}-r${j}`,
+        author: authorFrom(r),
+        text: r.text ?? "",
+        createdAt: r.created ? new Date(r.created).getTime() : Date.now(),
+      })),
     }),
   );
 
-  return { body, threads, onboarding };
+  return { body, threads };
 }

@@ -36,6 +36,8 @@ export interface AgentIdentity {
   name: string; // roster slug (agentSlug or slugified clientInfo) — used for @mentions
   /** Human-facing attribution, e.g. "Ada Lovelace's Agent". Falls back to name. */
   label?: string;
+  /** Display name of the connecting client, e.g. "Claude" — shown next to comment timestamps. */
+  client?: string;
   owner: string | null; // principal for kind=principal, null for anonymous
   caps: AgentCapability[];
 }
@@ -132,6 +134,23 @@ export function parseAnchor(s: string): BlockAnchor | null {
  * limit `AGENT_NAME_RE` allows. Falls back to `"agent"` when nothing usable
  * survives (empty input, symbols only, a single character).
  */
+/**
+ * Human-facing name for an MCP client, from its `clientInfo.name`. Claude's
+ * surfaces identify themselves variously ("claude-code", "Claude", …) but
+ * are all one product family to a reader; anything else gets its slug
+ * title-cased. Undefined when the client sent nothing.
+ */
+export function clientDisplayName(raw: string | undefined): string | undefined {
+  if (!raw?.trim()) return undefined;
+  const slug = slugifyAgentName(raw);
+  if (slug === "agent") return undefined;
+  if (slug.includes("claude")) return "Claude";
+  return slug
+    .split("-")
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 export function slugifyAgentName(raw: string): string {
   const slug = raw
     .toLowerCase()

@@ -21,7 +21,7 @@ export default function ThreadList() {
   return (
     <div className="flex flex-col">
       {visibleThreads.map((thread) => (
-        <div key={thread.id} className="border-b border-border">
+        <div key={thread.id}>
           <ThreadPanel
             thread={thread}
             active={activeThreadId === thread.id}

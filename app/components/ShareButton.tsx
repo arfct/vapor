@@ -4,7 +4,17 @@ import { useDocument } from "~/lib/DocumentContext";
 import { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from "~/components/ui/menu";
 import Icon from "~/components/Icon";
 
-export default function ShareButton({ onOpenAgents }: { onOpenAgents: () => void }) {
+/**
+ * Copy link and Invite an agent only make sense for a document that lives
+ * at a URL; the homepage's standalone doc omits both and keeps Download.
+ */
+export default function ShareButton({
+  onOpenAgents,
+  copyLink = true,
+}: {
+  onOpenAgents?: () => void;
+  copyLink?: boolean;
+}) {
   const { docId, markdown, threads } = useDocument();
   const [copied, setCopied] = useState(false);
 
@@ -36,19 +46,25 @@ export default function ShareButton({ onOpenAgents }: { onOpenAgents: () => void
         </button>
       </MenuTrigger>
       <MenuContent>
-        <MenuItem className="gap-2" onClick={handleCopy}>
-          <Icon name={copied ? "check" : "link"} />
-          <span>{copied ? "Copied" : "Copy link"}</span>
-        </MenuItem>
+        {copyLink && (
+          <MenuItem className="gap-2" onClick={handleCopy}>
+            <Icon name={copied ? "check" : "link"} />
+            <span>{copied ? "Copied" : "Copy link"}</span>
+          </MenuItem>
+        )}
         <MenuItem className="gap-2" onClick={handleDownload}>
           <Icon name="download" />
           <span>Download</span>
         </MenuItem>
-        <MenuSeparator />
-        <MenuItem className="gap-2" onClick={onOpenAgents}>
-          <Icon name="robot_2" />
-          <span>Invite an agent</span>
-        </MenuItem>
+        {onOpenAgents && (
+          <>
+            <MenuSeparator />
+            <MenuItem className="gap-2" onClick={onOpenAgents}>
+              <Icon name="robot_2" />
+              <span>Invite an agent</span>
+            </MenuItem>
+          </>
+        )}
       </MenuContent>
     </Menu>
   );

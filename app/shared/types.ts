@@ -8,6 +8,8 @@ export interface UserInfo {
   id?: string;
   /** Avatar image URL for a signed-in user (from Google), if any. */
   avatar?: string;
+  /** For agent authors: the connecting client's display name, e.g. "Claude". */
+  agentClient?: string;
 }
 
 export type DocMode = "edit" | "suggest";

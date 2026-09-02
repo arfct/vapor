@@ -8,6 +8,7 @@ import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { CriticAddition, CriticDeletion, CriticComment, CriticHighlight, CriticPointMarkers } from "~/lib/critic-marks";
 import { BlockId } from "~/lib/block-id";
+import { CodeBlockCopy } from "~/lib/code-block-copy";
 import { parseMarkdown } from "~/shared/rich-markdown";
 import { suggestModePlugin } from "~/lib/suggest-mode";
 import BubbleToolbar from "~/components/BubbleToolbar";
@@ -239,6 +240,7 @@ export default function Editor({
           },
         }),
         BlockId,
+        CodeBlockCopy,
         CriticAddition,
         CriticDeletion,
         CriticComment,
@@ -334,7 +336,9 @@ export default function Editor({
         className={`min-h-full cursor-text ${hidden ? "hidden" : ""}`}
         onClick={handleClick}
       >
-        <EditorContent editor={editor} />
+        <div className="mx-auto w-full max-w-3xl">
+          <EditorContent editor={editor} />
+        </div>
       </div>
       {onNewComment && onResolveAtCursor && onDeleteAtCursor && (
         <BubbleToolbar

@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useCallback, useMemo } from "react
 import { getMarkRange, type Editor as TiptapEditor } from "@tiptap/core";
 import type { CapturedSelection, DocMode } from "~/shared/types";
 import type { MatchedThread } from "~/lib/comment-threads";
-import type { useYjsEditor } from "~/lib/useYjsEditor";
+import type { YjsEditorState } from "~/lib/useYjsEditor";
 import { useThreads } from "~/lib/useThreads";
 import { findCommentTextAtCursor } from "~/lib/comment-threads";
 import { serializePmDoc } from "~/shared/rich-markdown";
@@ -10,7 +10,7 @@ import { serializePmDoc } from "~/shared/rich-markdown";
 export interface DocumentContextValue {
   docId: string;
   createdAt: number | null;
-  yjs: ReturnType<typeof useYjsEditor>;
+  yjs: YjsEditorState;
   editorInstance: TiptapEditor | null;
   markdown: string;
 
@@ -43,10 +43,6 @@ export interface DocumentContextValue {
   resolveThread: (threadId: string) => void;
   deleteThread: (threadId: string) => void;
 
-  // Onboarding
-  isOnboarding: boolean;
-  clearDocument: () => void;
-
   // Editor lifecycle
   handleEditorReady: (editor: TiptapEditor) => void;
   handleCommentClick: (commentText: string) => void;
@@ -71,7 +67,7 @@ export function DocumentProvider({
 }: {
   docId: string;
   createdAt: number | null;
-  yjs: ReturnType<typeof useYjsEditor>;
+  yjs: YjsEditorState;
   children: React.ReactNode;
 }) {
   const [markdown, setMarkdown] = useState("");
@@ -149,25 +145,6 @@ export function DocumentProvider({
     [openCommentInput],
   );
 
-  const clearDocument = useCallback(() => {
-    if (!editorInstance) return;
-    // Wrap in a Yjs transaction so all changes are atomic —
-    // clearing threads before content prevents reconcile from
-    // re-creating thread entries from still-present inline marks.
-    yjs.doc.transact(() => {
-      const threadsMap = yjs.doc.getMap<string>("threads");
-      const keys = Array.from(threadsMap.keys());
-      for (const key of keys) threadsMap.delete(key);
-      yjs.docState.delete("onboarding");
-      yjs.docState.set("mode", "edit");
-    });
-    editorInstance.commands.clearContent();
-    // Reset local UI state
-    setCommentActive(false);
-    setCommentSelection(null);
-    setCommentHighlight(null);
-  }, [editorInstance, yjs]);
-
   const handleResolveAtCursor = useCallback(() => {
     if (!editorInstance) return;
     const text = findCommentTextAtCursor(editorInstance);
@@ -234,8 +211,6 @@ export function DocumentProvider({
     addReply,
     resolveThread,
     deleteThread,
-    isOnboarding: yjs.isOnboarding,
-    clearDocument,
     handleEditorReady,
     handleCommentClick,
   };

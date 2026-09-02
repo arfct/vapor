@@ -27,6 +27,7 @@ import { eventCatalog, EVENTS_DRAFT_META_KEY, EVENTS_DRAFT_VERSION } from "./eve
 import { generateDocumentId } from "../app/shared/constants";
 import {
   slugifyAgentName,
+  clientDisplayName,
   DEFAULT_CAPABILITIES,
   type AgentCapability,
   type AgentIdentity,
@@ -108,6 +109,7 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
         id: auth.principal,
         name: this.agentSlug,
         label: this.agentLabel ?? undefined,
+        client: clientDisplayName(this.server.server.getClientVersion()?.name),
         owner: auth.principal,
         caps: auth.caps ?? [...DEFAULT_CAPABILITIES],
       };
@@ -122,6 +124,7 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
       id: sessionKey,
       name: slugifyAgentName(clientInfo?.name ?? "agent"),
       label: anonymousAgentLabel(sessionKey),
+      client: clientDisplayName(clientInfo?.name),
       owner: null,
       caps: [...DEFAULT_CAPABILITIES],
     };

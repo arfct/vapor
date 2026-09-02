@@ -118,6 +118,9 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
         </div>
         {surface.kind === "doc" ? (
           <div className="flex shrink-0 items-center whitespace-nowrap px-4">
+            <span className="mr-2">
+              <ConnectionStatus compact />
+            </span>
             <span className="font-mono font-bold">{surface.id}</span>
             {surface.createdAt && (
               <span className="ml-2 whitespace-nowrap text-muted">
@@ -163,11 +166,6 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           </>
         )}
         <div className="grow" />
-        {surface.kind === "doc" && (
-          <div className="flex shrink-0 items-center border-l border-border px-3">
-            <ConnectionStatus />
-          </div>
-        )}
         <div className="hidden shrink-0 border-l border-border lg:block">
           <button
             onClick={() => setCommentsOpen((v) => !v)}

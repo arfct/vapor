@@ -11,7 +11,8 @@ const DISPLAY: Record<Status, { text: string; dotClass: string; pulse?: boolean 
   offline: { text: "Offline", dotClass: "bg-red-500" },
 };
 
-export default function ConnectionStatus() {
+/** `compact` renders only the dot, with the status as its tooltip. */
+export default function ConnectionStatus({ compact = false }: { compact?: boolean }) {
   const { yjs } = useDocument();
   const { socket, asleep } = yjs;
 
@@ -71,10 +72,13 @@ export default function ConnectionStatus() {
     <span className="inline-flex items-baseline gap-1.5" title={display.text}>
       <span
         className={`h-2 w-2 rounded-full ${display.dotClass} ${display.pulse ? "animate-pulse" : ""} relative top-[-0.5px]`}
+        aria-label={compact ? display.text : undefined}
       />
-      <span className="text-sm uppercase tracking-wider text-muted">
-        {display.text}
-      </span>
+      {!compact && (
+        <span className="text-sm uppercase tracking-wider text-muted">
+          {display.text}
+        </span>
+      )}
     </span>
   );
 }

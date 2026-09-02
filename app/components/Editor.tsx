@@ -11,6 +11,7 @@ import { BlockId } from "~/lib/block-id";
 import { CodeBlock } from "~/lib/code-block";
 import { CodeBlockCopy } from "~/lib/code-block-copy";
 import { AgentInstructions } from "~/lib/agent-instructions";
+import { TaskList, TaskItem } from "@tiptap/extension-list";
 import { parseMarkdown } from "~/shared/rich-markdown";
 import { suggestModePlugin } from "~/lib/suggest-mode";
 import BubbleToolbar from "~/components/BubbleToolbar";
@@ -264,6 +265,8 @@ export default function Editor({
         BlockId,
         CodeBlockCopy,
         AgentInstructions,
+        TaskList,
+        TaskItem.configure({ nested: true }),
         CriticAddition,
         CriticDeletion,
         CriticComment,

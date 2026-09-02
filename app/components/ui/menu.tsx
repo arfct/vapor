@@ -31,11 +31,17 @@ export const MenuContent = React.forwardRef<HTMLDivElement, MenuContentProps>(
   ({ className, align = "start", children, ...props }, ref) => {
     return (
       <BaseMenu.Portal>
-        <BaseMenu.Positioner align={align} side="bottom" sideOffset={4} className="z-50">
+        <BaseMenu.Positioner
+          align={align}
+          side="bottom"
+          sideOffset={0}
+          collisionPadding={0}
+          className="z-50"
+        >
           <BaseMenu.Popup
             ref={ref}
             className={cn(
-              "min-w-32 overflow-hidden squircle-2xl border border-border bg-paper p-1.5 shadow-md outline-none",
+              "min-w-32 overflow-hidden border border-border bg-paper p-1 shadow-md outline-none",
               className,
             )}
             {...props}
@@ -62,7 +68,7 @@ export const MenuItem = React.forwardRef<HTMLDivElement, MenuItemProps>(
       <BaseMenu.Item
         ref={ref}
         className={cn(
-          "relative flex min-h-9 cursor-pointer select-none items-center rounded-xl px-3 text-sm outline-none transition-colors",
+          "relative flex min-h-[36px] cursor-pointer select-none items-center px-3 text-sm outline-none transition-colors",
           "data-[highlighted]:bg-accent data-[highlighted]:text-ink",
           "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
           destructive && "text-destructive data-[highlighted]:text-destructive",

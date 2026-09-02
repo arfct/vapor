@@ -25,11 +25,12 @@ export default function CommentInput() {
     return () => document.removeEventListener("keydown", handler);
   }, [onActiveChange]);
 
-  // Focus input when becoming active
+  // Focus synchronously: iOS only raises the keyboard for a focus() that
+  // runs inside the tap's own task, so a deferred focus lands silently.
   useEffect(() => {
-    if (active) {
-      requestAnimationFrame(() => inputRef.current?.focus());
-    }
+    if (!active) return;
+    if (inputRef.current) inputRef.current.focus();
+    else requestAnimationFrame(() => inputRef.current?.focus());
   }, [active]);
 
   const handleSubmit = useCallback(() => {

@@ -1,8 +1,10 @@
 import { useRef, useState, useCallback, useEffect } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useLocation } from "react-router";
 import { useDocument } from "~/lib/DocumentContext";
 import { deserializeThreads } from "~/lib/thread-serialization";
-import { generateDocumentId, DOCUMENT_TTL_MS } from "~/shared/constants";
+import { generateDocumentId } from "~/shared/constants";
+import { formatRemainingTime } from "~/lib/format-remaining";
+import { placeholderPreset } from "~/lib/placeholder-presets";
 import type { ThreadData } from "~/shared/types";
 import Editor from "~/components/Editor";
 import Preview from "~/components/Preview";
@@ -28,16 +30,6 @@ export type Surface =
   | { kind: "doc"; id: string; createdAt: number | null }
   | { kind: "home"; fallbackMarkdown: string };
 
-function formatRemainingTime(createdAt: number): string {
-  const elapsed = Date.now() - createdAt;
-  const remainingMs = DOCUMENT_TTL_MS - elapsed;
-  if (remainingMs <= 0) return "soon";
-  const hours = Math.floor(remainingMs / (60 * 60 * 1000));
-  if (hours >= 1) return `${hours}h`;
-  const minutes = Math.ceil(remainingMs / (60 * 1000));
-  return `${minutes}m`;
-}
-
 async function createDocument(content: string, threads: ThreadData[]): Promise<string> {
   const id = generateDocumentId();
   await fetch(`/agents/document-agent/${id}`, {
@@ -60,10 +52,13 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     commentHighlight,
     activeCommentRange,
     openCommentInput,
+    commentActive,
     handleResolveAtCursor,
     handleDeleteAtCursor,
   } = useDocument();
   const navigate = useNavigate();
+  // A document the visitor just created gets focus so they can type at once.
+  const fresh = Boolean((useLocation().state as { fresh?: boolean } | null)?.fresh);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [agentsOpen, setAgentsOpen] = useState(false);
   // One comments panel, two presentations: a rail beside the document at
@@ -76,23 +71,35 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     setCommentsOpen(window.matchMedia("(min-width: 1024px)").matches);
     setMounted(true);
   }, []);
-  // Tapping a highlight in the document opens its thread, wherever it lives.
+  // Tapping a highlight opens its thread, and starting a comment opens the
+  // input, wherever the panel lives — the sheet is closed by default.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (activeThreadId) setCommentsOpen(true);
-  }, [activeThreadId]);
+    if (activeThreadId || commentActive) setCommentsOpen(true);
+  }, [activeThreadId, commentActive]);
   const openThreads = threads.filter((t) => !t.resolved).length;
   const isHome = surface.kind === "home";
 
+  // With text selected the header button means "comment on this": iOS's
+  // own edit menu covers the bubble menu, so this is the reliable path.
+  const toggleComments = useCallback(() => {
+    const selection = editorInstance?.state.selection;
+    if (selection && !selection.empty) {
+      openCommentInput();
+      return;
+    }
+    setCommentsOpen((v) => !v);
+  }, [editorInstance, openCommentInput]);
+
   // A new document starts empty; the tour stays on the homepage.
   const createBlankDocument = useCallback(async () => {
-    navigate(`/${await createDocument("", [])}`);
+    navigate(`/${await createDocument("", [])}`, { state: { fresh: true } });
   }, [navigate]);
 
   const uploadFile = useCallback(
     async (file: File) => {
       const { body, threads: imported } = deserializeThreads(await file.text());
-      navigate(`/${await createDocument(body, imported)}`);
+      navigate(`/${await createDocument(body, imported)}`, { state: { fresh: true } });
     },
     [navigate],
   );
@@ -113,10 +120,10 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
       onDrop={handleDrop}
       onDragOver={isHome ? (e) => e.preventDefault() : undefined}
     >
-      <header className="flex h-[48px] shrink-0 items-stretch overflow-hidden border-b border-border">
+      <header className="flex h-[60px] shrink-0 items-stretch overflow-hidden border-y border-border lg:border-t-0">
         <Link
           to="/"
-          className="flex shrink-0 items-center bg-ink px-4 py-2 font-medium uppercase tracking-wider text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
+          className="flex shrink-0 items-center px-4 font-medium uppercase tracking-wider text-ink transition-colors hover:bg-border"
         >
           vapor
         </Link>
@@ -136,7 +143,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
         {surface.kind === "doc" ? (
           // The one cell allowed to shrink: on narrow screens the id and
           // expiry truncate so the controls on the right stay put.
-          <div className="flex min-w-0 shrink items-center px-3">
+          <div className="hidden min-w-0 shrink items-center px-3 lg:flex">
             <span className="mr-2 shrink-0">
               <ConnectionStatus compact />
             </span>
@@ -157,7 +164,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
                   <button
                     aria-label="Create"
                     title="Create"
-                    className="flex h-full w-[48px] cursor-pointer items-center justify-center transition-colors hover:bg-border"
+                    className="header-button"
                   >
                     <Icon name="add" />
                   </button>
@@ -189,13 +196,11 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
         <div className="grow" />
         <div className="shrink-0 border-l border-border">
           <button
-            onClick={() => setCommentsOpen((v) => !v)}
+            onClick={toggleComments}
             aria-label={commentsOpen ? "Hide comments" : "Show comments"}
             aria-pressed={commentsOpen}
             title={commentsOpen ? "Hide comments" : "Show comments"}
-            className={`relative flex h-full w-[48px] cursor-pointer items-center justify-center transition-colors hover:bg-border ${
-              commentsOpen ? "text-ink" : "text-muted"
-            }`}
+            className={`header-button relative ${commentsOpen ? "text-ink" : "text-muted"}`}
           >
             <Icon name="comment" />
             {openThreads > 0 && (
@@ -222,6 +227,8 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           )}
           <Editor
             yjs={yjs}
+            autofocus={surface.kind === "doc" && fresh}
+            placeholders={surface.kind === "doc" ? placeholderPreset(surface.id) : undefined}
             hidden={showPreview}
             onEditorReady={handleEditorReady}
             onCommentClick={handleCommentClick}

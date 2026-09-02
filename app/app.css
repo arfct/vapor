@@ -53,13 +53,34 @@ body {
   min-height: 100dvh;
 }
 
+/* Square 60px header buttons. A button whose menu is open inverts to ink,
+   and the menu hangs flush beneath it. */
+.header-button {
+  display: flex;
+  height: 100%;
+  width: 60px;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+@media (hover: hover) {
+  .header-button:hover {
+    background-color: var(--color-border);
+  }
+}
+.header-button[data-popup-open] {
+  background-color: var(--color-ink);
+  color: var(--color-paper);
+}
+
 /* Editor styles */
 .tiptap {
   outline: none;
   min-height: 100%;
   font-size: 1.15rem;
   line-height: 1.6;
-  padding: 1.5rem;
+  padding: 100px 1.5rem 1.5rem;
 }
 
 .tiptap p {
@@ -161,7 +182,7 @@ body {
 }
 
 .tiptap .agent-instructions::before {
-  content: "Instructions for agents";
+  content: "Agent instructions";
   display: block;
   margin-bottom: 0.35rem;
   font-size: 0.75rem;
@@ -385,13 +406,30 @@ body {
   background-color: color-mix(in srgb, var(--color-canary) 18%, transparent);
 }
 
-/* Empty-document placeholder */
-.tiptap p.is-editor-empty:first-child::before {
+/* Placeholders on empty blocks — decoration-only, never content. */
+.tiptap .is-empty::before {
   color: var(--color-muted);
   content: attr(data-placeholder);
   float: left;
   height: 0;
   pointer-events: none;
+  user-select: none;
+}
+
+/* The empty first line is the title-to-be: show its hint at heading size. */
+.tiptap .is-title {
+  font-size: 1.875rem;
+  font-weight: bold;
+  line-height: 1.3;
+  margin-bottom: 1rem;
+}
+
+/* Body hint shown after a lone empty title line (a widget, not a block). */
+.tiptap .placeholder-body {
+  color: var(--color-muted);
+  margin: 0 0 0.5rem;
+  pointer-events: none;
+  user-select: none;
 }
 
 .tiptap .collaboration-cursor__caret {

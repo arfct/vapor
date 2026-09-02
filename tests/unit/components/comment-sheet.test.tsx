@@ -59,6 +59,41 @@ describe("CommentSheet", () => {
     expect(setActiveThreadId).toHaveBeenCalledWith("t1");
   });
 
+  it("shows the comment input instead of a thread while composing", () => {
+    const { getByText, getByPlaceholderText, queryByText } = renderWithDocument(
+      createElement(CommentSheet, { open: true, onClose: vi.fn() }),
+      {
+        context: {
+          threads: [thread("t1", "First")],
+          activeThreadId: "t1",
+          commentActive: true,
+          commentSelection: { from: 1, to: 7, text: "mobile" },
+        },
+      },
+    );
+    expect(getByText("New comment")).toBeTruthy();
+    expect(getByPlaceholderText("Add a comment...")).toBeTruthy();
+    expect(getByText("mobile")).toBeTruthy();
+    expect(queryByText("First")).toBeNull();
+  });
+
+  it("new comment button starts a comment, and is disabled while composing", () => {
+    const openCommentInput = vi.fn();
+    const idle = renderWithDocument(
+      createElement(CommentSheet, { open: true, onClose: vi.fn() }),
+      { context: { threads: [thread("t1", "First")], activeThreadId: "t1", openCommentInput } },
+    );
+    fireEvent.click(idle.getByLabelText("New comment"));
+    expect(openCommentInput).toHaveBeenCalledOnce();
+    idle.unmount();
+
+    const composing = renderWithDocument(
+      createElement(CommentSheet, { open: true, onClose: vi.fn() }),
+      { context: { threads: [thread("t1", "First")], activeThreadId: "t1", commentActive: true } },
+    );
+    expect((composing.getByLabelText("New comment") as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("close button calls onClose", () => {
     const onClose = vi.fn();
     const { getByLabelText } = renderWithDocument(

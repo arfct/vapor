@@ -4,6 +4,8 @@ import { useDocument } from "~/lib/DocumentContext";
 import { copyText } from "~/lib/clipboard";
 import { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from "~/components/ui/menu";
 import Icon from "~/components/Icon";
+import ConnectionStatus from "~/components/ConnectionStatus";
+import { formatRemainingTime } from "~/lib/format-remaining";
 
 const COPY_FEEDBACK_MS = 2000;
 
@@ -32,13 +34,24 @@ export default function ShareButton({
   onOpenAgents?: () => void;
   copyLink?: boolean;
 }) {
-  const { docId, markdown, threads } = useDocument();
+  const { docId, createdAt, markdown, threads } = useDocument();
   const [copyState, setCopyState] = useState<CopyState>("idle");
 
   const handleCopy = useCallback(async () => {
     const copied = await copyText(window.location.href);
     setCopyState(copied ? "copied" : "failed");
     setTimeout(() => setCopyState("idle"), COPY_FEEDBACK_MS);
+  }, []);
+
+  // The menu only renders client-side once opened, so reading navigator
+  // here can't mismatch the server render.
+  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+  const handleShare = useCallback(async () => {
+    try {
+      await navigator.share({ title: document.title, url: window.location.href });
+    } catch {
+      // Dismissed share sheet.
+    }
   }, []);
 
   const handleDownload = useCallback(() => {
@@ -56,7 +69,7 @@ export default function ShareButton({
     <Menu>
       <MenuTrigger>
         <button
-          className="flex h-full w-[48px] cursor-pointer items-center justify-center transition-colors hover:bg-border"
+          className="header-button"
           aria-label="Share options"
           title="Share"
         >
@@ -64,6 +77,23 @@ export default function ShareButton({
         </button>
       </MenuTrigger>
       <MenuContent>
+        {copyLink && (
+          <>
+            {/* On phones the header has no room for these; they live here instead. */}
+            <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted lg:hidden">
+              <ConnectionStatus compact />
+              <span className="font-mono font-bold text-ink">{docId}</span>
+              {createdAt && <span>vaporized in {formatRemainingTime(createdAt)}</span>}
+            </div>
+            <MenuSeparator className="lg:hidden" />
+          </>
+        )}
+        {copyLink && canShare && (
+          <MenuItem className="gap-2" onClick={handleShare}>
+            <Icon name="ios_share" />
+            <span>Share link</span>
+          </MenuItem>
+        )}
         {copyLink && (
           <MenuItem className="gap-2" onClick={handleCopy}>
             <Icon name={COPY_ICON[copyState]} />

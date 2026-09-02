@@ -25,8 +25,7 @@ function useEditorTick() {
   return editor;
 }
 
-const triggerClass =
-  "flex h-full w-[48px] cursor-pointer items-center justify-center transition-colors hover:bg-border";
+const triggerClass = "header-button";
 
 /**
  * The formatting menu in the document header — inline marks, block styles,

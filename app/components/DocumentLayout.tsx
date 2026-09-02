@@ -5,7 +5,7 @@ import { deserializeThreads } from "~/lib/thread-serialization";
 import { generateDocumentId } from "~/shared/constants";
 import { formatRemainingTime } from "~/lib/format-remaining";
 import { placeholderPreset } from "~/lib/placeholder-presets";
-import { useVisualViewportHeight } from "~/lib/useVisualViewport";
+import { useVisualViewport } from "~/lib/useVisualViewport";
 import type { ThreadData } from "~/shared/types";
 import Editor from "~/components/Editor";
 import Preview from "~/components/Preview";
@@ -80,9 +80,9 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   }, [activeThreadId, commentActive]);
   const openThreads = threads.filter((t) => !t.resolved).length;
   const isHome = surface.kind === "home";
-  // The shell is fixed and sized to the visible viewport so the header
-  // stays put when a mobile keyboard scrolls the page. 100dvh until mount.
-  const viewportHeight = useVisualViewportHeight();
+  // The shell is fixed over the visible viewport so the header stays put
+  // when a mobile keyboard shifts the page. Full height until mount.
+  const viewport = useVisualViewport();
 
   // With text selected the header button means "comment on this": iOS's
   // own edit menu covers the bubble menu, so this is the reliable path.
@@ -120,12 +120,12 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
 
   return (
     <div
-      className="fixed inset-x-0 top-0 flex flex-col pt-[env(safe-area-inset-top)]"
-      style={{ height: viewportHeight ?? "100dvh" }}
+      className="fixed inset-x-0 flex flex-col pt-[env(safe-area-inset-top)]"
+      style={{ top: viewport?.top ?? 0, height: viewport?.height ?? "100dvh" }}
       onDrop={handleDrop}
       onDragOver={isHome ? (e) => e.preventDefault() : undefined}
     >
-      <header className="flex h-[48px] shrink-0 items-stretch overflow-hidden border-y border-border lg:border-t-0">
+      <header className="flex h-[60px] shrink-0 items-stretch overflow-hidden border-y border-border lg:h-[48px] lg:border-t-0">
         <Link
           to="/"
           className="flex shrink-0 items-center bg-ink px-4 py-2 font-medium uppercase tracking-wider text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
@@ -205,9 +205,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
             aria-label={commentsOpen ? "Hide comments" : "Show comments"}
             aria-pressed={commentsOpen}
             title={commentsOpen ? "Hide comments" : "Show comments"}
-            className={`relative flex h-full w-[48px] cursor-pointer items-center justify-center transition-colors hover:bg-border ${
-              commentsOpen ? "text-ink" : "text-muted"
-            }`}
+            className={`header-button relative ${commentsOpen ? "text-ink" : "text-muted"}`}
           >
             <Icon name="comment" />
             {openThreads > 0 && (

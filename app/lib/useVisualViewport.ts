@@ -1,25 +1,32 @@
 import { useEffect, useState } from "react";
 
+export interface VisualViewportRect {
+  /** Visible height in px. */
+  height: number;
+  /** Offset of the visible area from the layout viewport's top, in px. */
+  top: number;
+}
+
 /**
- * Height in px of the part of the page the visitor can actually see, or
- * null before mount and where the browser doesn't report one.
+ * The part of the page the visitor can actually see, or null before mount
+ * and where the browser doesn't report one.
  *
  * Mobile browsers don't shrink the layout viewport for the on-screen
- * keyboard: they scroll it, which carries a `fixed` header off screen and
- * leaves a `bottom: 0` sheet behind the keys. Sizing the app shell to the
- * visual viewport and holding the page scroll at the top keeps the header
- * in place and the sheet above the keyboard. Pinch-zoom is left alone.
+ * keyboard. iOS Safari shifts the layout viewport up instead — even when
+ * the document can't scroll — which carries a `fixed` header off screen
+ * and leaves a `bottom: 0` sheet behind the keys. A fixed shell placed at
+ * `top` and sized to `height` stays exactly over the visible area. Any
+ * real document scroll is reset too; pinch-zoom is left alone.
  */
-export function useVisualViewportHeight(): number | null {
-  const [height, setHeight] = useState<number | null>(null);
+export function useVisualViewport(): VisualViewportRect | null {
+  const [rect, setRect] = useState<VisualViewportRect | null>(null);
 
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return;
     const update = () => {
-      setHeight(viewport.height);
-      const scrolled = window.scrollY !== 0 || viewport.offsetTop !== 0;
-      if (viewport.scale === 1 && scrolled) window.scrollTo(0, 0);
+      setRect({ height: viewport.height, top: viewport.offsetTop });
+      if (viewport.scale === 1 && window.scrollY !== 0) window.scrollTo(0, 0);
     };
     update();
     viewport.addEventListener("resize", update);
@@ -30,5 +37,5 @@ export function useVisualViewportHeight(): number | null {
     };
   }, []);
 
-  return height;
+  return rect;
 }

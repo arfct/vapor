@@ -38,6 +38,23 @@ const CommentClickHandler = Extension.create<{
     return [
       new Plugin({
         props: {
+          handleDOMEvents: {
+            // A touch on a comment or highlight should open its thread, not
+            // focus the editor and raise the keyboard. Cancelling pointerdown
+            // suppresses the mouse events that focus and place the caret;
+            // the click still fires and handleClick below does the rest.
+            pointerdown(view, event) {
+              if (event.pointerType !== "touch") return false;
+              const hit = view.posAtCoords({ left: event.clientX, top: event.clientY });
+              if (!hit) return false;
+              const node = view.state.doc.nodeAt(hit.pos);
+              const marks = node?.isText ? node.marks : view.state.doc.resolve(hit.pos).marks();
+              if (marks.some((m) => m.type.name === "criticComment" || m.type.name === "criticHighlight")) {
+                event.preventDefault();
+              }
+              return false;
+            },
+          },
           handleClick(view, pos) {
             const $pos = view.state.doc.resolve(pos);
             // Use nodeAt for reliable mark detection at boundaries (inclusive:false)

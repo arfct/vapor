@@ -12,7 +12,7 @@ describe("FormatToolbar", () => {
     expect(container.textContent).toBe("");
   });
 
-  it("renders the three menu triggers when an editor exists", () => {
+  it("renders a single Format trigger when an editor exists", () => {
     const fakeEditor = {
       on: () => {},
       off: () => {},
@@ -21,11 +21,11 @@ describe("FormatToolbar", () => {
       state: { selection: { empty: true } },
       chain: () => ({ focus: () => ({ run: () => {} }) }),
     };
-    const { getByLabelText } = renderWithDocument(createElement(FormatToolbar), {
+    const { getByLabelText, queryByLabelText } = renderWithDocument(createElement(FormatToolbar), {
       context: { editorInstance: fakeEditor as never },
     });
-    expect(getByLabelText("Formatting")).toBeTruthy();
-    expect(getByLabelText("Lists")).toBeTruthy();
-    expect(getByLabelText("Insert")).toBeTruthy();
+    expect(getByLabelText("Format")).toBeTruthy();
+    expect(queryByLabelText("Lists")).toBeNull();
+    expect(queryByLabelText("Insert")).toBeNull();
   });
 });

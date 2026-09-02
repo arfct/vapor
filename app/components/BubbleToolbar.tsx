@@ -71,11 +71,12 @@ interface ShouldShowProps {
   state: EditorState;
 }
 
-function baseChecks(view: EditorView, element: HTMLElement, editor: TiptapEditor): boolean {
-  const menuHasFocus = element.contains(document.activeElement);
-  if (!view.hasFocus() && !menuHasFocus) return false;
-  if (!editor.isEditable) return false;
-  return true;
+// No focus gate: iOS's native selection handles steal focus mid-gesture and
+// a `view.hasFocus()` check made the menu flicker or never appear on touch.
+// The context checks below (a real selection, a mark under the caret) are
+// what decide visibility; `updateDelay` absorbs the handle-drag churn.
+function baseChecks(_view: EditorView, _element: HTMLElement, editor: TiptapEditor): boolean {
+  return editor.isEditable;
 }
 
 const shouldShowSelection = ({ editor, element, view, state }: ShouldShowProps) => {
@@ -93,12 +94,18 @@ const shouldShowAnnotation = ({ editor, element, view, state }: ShouldShowProps)
   return getContext(state)?.kind === "annotation";
 };
 
+// 44px tall at every width: Accept/Reject sit side by side and a mis-tap
+// on track changes is destructive.
 const btnClass =
-  "px-2.5 py-1.5 text-sm uppercase tracking-wider text-paper transition-colors hover:bg-paper/15 cursor-pointer";
+  "min-h-[44px] px-4 text-sm uppercase tracking-wider text-paper transition-colors hover:bg-paper/15 cursor-pointer";
 
 const menuClass = "bubble-menu flex bg-ink shadow-md";
 
-const menuOptions = { placement: "bottom" as const, offset: { mainAxis: 8 } };
+// flip/shift keep the menu on screen when the keyboard or viewport edge
+// would otherwise cover it.
+const menuOptions = { placement: "bottom" as const, offset: { mainAxis: 8 }, flip: true, shift: true };
+
+const UPDATE_DELAY_MS = 120;
 
 export default function BubbleToolbar({
   editor,
@@ -117,7 +124,7 @@ export default function BubbleToolbar({
       <BubbleMenu
         editor={editor}
         pluginKey="bubbleSelection"
-        updateDelay={0}
+        updateDelay={UPDATE_DELAY_MS}
         shouldShow={shouldShowSelection}
         options={menuOptions}
         className={menuClass}
@@ -131,7 +138,7 @@ export default function BubbleToolbar({
       <BubbleMenu
         editor={editor}
         pluginKey="bubbleSuggestion"
-        updateDelay={0}
+        updateDelay={UPDATE_DELAY_MS}
         shouldShow={shouldShowSuggestion}
         options={menuOptions}
         className={menuClass}
@@ -151,7 +158,7 @@ export default function BubbleToolbar({
       <BubbleMenu
         editor={editor}
         pluginKey="bubbleAnnotation"
-        updateDelay={0}
+        updateDelay={UPDATE_DELAY_MS}
         shouldShow={shouldShowAnnotation}
         options={menuOptions}
         className={menuClass}

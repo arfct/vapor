@@ -28,9 +28,9 @@ const triggerClass =
   "flex h-full w-[48px] cursor-pointer items-center justify-center transition-colors hover:bg-border";
 
 /**
- * The formatting toolbar, imported from the notes app: Format, Lists, and
- * Insert menus in the document header. The group dims while the editor is
- * unfocused and restores on hover, focus, or an open menu.
+ * The formatting menu in the document header — inline marks, block styles,
+ * lists, and inserts in one menu so the header fits a phone. It dims while
+ * the editor is unfocused and restores on hover, focus, or an open menu.
  */
 export default function FormatToolbar() {
   const editor = useEditorTick();
@@ -94,14 +94,15 @@ export default function FormatToolbar() {
     <div
       className={cn(
         "flex h-full items-center transition-opacity duration-200",
-        dimmed && "opacity-40",
+        // Dim only where hover can undim it; touch screens keep full opacity.
+        dimmed && "[@media(hover:hover)]:opacity-40",
       )}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       <Menu onOpenChange={onOpenChange}>
         <MenuTrigger>
-          <button className={triggerClass} title="Formatting" aria-label="Formatting">
+          <button className={triggerClass} title="Format" aria-label="Format">
             <Icon name="format_size" />
           </button>
         </MenuTrigger>
@@ -121,32 +122,14 @@ export default function FormatToolbar() {
             editor.chain().focus().toggleHeading({ level: 2 }).run())}
           {blockItem("format_h3", "Heading 3", editor.isActive("heading", { level: 3 }), () =>
             editor.chain().focus().toggleHeading({ level: 3 }).run())}
-        </MenuContent>
-      </Menu>
-
-      <Menu onOpenChange={onOpenChange}>
-        <MenuTrigger>
-          <button className={triggerClass} title="Lists" aria-label="Lists">
-            <Icon name="format_list_bulleted" />
-          </button>
-        </MenuTrigger>
-        <MenuContent>
+          <MenuSeparator />
           {blockItem("format_list_bulleted", "Bullet list", editor.isActive("bulletList"), () =>
             editor.chain().focus().toggleBulletList().run())}
           {blockItem("format_list_numbered", "Numbered list", editor.isActive("orderedList"), () =>
             editor.chain().focus().toggleOrderedList().run())}
           {blockItem("format_quote", "Quote", editor.isActive("blockquote"), () =>
             editor.chain().focus().toggleBlockquote().run())}
-        </MenuContent>
-      </Menu>
-
-      <Menu onOpenChange={onOpenChange}>
-        <MenuTrigger>
-          <button className={triggerClass} title="Insert" aria-label="Insert">
-            <Icon name="add_box" />
-          </button>
-        </MenuTrigger>
-        <MenuContent>
+          <MenuSeparator />
           <MenuItem
             className="gap-2"
             onClick={() => {

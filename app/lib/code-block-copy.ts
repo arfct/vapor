@@ -2,37 +2,11 @@ import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { copyText } from "~/lib/clipboard";
 
 const COPIED_FEEDBACK_MS = 1500;
 
 const codeBlockCopyKey = new PluginKey("codeBlockCopy");
-
-/** Writes text to the clipboard, falling back to a hidden textarea + execCommand. */
-export async function copyText(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // Fall through to the legacy path (permissions denied, insecure context).
-  }
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "");
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
-  document.body.appendChild(textarea);
-  textarea.select();
-  let copied = false;
-  try {
-    copied = document.execCommand("copy");
-  } catch {
-    copied = false;
-  }
-  textarea.remove();
-  return copied;
-}
 
 /** The code block containing a position inside its content, if any. */
 function codeBlockAt(view: EditorView, pos: number | undefined): ProseMirrorNode | null {

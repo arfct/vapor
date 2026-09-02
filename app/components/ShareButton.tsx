@@ -1,8 +1,25 @@
 import { useState, useCallback } from "react";
 import { serializeThreads } from "~/lib/thread-serialization";
 import { useDocument } from "~/lib/DocumentContext";
+import { copyText } from "~/lib/clipboard";
 import { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from "~/components/ui/menu";
 import Icon from "~/components/Icon";
+
+const COPY_FEEDBACK_MS = 2000;
+
+type CopyState = "idle" | "copied" | "failed";
+
+const COPY_LABEL: Record<CopyState, string> = {
+  idle: "Copy link",
+  copied: "Copied",
+  failed: "Couldn't copy",
+};
+
+const COPY_ICON: Record<CopyState, string> = {
+  idle: "link",
+  copied: "check",
+  failed: "link",
+};
 
 /**
  * Copy link and Invite an agent only make sense for a document that lives
@@ -16,12 +33,12 @@ export default function ShareButton({
   copyLink?: boolean;
 }) {
   const { docId, markdown, threads } = useDocument();
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<CopyState>("idle");
 
   const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(window.location.href);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const copied = await copyText(window.location.href);
+    setCopyState(copied ? "copied" : "failed");
+    setTimeout(() => setCopyState("idle"), COPY_FEEDBACK_MS);
   }, []);
 
   const handleDownload = useCallback(() => {
@@ -49,8 +66,8 @@ export default function ShareButton({
       <MenuContent>
         {copyLink && (
           <MenuItem className="gap-2" onClick={handleCopy}>
-            <Icon name={copied ? "check" : "link"} />
-            <span>{copied ? "Copied" : "Copy link"}</span>
+            <Icon name={COPY_ICON[copyState]} />
+            <span>{COPY_LABEL[copyState]}</span>
           </MenuItem>
         )}
         <MenuItem className="gap-2" onClick={handleDownload}>

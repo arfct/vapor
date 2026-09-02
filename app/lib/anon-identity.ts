@@ -1,6 +1,7 @@
 import { ANON_ANIMALS, ANON_ADJECTIVES } from "~/shared/anon-animals";
 import { USER_COLOURS } from "~/shared/constants";
 import type { AnonAnimal } from "~/shared/anon-animals";
+import { readStorage, writeStorage, removeStorage } from "~/lib/safe-storage";
 
 const STORAGE_KEY = "vapor-anon";
 const FORMER_KEY = "vapor-former-anon-id";
@@ -37,7 +38,8 @@ function toIdentity(stored: StoredAnon): AnonIdentity {
  * The browser's persistent anonymous identity: a stable random id, an
  * animal, and a cursor colour, assigned once and reused across documents
  * and sessions. Falls back to an ephemeral identity when localStorage is
- * unavailable (private windows, SSR-adjacent environments).
+ * unavailable or throws (private windows, embedded webviews, SSR-adjacent
+ * environments) or holds corrupt data.
  */
 export function getAnonIdentity(): AnonIdentity {
   const fresh: StoredAnon = {
@@ -51,7 +53,7 @@ export function getAnonIdentity(): AnonIdentity {
   };
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = readStorage(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<StoredAnon>;
       if (
@@ -62,14 +64,14 @@ export function getAnonIdentity(): AnonIdentity {
         // Identities stored before adjectives existed get one now, once.
         if (typeof parsed.adjectiveIndex !== "number") {
           parsed.adjectiveIndex = randomIndex(ANON_ADJECTIVES.length);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+          writeStorage(STORAGE_KEY, JSON.stringify(parsed));
         }
         return toIdentity(parsed as StoredAnon);
       }
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
+    writeStorage(STORAGE_KEY, JSON.stringify(fresh));
   } catch {
-    // Storage unavailable — ephemeral identity for this page view.
+    // Corrupt stored value — ephemeral identity for this page view.
   }
   return toIdentity(fresh);
 }
@@ -80,13 +82,13 @@ export function getAnonIdentity(): AnonIdentity {
  * principal. Returns the retired id, or null if there was none.
  */
 export function retireAnonId(): string | null {
+  const raw = readStorage(STORAGE_KEY);
+  if (!raw) return null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<StoredAnon>;
     if (typeof parsed.id !== "string") return null;
-    localStorage.setItem(FORMER_KEY, parsed.id);
-    localStorage.removeItem(STORAGE_KEY);
+    writeStorage(FORMER_KEY, parsed.id);
+    removeStorage(STORAGE_KEY);
     return parsed.id;
   } catch {
     return null;
@@ -95,9 +97,5 @@ export function retireAnonId(): string | null {
 
 /** The previously retired anonymous id, for re-attribution on doc visits. */
 export function formerAnonId(): string | null {
-  try {
-    return localStorage.getItem(FORMER_KEY);
-  } catch {
-    return null;
-  }
+  return readStorage(FORMER_KEY);
 }

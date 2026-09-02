@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { readStorage, writeStorage } from "~/lib/safe-storage";
 
 export type Theme = "light" | "dark" | "auto";
 
@@ -9,7 +10,7 @@ export function useTheme() {
 
   // Read stored theme after hydration to avoid server/client mismatch
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
+    const stored = readStorage(STORAGE_KEY) as Theme | null;
     if (stored && stored !== theme) {
       setThemeState(stored); // eslint-disable-line react-hooks/set-state-in-effect
       document.documentElement.setAttribute("data-theme", stored);
@@ -22,7 +23,7 @@ export function useTheme() {
 
   const setTheme = useCallback((t: Theme) => {
     setThemeState(t);
-    localStorage.setItem(STORAGE_KEY, t);
+    writeStorage(STORAGE_KEY, t);
     document.documentElement.setAttribute("data-theme", t);
   }, []);
 

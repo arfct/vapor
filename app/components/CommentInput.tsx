@@ -109,19 +109,20 @@ export default function CommentInput() {
         value={comment}
         onChange={(e) => setComment(e.target.value)}
         onKeyDown={handleKeyDown}
+        enterKeyHint="send"
         placeholder="Add a comment..."
         className="w-full border border-border bg-paper px-2 py-1.5 outline-none focus:border-coral"
       />
       <div className="mt-1.5 flex gap-1">
         <button
           onClick={handleSubmit}
-          className="flex-1 cursor-pointer border border-border px-2 py-1 text-sm uppercase tracking-wider text-muted transition-colors hover:bg-border"
+          className="min-h-[44px] flex-1 cursor-pointer border border-border px-2 py-1 text-sm uppercase tracking-wider text-muted transition-colors hover:bg-border"
         >
           Add
         </button>
         <button
           onClick={handleCancel}
-          className="flex-1 cursor-pointer border border-border px-2 py-1 text-sm uppercase tracking-wider text-muted transition-colors hover:bg-border"
+          className="min-h-[44px] flex-1 cursor-pointer border border-border px-2 py-1 text-sm uppercase tracking-wider text-muted transition-colors hover:bg-border"
         >
           Cancel
         </button>

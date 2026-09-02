@@ -17,6 +17,11 @@ declare global {
   }
 }
 
+// In-app webviews block Google Identity Services (disallowed_useragent): the
+// script never loads or renderButton leaves the host empty. Past this delay
+// with nothing rendered, show a note instead of an empty slot.
+const GSI_FALLBACK_DELAY_MS = 2500;
+
 const themeOptions: { value: Theme; icon: string; label: string }[] = [
   { value: "light", icon: "light_mode", label: "Light" },
   { value: "dark", icon: "dark_mode", label: "Dark" },
@@ -31,19 +36,42 @@ export default function HeaderMenu() {
   const session = useSession();
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
+  const [signInUnavailable, setSignInUnavailable] = useState(false);
   const buttonHost = useRef<HTMLDivElement | null>(null);
+
+  function toggleMenu() {
+    setSignInUnavailable(false);
+    setOpen((v) => !v);
+  }
 
   // Load Google Identity Services and render its button only while the menu
   // is open with no active session.
   useEffect(() => {
     if (!open || session?.signedIn || !buttonHost.current) return;
     let cancelled = false;
+    const host = buttonHost.current;
+
+    const markUnavailable = () => {
+      if (!cancelled) setSignInUnavailable(true);
+    };
+    const fallbackTimer = window.setTimeout(() => {
+      if (host.childElementCount === 0) markUnavailable();
+    }, GSI_FALLBACK_DELAY_MS);
 
     async function mount() {
-      const config = (await fetch("/auth/config").then((r) => r.json())) as {
-        googleClientId?: string;
-      };
-      if (cancelled || !config.googleClientId) return;
+      let config: { googleClientId?: string };
+      try {
+        config = (await fetch("/auth/config").then((r) => r.json())) as typeof config;
+      } catch {
+        markUnavailable();
+        return;
+      }
+      if (cancelled) return;
+      if (!config.googleClientId) {
+        // Not configured is a server-side gap, not a webview limitation.
+        clearTimeout(fallbackTimer);
+        return;
+      }
 
       const render = () => {
         if (cancelled || !window.google || !buttonHost.current) return;
@@ -68,12 +96,14 @@ export default function HeaderMenu() {
         s.src = "https://accounts.google.com/gsi/client";
         s.async = true;
         s.onload = render;
+        s.onerror = markUnavailable;
         document.head.appendChild(s);
       }
     }
     mount();
     return () => {
       cancelled = true;
+      clearTimeout(fallbackTimer);
     };
   }, [open, session?.signedIn]);
 
@@ -85,7 +115,7 @@ export default function HeaderMenu() {
   return (
     <>
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggleMenu}
         aria-label="Menu"
         className="flex h-full w-[48px] shrink-0 cursor-pointer items-center justify-center transition-colors hover:bg-border"
       >
@@ -124,7 +154,13 @@ export default function HeaderMenu() {
               </div>
             ) : (
               <div className="px-4 py-3">
-                <div ref={buttonHost} />
+                {signInUnavailable ? (
+                  <p className="text-sm text-muted">
+                    Sign-in needs a full browser — open this page in Safari or Chrome.
+                  </p>
+                ) : (
+                  <div ref={buttonHost} />
+                )}
               </div>
             )}
             <div className="flex items-center border-t border-border px-4 py-3">

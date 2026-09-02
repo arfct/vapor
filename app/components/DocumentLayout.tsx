@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
 import { useDocument } from "~/lib/DocumentContext";
 import { deserializeThreads } from "~/lib/thread-serialization";
@@ -14,7 +14,7 @@ import ConnectionStatus from "~/components/ConnectionStatus";
 import HeaderMenu from "~/components/HeaderMenu";
 import CommentInput from "~/components/CommentInput";
 import ThreadList from "~/components/ThreadList";
-import MobilePanel from "~/components/MobilePanel";
+import CommentSheet from "~/components/CommentSheet";
 import Icon from "~/components/Icon";
 import { Menu, MenuTrigger, MenuContent, MenuItem } from "~/components/ui/menu";
 
@@ -52,6 +52,8 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   const {
     yjs,
     editorInstance,
+    threads,
+    activeThreadId,
     showPreview,
     handleEditorReady,
     handleCommentClick,
@@ -64,7 +66,22 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [agentsOpen, setAgentsOpen] = useState(false);
+  // One comments panel, two presentations: a rail beside the document at
+  // lg and up, a full-height sheet over it below. Open by default only where
+  // the rail fits; the sheet renders client-side so narrow SSR shows nothing.
   const [commentsOpen, setCommentsOpen] = useState(true);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCommentsOpen(window.matchMedia("(min-width: 1024px)").matches);
+    setMounted(true);
+  }, []);
+  // Tapping a highlight in the document opens its thread, wherever it lives.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (activeThreadId) setCommentsOpen(true);
+  }, [activeThreadId]);
+  const openThreads = threads.filter((t) => !t.resolved).length;
   const isHome = surface.kind === "home";
 
   // A new document starts empty; the tour stays on the homepage.
@@ -92,7 +109,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
 
   return (
     <div
-      className="flex h-screen flex-col"
+      className="flex h-[100dvh] flex-col pt-[env(safe-area-inset-top)]"
       onDrop={handleDrop}
       onDragOver={isHome ? (e) => e.preventDefault() : undefined}
     >
@@ -170,17 +187,22 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           </>
         )}
         <div className="grow" />
-        <div className="hidden shrink-0 border-l border-border lg:block">
+        <div className="shrink-0 border-l border-border">
           <button
             onClick={() => setCommentsOpen((v) => !v)}
             aria-label={commentsOpen ? "Hide comments" : "Show comments"}
             aria-pressed={commentsOpen}
             title={commentsOpen ? "Hide comments" : "Show comments"}
-            className={`flex h-full w-[48px] cursor-pointer items-center justify-center transition-colors hover:bg-border ${
+            className={`relative flex h-full w-[48px] cursor-pointer items-center justify-center transition-colors hover:bg-border ${
               commentsOpen ? "text-ink" : "text-muted"
             }`}
           >
             <Icon name="comment" />
+            {openThreads > 0 && (
+              <span className="absolute right-1.5 top-1.5 min-w-[16px] rounded-full bg-ink px-1 text-center text-[10px] font-bold leading-4 text-paper">
+                {openThreads}
+              </span>
+            )}
           </button>
         </div>
         <div className="shrink-0 border-l border-border">
@@ -191,7 +213,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
         <AgentsPanel open={agentsOpen} onClose={() => setAgentsOpen(false)} />
       )}
       <div className="flex flex-1 overflow-hidden">
-        <main className="flex-1 overflow-y-auto pb-[33vh] lg:pb-0">
+        <main className="flex-1 overflow-y-auto">
           {/* Server-rendered stand-in until TipTap mounts: keeps the tour's copy indexable. */}
           {isHome && !editorInstance && (
             <pre className="mx-auto w-full max-w-3xl whitespace-pre-wrap p-6 font-sans text-base leading-relaxed text-ink">
@@ -211,18 +233,16 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           />
           {showPreview && <Preview />}
         </main>
-        <aside
-          className={`hidden w-[280px] flex-col overflow-hidden ${
-            commentsOpen ? "lg:flex" : ""
-          }`}
-        >
-          <div className="flex-1 overflow-y-auto">
-            <CommentInput />
-            <ThreadList />
-          </div>
-        </aside>
+        {commentsOpen && (
+          <aside className="hidden w-[280px] flex-col overflow-hidden lg:flex">
+            <div className="flex-1 overflow-y-auto">
+              <CommentInput />
+              <ThreadList />
+            </div>
+          </aside>
+        )}
       </div>
-      <MobilePanel className="lg:hidden" />
+      <CommentSheet open={commentsOpen && mounted} onClose={() => setCommentsOpen(false)} />
     </div>
   );
 }

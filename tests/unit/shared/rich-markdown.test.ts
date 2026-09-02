@@ -205,3 +205,33 @@ describe("agent instructions block", () => {
     expect(getAgentInstructions(docFromMarkdown("Just prose."))).toEqual([]);
   });
 });
+
+describe("task lists", () => {
+  const md = "- [ ] Write the plan\n- [x] Ship it";
+
+  it("parses GFM task items into taskList/taskItem with checked state", () => {
+    const parsed = parseMarkdown(md);
+    if (!parsed.ok) throw new Error(parsed.message);
+    const list = parsed.doc.child(0);
+    expect(list.type.name).toBe("taskList");
+    expect(list.childCount).toBe(2);
+    expect(list.child(0).attrs.checked).toBe(false);
+    expect(list.child(1).attrs.checked).toBe(true);
+    expect(list.child(0).textContent).toBe("Write the plan");
+  });
+
+  it("round-trips unchanged", () => {
+    expect(roundTrip(md)).toBe(md);
+  });
+
+  it("leaves a list with any plain item as a bullet list", () => {
+    const parsed = parseMarkdown("- [ ] task\n- plain");
+    if (!parsed.ok) throw new Error(parsed.message);
+    expect(parsed.doc.child(0).type.name).toBe("bulletList");
+    expect(parsed.doc.child(0).child(0).textContent).toBe("[ ] task");
+  });
+
+  it("survives the Y.Doc round trip with checked state intact", () => {
+    expect(yDocToMarkdown(docFromMarkdown(md))).toBe(md);
+  });
+});

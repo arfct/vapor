@@ -19,7 +19,7 @@ export default function LegalPage({
       <header className="flex items-stretch border-b border-border">
         <Link
           to="/"
-          className="flex items-center bg-ink px-4 py-2 font-medium text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
+          className="flex items-center bg-ink px-4 py-2 font-medium uppercase tracking-wider text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
         >
           vapor
         </Link>

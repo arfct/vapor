@@ -96,10 +96,10 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
       onDrop={handleDrop}
       onDragOver={isHome ? (e) => e.preventDefault() : undefined}
     >
-      <header className="flex h-[48px] shrink-0 items-stretch overflow-x-auto scrollbar-none border-b border-border">
+      <header className="flex h-[48px] shrink-0 items-stretch overflow-hidden border-b border-border">
         <Link
           to="/"
-          className="flex items-center bg-ink px-4 py-2 font-medium text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
+          className="flex shrink-0 items-center bg-ink px-4 py-2 font-medium uppercase tracking-wider text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
         >
           vapor
         </Link>
@@ -117,16 +117,20 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           <FormatToolbar />
         </div>
         {surface.kind === "doc" ? (
-          <div className="flex shrink-0 items-center whitespace-nowrap px-4">
-            <span className="mr-2">
+          // The one cell allowed to shrink: on narrow screens the id and
+          // expiry truncate so the controls on the right stay put.
+          <div className="flex min-w-0 shrink items-center px-3">
+            <span className="mr-2 shrink-0">
               <ConnectionStatus compact />
             </span>
-            <span className="font-mono font-bold">{surface.id}</span>
-            {surface.createdAt && (
-              <span className="ml-2 whitespace-nowrap text-muted">
-                auto-deletes in {formatRemainingTime(surface.createdAt)}
-              </span>
-            )}
+            <span className="min-w-0 truncate">
+              <span className="font-mono font-bold">{surface.id}</span>
+              {surface.createdAt && (
+                <span className="ml-2 text-muted">
+                  vaporized in {formatRemainingTime(surface.createdAt)}
+                </span>
+              )}
+            </span>
           </div>
         ) : (
           <>

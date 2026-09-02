@@ -2227,7 +2227,18 @@ describe("DocumentAgent", () => {
     it("suspends only after sustained failure, and re-subscribe reactivates", async () => {
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
       const { agent, id } = await setupDoc();
-      vi.stubGlobal("fetch", vi.fn(async () => new Response("no", { status: 500 })));
+      const fetchMock = vi.fn(async () => new Response("no", { status: 500 }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      // Delivery signs the payload with WebCrypto before its first fetch,
+      // and that resolves on a real I/O tick the fake clock never waits
+      // for. Spin real ticks until the attempt has started, then advance
+      // the fake clock through the (setTimeout-based) retry ladder.
+      const untilFetchCalls = async (n: number) => {
+        while (fetchMock.mock.calls.length < n) {
+          await new Promise((r) => setImmediate(r));
+        }
+      };
 
       await agent.eventsSubscribe(id, { name: "mention", url: URL, secret: SECRET });
 
@@ -2239,6 +2250,7 @@ describe("DocumentAgent", () => {
       const ytext = para.get(0) as Y.XmlText;
       const base = ytext.length;
       ytext.insert(base, " one @scribe");
+      await untilFetchCalls(1);
       await vi.advanceTimersByTimeAsync(10_000); // burn the retry ladder
       expect(subsRows()[0].failing_since).not.toBeNull();
       expect(subsRows()[0].active).toBe(1);
@@ -2247,6 +2259,7 @@ describe("DocumentAgent", () => {
       await vi.advanceTimersByTimeAsync(61 * 60 * 1000);
       ytext.delete(base, " one @scribe".length);
       ytext.insert(base, " two @scribe");
+      await untilFetchCalls(4);
       await vi.advanceTimersByTimeAsync(10_000);
       expect(subsRows()[0].active).toBe(0);
       cleanup(client);

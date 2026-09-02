@@ -125,10 +125,10 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
       onDrop={handleDrop}
       onDragOver={isHome ? (e) => e.preventDefault() : undefined}
     >
-      <header className="flex h-[60px] shrink-0 items-stretch overflow-hidden border-y border-border lg:h-[48px] lg:border-t-0">
+      <header className="flex h-[60px] shrink-0 items-stretch overflow-hidden border-y border-border lg:border-t-0">
         <Link
           to="/"
-          className="flex shrink-0 items-center bg-ink px-4 py-2 font-medium uppercase tracking-wider text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
+          className="flex shrink-0 items-center px-4 font-medium uppercase tracking-wider text-ink transition-colors hover:bg-border"
         >
           vapor
         </Link>

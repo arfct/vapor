@@ -16,10 +16,10 @@ export default function LegalPage({
 }) {
   return (
     <div className="min-h-screen bg-paper text-ink">
-      <header className="flex items-stretch border-b border-border">
+      <header className="flex h-[60px] items-stretch border-b border-border">
         <Link
           to="/"
-          className="flex items-center bg-ink px-4 py-2 font-medium uppercase tracking-wider text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
+          className="flex items-center px-4 font-medium uppercase tracking-wider text-ink transition-colors hover:bg-border"
         >
           vapor
         </Link>

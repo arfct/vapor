@@ -53,9 +53,8 @@ body {
   min-height: 100dvh;
 }
 
-/* Square header buttons — 60px on phones, 48px from lg up. A button whose
-   menu is open inverts to match the VAPOR mark; the menu hangs flush
-   beneath it. */
+/* Square 60px header buttons. A button whose menu is open inverts to ink,
+   and the menu hangs flush beneath it. */
 .header-button {
   display: flex;
   height: 100%;
@@ -73,11 +72,6 @@ body {
 .header-button[data-popup-open] {
   background-color: var(--color-ink);
   color: var(--color-paper);
-}
-@media (min-width: 1024px) {
-  .header-button {
-    width: 48px;
-  }
 }
 
 /* Editor styles */

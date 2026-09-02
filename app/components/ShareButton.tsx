@@ -39,11 +39,11 @@ export default function ShareButton({
     <Menu>
       <MenuTrigger>
         <button
-          className="flex h-full w-[60px] cursor-pointer items-center justify-center transition-colors hover:bg-border"
+          className="flex h-full w-12 cursor-pointer items-center justify-center transition-colors hover:bg-border"
           aria-label="Share options"
           title="Share"
         >
-          <Icon name="share" />
+          <Icon name="ios_share" />
         </button>
       </MenuTrigger>
       <MenuContent>

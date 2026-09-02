@@ -29,7 +29,7 @@ export default function ModeMenu() {
     <Menu>
       <MenuTrigger>
         <button
-          className="flex h-full w-[60px] cursor-pointer items-center justify-center transition-colors hover:bg-border"
+          className="flex h-full w-12 cursor-pointer items-center justify-center transition-colors hover:bg-border"
           aria-label="Editing mode"
           title={showPreview ? "Markdown" : mode === "suggest" ? "Suggest" : "Edit"}
         >

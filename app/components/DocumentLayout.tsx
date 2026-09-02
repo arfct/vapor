@@ -16,6 +16,7 @@ import CommentInput from "~/components/CommentInput";
 import ThreadList from "~/components/ThreadList";
 import MobilePanel from "~/components/MobilePanel";
 import Icon from "~/components/Icon";
+import { Menu, MenuTrigger, MenuContent, MenuItem } from "~/components/ui/menu";
 
 /**
  * The two places a vapor editor appears. A "doc" lives at /:id behind a
@@ -46,9 +47,6 @@ async function createDocument(content: string, threads: ThreadData[]): Promise<s
   });
   return id;
 }
-
-const headerCell =
-  "flex h-full cursor-pointer items-center px-3 text-sm uppercase tracking-wider transition-colors hover:bg-border";
 
 export default function DocumentLayout({ surface }: { surface: Surface }) {
   const {
@@ -98,17 +96,17 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
       onDrop={handleDrop}
       onDragOver={isHome ? (e) => e.preventDefault() : undefined}
     >
-      <header className="flex h-[60px] shrink-0 items-stretch overflow-x-auto scrollbar-none border-b border-border">
+      <header className="flex h-12 shrink-0 items-stretch overflow-x-auto scrollbar-none border-b border-border">
         <Link
           to="/"
           className="flex items-center bg-ink px-4 py-2 font-medium text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
         >
           vapor
         </Link>
-        <div className="shrink-0 border-r border-border">
+        <div className="shrink-0">
           <ModeMenu />
         </div>
-        <div className="shrink-0 border-r border-border">
+        <div className="shrink-0">
           {isHome ? (
             <ShareButton copyLink={false} />
           ) : (
@@ -129,21 +127,28 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           </div>
         ) : (
           <>
-            <div className="shrink-0 border-r border-border">
-              <button
-                onClick={createBlankDocument}
-                className={`${headerCell} whitespace-nowrap font-medium text-ink`}
-              >
-                New document
-              </button>
-            </div>
-            <div className="shrink-0 border-r border-border">
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className={`${headerCell} whitespace-nowrap text-muted hover:text-ink`}
-              >
-                Drop an .md file
-              </button>
+            <div className="shrink-0">
+              <Menu>
+                <MenuTrigger>
+                  <button
+                    aria-label="Create"
+                    title="Create"
+                    className="flex h-full w-12 cursor-pointer items-center justify-center transition-colors hover:bg-border"
+                  >
+                    <Icon name="add" />
+                  </button>
+                </MenuTrigger>
+                <MenuContent>
+                  <MenuItem className="gap-2" onClick={createBlankDocument}>
+                    <Icon name="note_add" />
+                    <span>New document</span>
+                  </MenuItem>
+                  <MenuItem className="gap-2" onClick={() => fileInputRef.current?.click()}>
+                    <Icon name="upload_file" />
+                    <span>Upload .md file</span>
+                  </MenuItem>
+                </MenuContent>
+              </Menu>
             </div>
             <input
               ref={fileInputRef}
@@ -169,7 +174,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
             aria-label={commentsOpen ? "Hide comments" : "Show comments"}
             aria-pressed={commentsOpen}
             title={commentsOpen ? "Hide comments" : "Show comments"}
-            className={`flex h-full w-[60px] cursor-pointer items-center justify-center transition-colors hover:bg-border ${
+            className={`flex h-full w-12 cursor-pointer items-center justify-center transition-colors hover:bg-border ${
               commentsOpen ? "text-ink" : "text-muted"
             }`}
           >

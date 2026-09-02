@@ -32,7 +32,6 @@ export default function CommentSheet({ open, onClose }: { open: boolean; onClose
 
   // Land on the first thread when the sheet opens with nothing selected.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (open && !activeThreadId && visible.length > 0) setActiveThreadId(visible[0].id);
   }, [open, activeThreadId, visible, setActiveThreadId]);
 

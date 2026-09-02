@@ -120,81 +120,87 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
       onDrop={handleDrop}
       onDragOver={isHome ? (e) => e.preventDefault() : undefined}
     >
-      <header className="flex h-[60px] shrink-0 items-stretch overflow-hidden border-y border-border lg:border-t-0">
+      <header className="doc-header relative flex h-[60px] shrink-0 items-stretch overflow-hidden border-y border-border lg:border-t-0">
         <Link
           to="/"
-          className="flex shrink-0 items-center px-4 font-medium uppercase tracking-wider text-ink transition-colors hover:bg-border"
+          className="flex shrink-0 items-center px-4 font-medium uppercase tracking-wider text-ink transition-colors hover:bg-border lg:absolute lg:inset-y-0 lg:left-0"
         >
           vapor
         </Link>
-        <div className="shrink-0">
-          <ModeMenu />
-        </div>
-        <div className="shrink-0">
-          {isHome ? (
-            <ShareButton copyLink={false} />
-          ) : (
-            <ShareButton onOpenAgents={() => setAgentsOpen(true)} />
-          )}
-        </div>
-        <div className="shrink-0 border-r border-border">
-          <FormatToolbar />
-        </div>
-        {surface.kind === "doc" ? (
-          // The one cell allowed to shrink: on narrow screens the id and
-          // expiry truncate so the controls on the right stay put.
-          <div className="hidden min-w-0 shrink items-center px-3 lg:flex">
-            <span className="mr-2 shrink-0">
-              <ConnectionStatus compact />
-            </span>
-            <span className="min-w-0 truncate">
-              <span className="font-mono font-bold">{surface.id}</span>
-              {surface.createdAt && (
-                <span className="ml-2 text-muted">
-                  vaporized in {formatRemainingTime(surface.createdAt)}
-                </span>
-              )}
-            </span>
-          </div>
-        ) : (
-          <>
+        {/* This cell mirrors <main>, so on desktop the controls can start
+            where the document text starts — same column width and centering. */}
+        <div className="flex min-w-0 flex-1 items-stretch">
+          <div className="toolbar-inset flex min-w-0 flex-1 items-stretch">
             <div className="shrink-0">
-              <Menu>
-                <MenuTrigger>
-                  <button
-                    aria-label="Create"
-                    title="Create"
-                    className="header-button"
-                  >
-                    <Icon name="add" />
-                  </button>
-                </MenuTrigger>
-                <MenuContent>
-                  <MenuItem className="gap-2" onClick={createBlankDocument}>
-                    <Icon name="note_add" />
-                    <span>New document</span>
-                  </MenuItem>
-                  <MenuItem className="gap-2" onClick={() => fileInputRef.current?.click()}>
-                    <Icon name="upload_file" />
-                    <span>Upload .md file</span>
-                  </MenuItem>
-                </MenuContent>
-              </Menu>
+              <ModeMenu />
             </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".md"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) uploadFile(file);
-              }}
-              className="hidden"
-            />
-          </>
-        )}
-        <div className="grow" />
-        <div className="shrink-0 border-l border-border">
+            <div className="shrink-0">
+              {isHome ? (
+                <ShareButton copyLink={false} />
+              ) : (
+                <ShareButton onOpenAgents={() => setAgentsOpen(true)} />
+              )}
+            </div>
+            <div className="shrink-0">
+              <FormatToolbar />
+            </div>
+            {surface.kind === "doc" ? (
+              // The one cell allowed to shrink: the id and expiry truncate so
+              // the controls on the right stay put.
+              <div className="hidden min-w-0 shrink items-center px-3 lg:flex">
+                <span className="mr-2 shrink-0">
+                  <ConnectionStatus compact />
+                </span>
+                <span className="min-w-0 truncate">
+                  <span className="font-mono font-bold">{surface.id}</span>
+                  {surface.createdAt && (
+                    <span className="ml-2 text-muted">
+                      vaporized in {formatRemainingTime(surface.createdAt)}
+                    </span>
+                  )}
+                </span>
+              </div>
+            ) : (
+              <>
+                <div className="shrink-0">
+                  <Menu>
+                    <MenuTrigger>
+                      <button
+                        aria-label="Create"
+                        title="Create"
+                        className="header-button"
+                      >
+                        <Icon name="add" />
+                      </button>
+                    </MenuTrigger>
+                    <MenuContent>
+                      <MenuItem className="gap-2" onClick={createBlankDocument}>
+                        <Icon name="note_add" />
+                        <span>New document</span>
+                      </MenuItem>
+                      <MenuItem className="gap-2" onClick={() => fileInputRef.current?.click()}>
+                        <Icon name="upload_file" />
+                        <span>Upload .md file</span>
+                      </MenuItem>
+                    </MenuContent>
+                  </Menu>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".md"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadFile(file);
+                  }}
+                  className="hidden"
+                />
+              </>
+            )}
+          </div>
+        </div>
+        {/* Mirrors the comments rail's width so the middle cell matches <main>. */}
+        <div className={`flex shrink-0 items-stretch justify-end ${commentsOpen ? "lg:w-[280px]" : ""}`}>
           <button
             onClick={toggleComments}
             aria-label={commentsOpen ? "Hide comments" : "Show comments"}
@@ -209,8 +215,6 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
               </span>
             )}
           </button>
-        </div>
-        <div className="shrink-0 border-l border-border">
           <HeaderMenu />
         </div>
       </header>

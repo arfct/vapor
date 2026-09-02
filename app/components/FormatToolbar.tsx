@@ -29,22 +29,16 @@ const triggerClass = "header-button";
 
 /**
  * The formatting menu in the document header — inline marks, block styles,
- * lists, and inserts in one menu so the header fits a phone. It dims while
- * the editor is unfocused and restores on hover, focus, or an open menu.
+ * lists, and inserts in one menu so the header fits a phone.
  */
 export default function FormatToolbar() {
   const editor = useEditorTick();
   const { mode } = useDocument();
-  const [openMenus, setOpenMenus] = useState(0);
-  const [hovered, setHovered] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkTitle, setLinkTitle] = useState("");
 
   if (!editor) return null;
-
-  const dimmed = !editor.isFocused && !hovered && openMenus === 0;
-  const onOpenChange = (open: boolean) => setOpenMenus((n) => (open ? n + 1 : Math.max(0, n - 1)));
 
   const markButton = (mark: string, icon: string, label: string, toggle: () => void) => (
     <Button
@@ -96,16 +90,8 @@ export default function FormatToolbar() {
   };
 
   return (
-    <div
-      className={cn(
-        "flex h-full items-center transition-opacity duration-200",
-        // Dim only where hover can undim it; touch screens keep full opacity.
-        dimmed && "[@media(hover:hover)]:opacity-40",
-      )}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <Menu onOpenChange={onOpenChange}>
+    <div className="flex h-full items-center">
+      <Menu>
         <MenuTrigger>
           <button className={triggerClass} title="Format" aria-label="Format">
             <Icon name="format_size" />
@@ -172,7 +158,7 @@ export default function FormatToolbar() {
 
       {/* Contextual: only while the selection is inside a table. */}
       {editor.isActive("table") && (
-        <Menu onOpenChange={onOpenChange}>
+        <Menu>
           <MenuTrigger>
             <button className={triggerClass} title="Table" aria-label="Table">
               <Icon name="table" />

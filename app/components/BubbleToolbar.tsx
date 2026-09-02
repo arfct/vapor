@@ -79,8 +79,20 @@ function baseChecks(_view: EditorView, _element: HTMLElement, editor: TiptapEdit
   return editor.isEditable;
 }
 
+// On touch screens the OS edit menu (Cut / Copy / Paste) sits exactly where
+// the Comment bubble would; the header comment button covers that case.
+// Suggestion and annotation bubbles stay: they show at a caret, not a
+// selection, so the OS menu isn't there.
+let coarsePointer: MediaQueryList | null = null;
+function isCoarsePointer(): boolean {
+  if (typeof window === "undefined") return false;
+  coarsePointer ??= window.matchMedia("(pointer: coarse)");
+  return coarsePointer.matches;
+}
+
 const shouldShowSelection = ({ editor, element, view, state }: ShouldShowProps) => {
   if (!baseChecks(view, element, editor)) return false;
+  if (isCoarsePointer()) return false;
   return getContext(state)?.kind === "selection";
 };
 

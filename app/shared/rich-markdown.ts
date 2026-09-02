@@ -20,6 +20,11 @@ import { blockHash, parseAnchor as parseLegacyAnchor, type DocBlock } from "./ag
 /* ---------- Schema (names must match the TipTap extensions) ---------- */
 
 const blockIdAttr = { blockId: { default: null as string | null } };
+const tableCellAttrs = {
+  colspan: { default: 1 },
+  rowspan: { default: 1 },
+  colwidth: { default: null as number[] | null },
+};
 
 export const richSchema = new Schema({
   nodes: {
@@ -57,6 +62,13 @@ export const richSchema = new Schema({
       defining: true,
     },
     horizontalRule: { group: "block", attrs: blockIdAttr },
+    // GFM tables. Cells hold inline content only — one line per cell, as
+    // markdown can express — so the attrs exist for prosemirror-tables'
+    // commands, not for anything the serializer can write.
+    table: { content: "tableRow+", group: "block", attrs: blockIdAttr, isolating: true },
+    tableRow: { content: "(tableCell | tableHeader)+" },
+    tableCell: { content: "inline*", attrs: tableCellAttrs, isolating: true },
+    tableHeader: { content: "inline*", attrs: tableCellAttrs, isolating: true },
     hardBreak: { inline: true, group: "inline", selectable: false },
     text: { inline: true, group: "inline" },
   },
@@ -101,6 +113,7 @@ export const BLOCK_ID_TYPES = [
   "bulletList",
   "orderedList",
   "taskList",
+  "table",
   "horizontalRule",
 ];
 
@@ -214,10 +227,15 @@ function taskListRule(state: { tokens: MdToken[] }): void {
 
 function makeMarkdownIt() {
   const md = new MarkdownIt({ html: false, linkify: true });
-  // Not representable in the schema — leave their syntax as literal text.
-  md.disable(["image", "table"]);
+  // Images aren't representable in the schema — leave their syntax as text.
+  md.disable(["image"]);
   md.inline.ruler.before("emphasis", "critic", criticRule as never);
   md.core.ruler.before("inline", "task_list", taskListRule as never);
+  // The schema has rows directly under table; markdown-it's thead/tbody
+  // wrappers have no node to map to, so drop them.
+  md.core.ruler.push("table_sections", ((state: { tokens: MdToken[] }) => {
+    state.tokens = state.tokens.filter((t) => !/^(thead|tbody)_(open|close)$/.test(t.type));
+  }) as never);
   return md;
 }
 
@@ -247,6 +265,10 @@ export const markdownParser = new MarkdownParser(richSchema, makeMarkdownIt() as
     block: "taskItem",
     getAttrs: (tok) => ({ checked: tok.attrGet("checked") === "true" }),
   },
+  table: { block: "table" },
+  tr: { block: "tableRow" },
+  th: { block: "tableHeader" },
+  td: { block: "tableCell" },
   hr: { node: "horizontalRule" },
   hardbreak: { node: "hardBreak" },
   em: { mark: "italic" },
@@ -297,6 +319,26 @@ export const markdownSerializer = new MarkdownSerializer(
     },
     horizontalRule(state, node) {
       state.write("---");
+      state.closeBlock(node);
+    },
+    table(state, node) {
+      const rows: string[][] = [];
+      node.forEach((row) => {
+        const cells: string[] = [];
+        row.forEach((cell) => cells.push(serializeCellInline(cell)));
+        rows.push(cells);
+      });
+      if (rows.length === 0) return;
+      const width = Math.max(...rows.map((r) => r.length));
+      const pad = (r: string[]) => [...r, ...Array(width - r.length).fill("")];
+      const line = (r: string[]) => "| " + pad(r).join(" | ") + " |";
+      // GFM requires a header row; a table whose first row is body cells
+      // gets an empty header so the separator still parses.
+      const firstIsHeader = node.firstChild?.firstChild?.type.name === "tableHeader";
+      const body = firstIsHeader ? rows.slice(1) : rows;
+      state.write(line(firstIsHeader ? rows[0] : Array(width).fill("")) + "\n");
+      state.write("| " + Array(width).fill("---").join(" | ") + " |");
+      for (const r of body) state.write("\n" + line(r));
       state.closeBlock(node);
     },
     bulletList(state, node) {
@@ -365,6 +407,16 @@ export const markdownSerializer = new MarkdownSerializer(
 );
 
 const SERIALIZE_OPTS = { tightLists: true };
+
+/** A table cell's inline content as one line of markdown, pipes escaped. */
+function serializeCellInline(cell: PMNode): string {
+  const para = richSchema.node("paragraph", null, cell.content);
+  return markdownSerializer
+    .serialize(richSchema.node("doc", null, [para]), SERIALIZE_OPTS)
+    .replace(/\n+$/, "")
+    .replace(/\n/g, " ")
+    .replace(/\|/g, "\\|");
+}
 
 export function serializePmDoc(doc: PMNode): string {
   return markdownSerializer.serialize(doc, SERIALIZE_OPTS).replace(/\n+$/, "");

@@ -209,3 +209,30 @@ describe("task lists", () => {
     expect(yDocToMarkdown(docFromMarkdown(md))).toBe(md);
   });
 });
+
+describe("tables", () => {
+  const md = "| Name | Role |\n| --- | --- |\n| Ada | Analyst |\n| Bob | **Lead** |";
+
+  it("parses a GFM table into table/tableRow/tableHeader/tableCell", () => {
+    const parsed = parseMarkdown(md);
+    if (!parsed.ok) throw new Error(parsed.message);
+    const table = parsed.doc.child(0);
+    expect(table.type.name).toBe("table");
+    expect(table.childCount).toBe(3);
+    expect(table.child(0).child(0).type.name).toBe("tableHeader");
+    expect(table.child(1).child(0).type.name).toBe("tableCell");
+    expect(table.child(2).child(1).textContent).toBe("Lead");
+  });
+
+  it("round-trips unchanged, through the Y.Doc too", () => {
+    expect(roundTrip(md)).toBe(md);
+    expect(yDocToMarkdown(docFromMarkdown(md))).toBe(md);
+  });
+
+  it("escapes pipes inside cells", () => {
+    const parsed = parseMarkdown("| a |\n| --- |\n| x \\| y |");
+    if (!parsed.ok) throw new Error(parsed.message);
+    expect(parsed.doc.child(0).child(1).textContent).toBe("x | y");
+    expect(serializePmDoc(parsed.doc)).toContain("| x \\| y |");
+  });
+});

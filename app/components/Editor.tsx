@@ -10,6 +10,11 @@ import { CriticAddition, CriticDeletion, CriticComment, CriticHighlight, CriticP
 import { BlockId } from "~/lib/block-id";
 import { CodeBlockCopy } from "~/lib/code-block-copy";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
+import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
+
+// One line per cell, as GFM can express — matches the shared schema.
+const InlineTableCell = TableCell.extend({ content: "inline*" });
+const InlineTableHeader = TableHeader.extend({ content: "inline*" });
 import { parseMarkdown } from "~/shared/rich-markdown";
 import { suggestModePlugin } from "~/lib/suggest-mode";
 import BubbleToolbar from "~/components/BubbleToolbar";
@@ -261,6 +266,10 @@ export default function Editor({
         CodeBlockCopy,
         TaskList,
         TaskItem.configure({ nested: true }),
+        Table.configure({ resizable: false }),
+        TableRow,
+        InlineTableHeader,
+        InlineTableCell,
         CriticAddition,
         CriticDeletion,
         CriticComment,

@@ -13,7 +13,6 @@ export interface PlaceholderPreset {
  */
 export const PLACEHOLDER_PRESETS: readonly PlaceholderPreset[] = [
   { title: "Time is an illusion.", body: "Lunchtime doubly so." },
-  { title: "Don't panic.", body: "Mostly harmless." },
   { title: "It was the best of times,", body: "it was the worst of times." },
   { title: "The past is a foreign country:", body: "they do things differently there." },
   { title: "We are all in the gutter,", body: "but some of us are looking at the stars." },

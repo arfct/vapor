@@ -18,9 +18,15 @@ function statusLabel(person: Person): string {
   }
 }
 
+/**
+ * One face. Animal avatars have a translucent tint, so an opaque paper
+ * disc sits underneath — otherwise overlapping faces show through each
+ * other. People who aren't connected go grey and half strength.
+ */
 function Face({ person, className }: { person: Person; className: string }) {
+  const away = person.status !== "online";
   return (
-    <span className={`relative ${person.status === "online" ? "" : "opacity-50"}`}>
+    <span className={`inline-flex rounded-full bg-paper ${away ? "opacity-50 grayscale" : ""}`}>
       <Avatar
         name={person.user.name}
         avatar={person.user.avatar}
@@ -28,16 +34,13 @@ function Face({ person, className }: { person: Person; className: string }) {
         color={person.user.color}
         className={className}
       />
-      {person.status === "online" && (
-        <span className="absolute -bottom-px -right-px h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-paper" />
-      )}
     </span>
   );
 }
 
 /**
- * Who else is on this document: connected people at full strength with a
- * green dot, past commenters and viewers dimmed, at most a few faces with
+ * Who else is on this document: connected people in colour, past
+ * commenters and viewers grey and dimmed, at most a few faces with
  * a "+N" for the rest. Opens a list with each person's status. Header
  * space is tight on phones, so it shows from lg up.
  */

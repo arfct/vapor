@@ -141,8 +141,9 @@ body {
   margin-top: 0;
 }
 
-/* The document's first H1 is its title: 40px and lighter. */
-.tiptap > h1:first-of-type {
+/* A document that opens with an H1 has a title: 40px and lighter. An H1
+   further down is an ordinary heading. */
+.tiptap > h1:first-child {
   font-size: 40px;
   font-weight: 500;
 }

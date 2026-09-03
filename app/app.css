@@ -568,7 +568,7 @@ body {
 }
 
 .cm-deletion {
-  color: #ef4444;
+  color: var(--color-muted);
   text-decoration: line-through;
 }
 
@@ -705,7 +705,6 @@ body {
 }
 
 [data-theme="dark"] .cm-addition { color: #4ade80; }
-[data-theme="dark"] .cm-deletion { color: #f87171; }
 
 /* Dark theme — auto mode follows system preference */
 @media (prefers-color-scheme: dark) {
@@ -726,7 +725,6 @@ body {
   }
 
   [data-theme="auto"] .cm-addition { color: #4ade80; }
-  [data-theme="auto"] .cm-deletion { color: #f87171; }
 }
 
 /* Wide gamut accents */

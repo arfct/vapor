@@ -24,10 +24,10 @@ function CommentRow({
   connectTo?: string;
   /** Show the author name and age; an unselected thread shows avatars and text only. */
   showMeta: boolean;
-  /** Leave room for the card's floating actions: on hover, or always (while active). */
-  reserveActions?: boolean | "always";
+  /** Leave room for the card's floating actions (shown only while selected). */
+  reserveActions?: boolean;
 }) {
-  const reserve = `${reserveActions ? "group-hover:pr-14" : ""} ${reserveActions === "always" ? "pr-14" : ""}`;
+  const reserve = reserveActions ? "pr-14" : "";
   return (
     <div className="flex gap-2">
       <div className="flex w-[25px] shrink-0 flex-col items-center">
@@ -146,8 +146,8 @@ export default function ThreadPanel({
     >
       {/* Actions float in the corner so they never stretch the author row. */}
       <div
-        className={`absolute right-2 top-4 flex h-[25px] items-center gap-1 transition-opacity focus-within:opacity-100 group-hover:opacity-100 ${
-          menuOpen || active ? "opacity-100" : "opacity-0"
+        className={`absolute right-2 top-4 flex h-[25px] items-center gap-1 transition-opacity ${
+          menuOpen || active ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -191,7 +191,7 @@ export default function ThreadPanel({
         text={thread.commentText}
         connectTo={thread.replies[0]?.author.color}
         showMeta={active}
-        reserveActions={active || menuOpen ? "always" : true}
+        reserveActions={active || menuOpen}
       />
 
       {thread.replies.map((reply, i) => (

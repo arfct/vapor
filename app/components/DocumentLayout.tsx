@@ -96,6 +96,19 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     main.addEventListener("scroll", onScroll, { passive: true });
     return () => main.removeEventListener("scroll", onScroll);
   }, []);
+  // ⌘⌥M (Ctrl+Alt+M elsewhere) starts a comment. Lives here, not in the
+  // comment box, which only mounts once a comment is open. Compare the
+  // physical key: with Option held, macOS reports e.key as "µ".
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.altKey && !e.shiftKey && e.code === "KeyM") {
+        e.preventDefault();
+        openCommentInput();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [openCommentInput]);
   const openThreads = threads.filter((t) => !t.resolved).length;
   const isHome = surface.kind === "home";
   // The tour's cast is fictional; showing them as present makes the pile

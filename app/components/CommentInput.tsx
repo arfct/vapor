@@ -13,18 +13,6 @@ export default function CommentInput() {
   const [comment, setComment] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Keyboard shortcut: Cmd+Shift+M
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "m") {
-        e.preventDefault();
-        onActiveChange(true);
-      }
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onActiveChange]);
-
   // Focus synchronously: iOS only raises the keyboard for a focus() that
   // runs inside the tap's own task, so a deferred focus lands silently.
   useEffect(() => {

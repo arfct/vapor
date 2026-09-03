@@ -119,13 +119,14 @@ describe("ThreadPanel", () => {
     expect(moreBtn.querySelector(".material-symbols-outlined")).toBeTruthy();
   });
 
-  it("actions are hidden until hover on an inactive thread", () => {
+  it("actions are hidden on an inactive thread, hover included", () => {
     const props = defaultProps();
     const { getByLabelText } = render(createElement(ThreadPanel, props));
 
     const actions = getByLabelText("Resolve").parentElement as HTMLElement;
     expect(actions.className).toContain("opacity-0");
-    expect(actions.className).toContain("group-hover:opacity-100");
+    expect(actions.className).toContain("pointer-events-none");
+    expect(actions.className).not.toContain("group-hover:opacity-100");
   });
 
   it("actions are visible when the thread is active", () => {

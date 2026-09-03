@@ -31,10 +31,14 @@ describe("ThreadPanel", () => {
     onDelete: vi.fn(),
   });
 
-  it("renders author name, timestamp, and comment text", () => {
-    const props = defaultProps();
-    const { getByText } = render(createElement(ThreadPanel, props));
+  it("renders author name and age only while selected, text always", () => {
+    const inactive = render(createElement(ThreadPanel, defaultProps()));
+    expect(inactive.getByText("Test comment")).toBeTruthy();
+    expect(inactive.queryByText("Alice")).toBeNull();
+    expect(inactive.queryByText("now")).toBeNull();
+    inactive.unmount();
 
+    const { getByText } = render(createElement(ThreadPanel, { ...defaultProps(), active: true }));
     expect(getByText("Alice")).toBeTruthy();
     expect(getByText("now")).toBeTruthy();
     expect(getByText("Test comment")).toBeTruthy();
@@ -86,6 +90,7 @@ describe("ThreadPanel", () => {
   it("renders replies with author header and text", () => {
     const props = {
       ...defaultProps(),
+      active: true,
       thread: makeThread({
         replies: [
           {

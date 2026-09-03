@@ -14,6 +14,7 @@ function CommentRow({
   timestamp,
   text,
   connectTo,
+  showMeta,
   reserveActions = false,
 }: {
   author: ThreadData["author"];
@@ -21,9 +22,12 @@ function CommentRow({
   text: string;
   /** Colour of the next comment's author; when set, a dotted line runs down to it. */
   connectTo?: string;
+  /** Show the author name and age; an unselected thread shows avatars and text only. */
+  showMeta: boolean;
   /** Leave room for the card's floating actions: on hover, or always (while active). */
   reserveActions?: boolean | "always";
 }) {
+  const reserve = `${reserveActions ? "group-hover:pr-14" : ""} ${reserveActions === "always" ? "pr-14" : ""}`;
   return (
     <div className="flex gap-2">
       <div className="flex w-[25px] shrink-0 flex-col items-center">
@@ -43,28 +47,27 @@ function CommentRow({
       </div>
       <div className={`min-w-0 flex-1 ${connectTo ? "pb-4" : ""}`}>
         {/* Exactly the avatar's height, so the name centres on it and the
-            text follows right underneath. */}
-        {/* The name keeps its width; the client/time meta gives way first.
-            Room for the floating actions is only taken while they show. */}
-        <div
-          className={`flex h-[25px] min-w-0 items-center gap-2 ${
-            reserveActions ? "group-hover:pr-14" : ""
-          } ${reserveActions === "always" ? "pr-14" : ""}`}
-        >
-          <span
-            className="max-w-full shrink-0 truncate text-base font-bold"
-            style={{
-              color: `color-mix(in oklab, ${author.color} 50%, var(--author-shade-base, #000))`,
-            }}
-          >
-            {author.name}
-          </span>
-          <span className="min-w-0 truncate text-sm text-muted">
-            {author.agentClient ? `${author.agentClient} • ` : ""}
-            {timeAgo(timestamp)}
-          </span>
-        </div>
-        <p className="mt-0.5 text-base">{text}</p>
+            text follows right underneath. The name keeps its width; the
+            client/time meta gives way first. Room for the floating actions
+            is only taken while they show. */}
+        {showMeta && (
+          <div className={`flex h-[25px] min-w-0 items-center gap-2 ${reserve}`}>
+            <span
+              className="max-w-full shrink-0 truncate text-base font-bold"
+              style={{
+                color: `color-mix(in oklab, ${author.color} 50%, var(--author-shade-base, #000))`,
+              }}
+            >
+              {author.name}
+            </span>
+            <span className="min-w-0 truncate text-sm text-muted">
+              {author.agentClient ? `${author.agentClient} • ` : ""}
+              {timeAgo(timestamp)}
+            </span>
+          </div>
+        )}
+        {/* Without the meta row the first line centres on the avatar instead. */}
+        <p className={showMeta ? "mt-0.5 text-base" : `pt-[2px] text-base ${reserve}`}>{text}</p>
       </div>
     </div>
   );
@@ -187,6 +190,7 @@ export default function ThreadPanel({
         timestamp={thread.createdAt}
         text={thread.commentText}
         connectTo={thread.replies[0]?.author.color}
+        showMeta={active}
         reserveActions={active || menuOpen ? "always" : true}
       />
 
@@ -197,6 +201,7 @@ export default function ThreadPanel({
           timestamp={reply.createdAt}
           text={reply.text}
           connectTo={thread.replies[i + 1]?.author.color}
+          showMeta={active}
         />
       ))}
 

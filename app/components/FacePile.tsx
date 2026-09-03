@@ -49,7 +49,9 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
   const people = usePeople(yjs, threads, alsoOnline);
   if (people.length === 0) return null;
 
-  const shown = people.slice(0, MAX_FACES);
+  // Oldest on the left, newest on the right; the newest faces are the
+  // ones shown, with the older remainder counted at the left.
+  const shown = people.slice(-MAX_FACES);
   const overflow = people.length - shown.length;
   const online = people.filter((p) => p.status === "online").length;
   const label = `${people.length} ${people.length === 1 ? "person" : "people"}, ${online} here now`;
@@ -64,16 +66,16 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
             className="hidden h-full cursor-pointer items-center px-3 transition-colors data-[popup-open]:bg-ink lg:flex [@media(hover:hover)]:hover:bg-border"
           >
             <span className="flex items-center">
-              {shown.map((person, i) => (
-                <span key={person.key} className={i === 0 ? "" : "-ml-2"}>
-                  <Face person={person} className="h-7 w-7 ring-2 ring-paper" />
-                </span>
-              ))}
               {overflow > 0 && (
-                <span className="-ml-2 flex h-7 w-7 items-center justify-center rounded-full bg-border text-xs font-medium text-ink ring-2 ring-paper">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-border text-xs font-medium text-ink ring-2 ring-paper">
                   +{overflow}
                 </span>
               )}
+              {shown.map((person, i) => (
+                <span key={person.key} className={i === 0 && overflow === 0 ? "" : "-ml-2"}>
+                  <Face person={person} className="h-7 w-7 ring-2 ring-paper" />
+                </span>
+              ))}
             </span>
           </button>
         }

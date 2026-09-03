@@ -111,12 +111,16 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   }, [openCommentInput]);
   const openThreads = threads.filter((t) => !t.resolved).length;
   const isHome = surface.kind === "home";
-  // The tour's cast is fictional; showing them as present makes the pile
-  // demonstrate what it's for instead of listing people who left days ago.
-  const demoPresence = useMemo(
-    () => (isHome ? threads.flatMap((t) => [t.author, ...t.replies.map((r) => r.author)]) : undefined),
-    [isHome, threads],
-  );
+  // The tour's cast is fictional; those who wrote within a day of the
+  // newest comment count as present so the pile demonstrates what it's
+  // for, while the older commenter reads as idle.
+  const demoPresence = useMemo(() => {
+    if (!isHome) return undefined;
+    const comments = threads.flatMap((t) => [t, ...t.replies]);
+    const newest = Math.max(0, ...comments.map((c) => c.createdAt));
+    const since = newest - 24 * 60 * 60 * 1000;
+    return comments.filter((c) => c.createdAt > since).map((c) => c.author);
+  }, [isHome, threads]);
 
   // With text selected the header button means "comment on this": iOS's
   // own edit menu covers the bubble menu, so this is the reliable path.

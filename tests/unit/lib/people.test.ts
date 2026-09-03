@@ -30,7 +30,7 @@ const viewer = (name: string, lastSeen: number): ViewerRecord => ({
 describe("mergePeople", () => {
   const self = user("Me", "me");
 
-  it("orders online, then commenters, then viewers, most recent first", () => {
+  it("orders everyone oldest activity first; connected people without any come last", () => {
     const people = mergePeople({
       online: [{ name: "Ada", color: "#000", id: "ada" }],
       viewers: new Map([
@@ -41,11 +41,11 @@ describe("mergePeople", () => {
       self,
     });
     expect(people.map((p) => `${p.user.name}:${p.status}`)).toEqual([
-      "Ada:online",
-      "Cy:commented",
+      "Old Viewer:viewed",
       "Bob:commented",
       "New Viewer:viewed",
-      "Old Viewer:viewed",
+      "Cy:commented",
+      "Ada:online",
     ]);
   });
 
@@ -69,8 +69,8 @@ describe("mergePeople", () => {
       self,
     });
     expect(people.map((p) => [p.user.name, p.status, p.isAgent])).toEqual([
-      ["Agentic Lobster", "commented", true],
       ["Bob", "commented", false],
+      ["Agentic Lobster", "commented", true],
     ]);
   });
 

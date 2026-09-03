@@ -63,10 +63,10 @@ export interface MergeInput {
 }
 
 /**
- * Everyone who has touched the document, one entry per person: connected
- * people first, then commenters, then past viewers — each person under
- * their strongest status, most recent first within a group. The local
- * user is omitted; the pile is about who else is here.
+ * Everyone who has touched the document, one entry per person under their
+ * strongest status (connected > commented > viewed), ordered oldest
+ * activity to newest. The local user is omitted; the pile is about who
+ * else is here.
  */
 export function mergePeople({ online, viewers, threads, self }: MergeInput): Person[] {
   const selfKey = personKey(self);
@@ -113,8 +113,8 @@ export function mergePeople({ online, viewers, threads, self }: MergeInput): Per
     people.set(key, { key, user, status: "online", isAgent: Boolean(presence.isAgent), at: existing?.at });
   }
 
-  const rank: Record<PersonStatus, number> = { online: 0, commented: 1, viewed: 2 };
-  return [...people.values()].sort(
-    (a, b) => rank[a.status] - rank[b.status] || (b.at ?? 0) - (a.at ?? 0) || a.user.name.localeCompare(b.user.name),
-  );
+  // Oldest activity first, newest last; someone connected with no recorded
+  // activity counts as newest of all.
+  const when = (p: Person) => p.at ?? Number.POSITIVE_INFINITY;
+  return [...people.values()].sort((a, b) => when(a) - when(b) || a.user.name.localeCompare(b.user.name));
 }

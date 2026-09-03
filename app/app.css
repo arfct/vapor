@@ -76,11 +76,12 @@ body {
 
 /* Desktop toolbar: the controls start where the document text starts —
    the editor's 48rem column, centred the same way, plus its 1.5rem
-   padding — but never run under the wordmark on a narrow desktop. */
+   padding, less 24px so the first icon (centred in its 60px button) sits
+   on the text edge — but never run under the wordmark on a narrow desktop. */
 @media (min-width: 1024px) {
   .toolbar-inset {
     max-width: 48rem;
-    margin-left: max(calc((100% - 48rem) / 2 + 1.5rem), 7rem);
+    margin-left: max(calc((100% - 48rem) / 2 + 1.5rem - 24px), 7rem);
   }
 }
 

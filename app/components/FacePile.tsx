@@ -12,9 +12,9 @@ function statusLabel(person: Person): string {
     case "online":
       return "Here now";
     case "commented":
-      return person.at ? `Commented ${timeAgo(person.at)}` : "Commented";
+      return person.at ? `Commented · ${timeAgo(person.at)}` : "Commented";
     case "viewed":
-      return person.at ? `Viewed ${timeAgo(person.at)}` : "Viewed";
+      return person.at ? `Viewed · ${timeAgo(person.at)}` : "Viewed";
   }
 }
 

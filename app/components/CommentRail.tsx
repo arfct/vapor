@@ -10,6 +10,8 @@ const GAP = 8;
 const THREAD_HEIGHT_GUESS = 96;
 const INPUT_HEIGHT_GUESS = 150;
 const TAIL_SPACE = 24;
+/** Cards sit this much above their anchor so the author row, not the card edge, lines up with the text. */
+const CARD_OFFSET = 20;
 
 function sameMap(a: Map<string, number>, b: Map<string, number>): boolean {
   if (a.size !== b.size) return false;
@@ -62,7 +64,7 @@ export default function CommentRail({ scrollRef }: { scrollRef: RefObject<HTMLEl
       if (pos === undefined || !editorVisible) return null;
       const clamped = Math.max(0, Math.min(pos, view.state.doc.content.size));
       try {
-        return Math.round(view.coordsAtPos(clamped).top - origin);
+        return Math.max(0, Math.round(view.coordsAtPos(clamped).top - origin) - CARD_OFFSET);
       } catch {
         return null;
       }

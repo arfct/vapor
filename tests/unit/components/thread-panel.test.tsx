@@ -36,7 +36,7 @@ describe("ThreadPanel", () => {
     const { getByText } = render(createElement(ThreadPanel, props));
 
     expect(getByText("Alice")).toBeTruthy();
-    expect(getByText("just now")).toBeTruthy();
+    expect(getByText("now")).toBeTruthy();
     expect(getByText("Test comment")).toBeTruthy();
   });
 

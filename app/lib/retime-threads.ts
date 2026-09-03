@@ -9,7 +9,7 @@ export const DEMO_AGES = [2 * DAY, 3 * HOUR, 4 * MINUTE];
 
 /**
  * Re-dates seeded threads relative to `now` so a demo document's comments
- * read as a lively mix ("2d ago", "3h ago", "4m ago") instead of drifting
+ * read as a lively mix ("2d", "3h", "4m") instead of drifting
  * ever older. Replies keep their original distance from their thread.
  */
 export function retimeThreads(threads: ThreadData[], now = Date.now()): ThreadData[] {

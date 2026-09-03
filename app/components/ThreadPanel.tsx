@@ -33,7 +33,7 @@ function CommentRow({
           color={author.color}
           className="h-[25px] w-[25px]"
         />
-        {connected && <div className="mt-1 w-px flex-1 bg-border" />}
+        {connected && <div className="mt-1 w-0 flex-1 border-l border-dotted border-muted" />}
       </div>
       <div className={`min-w-0 flex-1 ${connected ? "pb-4" : ""}`}>
         {/* Exactly the avatar's height, so the name centres on it and the

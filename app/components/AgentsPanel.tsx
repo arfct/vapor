@@ -1,17 +1,10 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { useParams } from "react-router";
 import type { AgentRosterEntry } from "~/shared/agent-protocol";
+import { timeAgo } from "~/lib/time-ago";
 
 function relativeTime(ts: number | null): string {
-  if (ts == null) return "never";
-  const diffMs = Date.now() - ts;
-  if (diffMs < 60_000) return "just now";
-  const mins = Math.floor(diffMs / 60_000);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return ts == null ? "never" : timeAgo(ts);
 }
 
 function SnippetRow({ label, text }: { label: string; text: string }) {

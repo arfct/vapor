@@ -544,16 +544,27 @@ body {
 }
 
 /* Comment/highlight underline: border-bottom rather than text-decoration —
+   `--comment-color` is set per range by the editor to the commenter's colour;
+   canary is the fallback for ranges without a known thread.
    decoration shorthands fall back to currentColor when the variable fails
    to resolve, which rendered as a black bar in some contexts. */
 .cm-comment,
 .cm-highlight {
-  border-bottom: 3px solid var(--color-canary, #ffe014);
+  border-bottom: 3px solid var(--comment-color, var(--color-canary, #ffe014));
+}
+
+/* Per-author colour: the decoration span draws the underline in place of
+   the mark it sits inside (marks render outside inline decorations). */
+.cm-highlight > .cm-colored {
+  border-bottom: 3px solid var(--comment-color);
+}
+.cm-highlight:has(> .cm-colored) {
+  border-bottom-color: transparent;
 }
 
 /* Active: underline + background */
 .cm-comment-active {
-  background-color: color-mix(in srgb, var(--color-canary) 22%, transparent);
+  background-color: color-mix(in srgb, var(--comment-color, var(--color-canary)) 22%, transparent);
 }
 
 /* Point comment marker (square + vertical line for location-only comments) */
@@ -562,7 +573,7 @@ body {
   position: relative;
   width: 8px;
   height: 3px;
-  background: var(--color-canary);
+  background: var(--comment-color, var(--color-canary));
   vertical-align: -2px;
   margin: 0 1px;
   cursor: pointer;
@@ -577,7 +588,7 @@ body {
   transform: translateX(-50%);
   width: 1.5px;
   height: 1.1em;
-  background: var(--color-canary);
+  background: var(--comment-color, var(--color-canary));
   opacity: 0.5;
 }
 
@@ -587,8 +598,8 @@ body {
 :has(> .cm-comment-active) > .cm-point-marker,
 .cm-comment-active .cm-point-marker {
   height: 1.3em;
-  background-color: color-mix(in srgb, var(--color-canary) 30%, transparent);
-  border-bottom: 3px solid var(--color-canary);
+  background-color: color-mix(in srgb, var(--comment-color, var(--color-canary)) 30%, transparent);
+  border-bottom: 3px solid var(--comment-color, var(--color-canary));
 }
 
 :has(> .cm-comment-active) > .cm-point-marker::before,

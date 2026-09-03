@@ -68,6 +68,7 @@ export function createMockDocumentContext(
     activeThreadId: null,
     setActiveThreadId: vi.fn(),
     activeCommentRange: null,
+    commentColors: [],
     addReply: vi.fn(),
     resolveThread: vi.fn(),
     deleteThread: vi.fn(),

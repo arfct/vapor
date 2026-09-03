@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useMemo } from "react";
 import { getMarkRange, type Editor as TiptapEditor } from "@tiptap/core";
-import type { CapturedSelection, DocMode } from "~/shared/types";
+import type { CapturedSelection, CommentColorRange, DocMode } from "~/shared/types";
 import type { MatchedThread } from "~/lib/comment-threads";
 import type { YjsEditorState } from "~/lib/useYjsEditor";
 import { useThreads } from "~/lib/useThreads";
@@ -39,6 +39,8 @@ export interface DocumentContextValue {
   activeThreadId: string | null;
   setActiveThreadId: (id: string | null) => void;
   activeCommentRange: { from: number; to: number } | null;
+  /** Every thread's range in the document with its author's colour. */
+  commentColors: CommentColorRange[];
   addReply: (threadId: string, text: string) => void;
   resolveThread: (threadId: string) => void;
   deleteThread: (threadId: string) => void;
@@ -184,6 +186,22 @@ export function DocumentProvider({
     return { from, to };
   }, [activeThreadId, threads, editorInstance]);
 
+  const commentColors = useMemo<CommentColorRange[]>(() => {
+    const highlightType = editorInstance?.schema.marks.criticHighlight;
+    const ranges: CommentColorRange[] = [];
+    for (const thread of threads) {
+      if (!thread.position || !thread.endPosition) continue;
+      let from = thread.position;
+      if (editorInstance && highlightType && thread.highlightText && from > 0) {
+        const $pos = editorInstance.state.doc.resolve(Math.min(from - 1, editorInstance.state.doc.content.size));
+        const hlRange = getMarkRange($pos, highlightType);
+        if (hlRange && hlRange.to === from) from = hlRange.from;
+      }
+      ranges.push({ from, to: thread.endPosition, color: thread.author.color });
+    }
+    return ranges;
+  }, [threads, editorInstance]);
+
   const value: DocumentContextValue = {
     docId,
     createdAt,
@@ -208,6 +226,7 @@ export function DocumentProvider({
     activeThreadId,
     setActiveThreadId,
     activeCommentRange,
+    commentColors,
     addReply,
     resolveThread,
     deleteThread,

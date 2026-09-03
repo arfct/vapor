@@ -40,12 +40,14 @@ describe("ThreadPanel", () => {
     expect(getByText("Test comment")).toBeTruthy();
   });
 
-  it("applies bg-border/50 when active", () => {
+  it("tints the card with the author's colour when active", () => {
     const props = { ...defaultProps(), active: true };
     const { container } = render(createElement(ThreadPanel, props));
 
-    const wrapper = container.firstElementChild as HTMLElement;
-    expect(wrapper.className).toContain("bg-canary/15");
+    // jsdom drops color-mix() from the parsed style, so read the attribute.
+    const style = (container.firstElementChild as HTMLElement).getAttribute("style") ?? "";
+    expect(style).toContain("color-mix");
+    expect(style).toContain(props.thread.author.color);
   });
 
   it("has no active background when inactive", () => {

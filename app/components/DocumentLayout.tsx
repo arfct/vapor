@@ -51,6 +51,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     handleCommentClick,
     commentHighlight,
     activeCommentRange,
+    commentColors,
     openCommentInput,
     commentActive,
     handleResolveAtCursor,
@@ -84,6 +85,17 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (activeThreadId || commentActive) setCommentsOpen(true);
   }, [activeThreadId, commentActive]);
+  // On desktop the header's bottom rule appears only once the document
+  // has scrolled up under it.
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    const onScroll = () => setScrolled(main.scrollTop > 110);
+    onScroll();
+    main.addEventListener("scroll", onScroll, { passive: true });
+    return () => main.removeEventListener("scroll", onScroll);
+  }, []);
   const openThreads = threads.filter((t) => !t.resolved).length;
   const isHome = surface.kind === "home";
   // The tour's cast is fictional; showing them as present makes the pile
@@ -133,7 +145,11 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
       onDrop={handleDrop}
       onDragOver={isHome ? (e) => e.preventDefault() : undefined}
     >
-      <header className="doc-header relative flex h-[60px] shrink-0 items-stretch overflow-hidden border-y border-border lg:border-t-0">
+      <header
+        className={`doc-header relative flex h-[60px] shrink-0 items-stretch overflow-hidden border-y border-border transition-colors lg:border-t-0 ${
+          scrolled ? "" : "lg:border-b-transparent"
+        }`}
+      >
         <Link
           to="/"
           className="doc-wordmark flex shrink-0 items-center px-4 font-medium uppercase tracking-wider text-ink transition-colors hover:bg-border lg:absolute lg:inset-y-0 lg:left-0"
@@ -255,6 +271,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
               onCommentClick={handleCommentClick}
               commentHighlight={commentHighlight}
               activeCommentRange={activeCommentRange}
+              commentColors={commentColors}
               onNewComment={openCommentInput}
               onResolveAtCursor={handleResolveAtCursor}
               onDeleteAtCursor={handleDeleteAtCursor}

@@ -45,7 +45,9 @@ function CommentRow({
             reserveActions ? "group-hover:pr-14" : ""
           } ${reserveActions === "always" ? "pr-14" : ""}`}
         >
-          <span className="max-w-full shrink-0 truncate text-base font-bold">{author.name}</span>
+          <span className="max-w-full shrink-0 truncate text-base font-bold" style={{ color: author.color }}>
+            {author.name}
+          </span>
           <span className="min-w-0 truncate text-sm text-muted">
             {author.agentClient ? `${author.agentClient} • ` : ""}
             {timeAgo(timestamp)}
@@ -125,8 +127,13 @@ export default function ThreadPanel({
   return (
     <div
       className={`group relative cursor-pointer border px-3 py-4 transition-colors ${
-        active ? "border-border bg-canary/15" : "border-transparent hover:border-border"
+        active ? "border-border" : "border-transparent hover:border-border"
       }`}
+      style={
+        active
+          ? { backgroundColor: `color-mix(in srgb, ${thread.author.color} 12%, transparent)` }
+          : undefined
+      }
       onClick={() => onSelect(active ? null : thread.id)}
     >
       {/* Actions float in the corner so they never stretch the author row. */}

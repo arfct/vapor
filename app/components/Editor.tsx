@@ -1,4 +1,6 @@
 import { useEffect, useCallback, useRef } from "react";
+import type { CommentColorRange } from "~/shared/types";
+import { CommentColors, commentColorsKey, commentColorAt } from "~/lib/comment-colors";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { Extension, getMarkRange, type Editor as TiptapEditor } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
@@ -179,9 +181,11 @@ const ActiveCommentHighlight = Extension.create({
               to: number;
             } | null;
             if (!range) return DecorationSet.empty;
+            const color = commentColorAt(state, range.from);
             return DecorationSet.create(state.doc, [
               Decoration.inline(range.from, range.to, {
                 class: "cm-comment-active",
+                ...(color ? { style: `--comment-color: ${color}` } : {}),
               }),
             ]);
           },
@@ -243,6 +247,7 @@ export default function Editor({
   onCommentClick,
   commentHighlight,
   activeCommentRange,
+  commentColors,
   onNewComment,
   onResolveAtCursor,
   onDeleteAtCursor,
@@ -257,6 +262,7 @@ export default function Editor({
   onCommentClick?: (commentText: string) => void;
   commentHighlight?: { from: number; to: number } | null;
   activeCommentRange?: { from: number; to: number } | null;
+  commentColors?: CommentColorRange[];
   onNewComment?: () => void;
   onResolveAtCursor?: () => void;
   onDeleteAtCursor?: () => void;
@@ -313,6 +319,7 @@ export default function Editor({
         CommentClickHandler.configure({ onCommentClick }),
         CommentHighlight,
         ActiveCommentHighlight,
+        CommentColors,
       ],
       editorProps: {
         attributes: {
@@ -372,6 +379,17 @@ export default function Editor({
       if (el && !isComfortablyInView(el)) el.scrollIntoView({ block: "center", behavior: "smooth" });
     }
   }, [editor, activeCommentRange]);
+
+  // Push per-thread colours into the editor whenever they change.
+  const prevColorsRef = useRef("");
+  useEffect(() => {
+    if (!editor) return;
+    const ranges = commentColors ?? [];
+    const key = JSON.stringify(ranges);
+    if (key === prevColorsRef.current) return;
+    prevColorsRef.current = key;
+    editor.view.dispatch(editor.state.tr.setMeta(commentColorsKey, ranges));
+  }, [editor, commentColors]);
 
   useEffect(() => {
     if (editor && onEditorReady) {

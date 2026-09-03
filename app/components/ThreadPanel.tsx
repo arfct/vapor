@@ -14,13 +14,14 @@ function CommentRow({
   timestamp,
   text,
   connected,
-  children,
+  reserveActions = false,
 }: {
   author: ThreadData["author"];
   timestamp: number;
   text: string;
   connected: boolean;
-  children?: React.ReactNode;
+  /** Leave room on the right for the card's floating action buttons. */
+  reserveActions?: boolean;
 }) {
   return (
     <div className="flex gap-2">
@@ -35,17 +36,16 @@ function CommentRow({
         {connected && <div className="mt-1 w-px flex-1 bg-border" />}
       </div>
       <div className={`min-w-0 flex-1 ${connected ? "pb-4" : ""}`}>
-        <div className="flex min-h-[25px] items-center gap-2">
-          <div className="flex min-w-0 items-baseline gap-2">
-            <span className="truncate text-base font-bold">{author.name}</span>
-            <span className="shrink-0 text-sm text-muted">
-              {author.agentClient ? `${author.agentClient} • ` : ""}
-              {timeAgo(timestamp)}
-            </span>
-          </div>
-          {children}
+        {/* Exactly the avatar's height, so the name centres on it and the
+            text follows right underneath. */}
+        <div className={`flex h-[25px] min-w-0 items-center gap-2 ${reserveActions ? "pr-14" : ""}`}>
+          <span className="truncate text-base font-bold">{author.name}</span>
+          <span className="shrink-0 text-sm text-muted">
+            {author.agentClient ? `${author.agentClient} • ` : ""}
+            {timeAgo(timestamp)}
+          </span>
         </div>
-        <p className="mt-1 text-base">{text}</p>
+        <p className="mt-0.5 text-base">{text}</p>
       </div>
     </div>
   );
@@ -118,57 +118,59 @@ export default function ThreadPanel({
 
   return (
     <div
-      className={`group cursor-pointer border px-3 py-4 transition-colors ${
+      className={`group relative cursor-pointer border px-3 py-4 transition-colors ${
         active ? "border-border bg-canary/15" : "border-transparent hover:border-border"
       }`}
       onClick={() => onSelect(active ? null : thread.id)}
     >
+      {/* Actions float in the corner so they never stretch the author row. */}
+      <div
+        className={`absolute right-2 top-4 flex h-[25px] items-center gap-1 bg-inherit transition-opacity focus-within:opacity-100 group-hover:opacity-100 ${
+          menuOpen || active ? "opacity-100" : "opacity-0"
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={() => onResolve(thread.id)}
+          title={thread.resolved ? "Reopen" : "Resolve"}
+          aria-label={thread.resolved ? "Reopen" : "Resolve"}
+          className="flex h-[25px] w-[25px] cursor-pointer items-center justify-center text-muted transition-colors hover:text-ink"
+        >
+          <Icon name={thread.resolved ? "undo" : "check"} />
+        </button>
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={() => setMenuOpen((v) => !v)}
+            title="More actions"
+            aria-label="More actions"
+            className="flex h-[25px] w-[25px] cursor-pointer items-center justify-center text-muted transition-colors hover:text-ink"
+          >
+            <Icon name="more_vert" />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full z-10 min-w-28 border border-border bg-paper py-1 shadow-lg">
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  onDelete(thread.id);
+                }}
+                className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-red-500 transition-colors hover:bg-border"
+              >
+                <Icon name="delete" />
+                Delete
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
       <CommentRow
         author={thread.author}
         timestamp={thread.createdAt}
         text={thread.commentText}
         connected={thread.replies.length > 0}
-      >
-        <div
-          className={`ml-auto flex items-center gap-1 transition-opacity focus-within:opacity-100 group-hover:opacity-100 ${
-            menuOpen || active ? "opacity-100" : "opacity-0"
-          }`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            onClick={() => onResolve(thread.id)}
-            title={thread.resolved ? "Reopen" : "Resolve"}
-            aria-label={thread.resolved ? "Reopen" : "Resolve"}
-            className="cursor-pointer p-2.5 text-muted transition-colors hover:text-ink"
-          >
-            <Icon name={thread.resolved ? "undo" : "check"} />
-          </button>
-          <div className="relative" ref={menuRef}>
-            <button
-              onClick={() => setMenuOpen((v) => !v)}
-              title="More actions"
-              aria-label="More actions"
-              className="cursor-pointer p-2.5 text-muted transition-colors hover:text-ink"
-            >
-              <Icon name="more_vert" />
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-full z-10 min-w-28 border border-border bg-paper py-1 shadow-lg">
-                <button
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onDelete(thread.id);
-                  }}
-                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-red-500 transition-colors hover:bg-border"
-                >
-                  <Icon name="delete" />
-                  Delete
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </CommentRow>
+        reserveActions
+      />
 
       {thread.replies.map((reply, i) => (
         <CommentRow

@@ -173,9 +173,11 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
         >
           vapor
         </Link>
-        {/* This cell mirrors <main>, so on desktop the controls can start
-            where the document text starts — same column width and centering. */}
-        <div className="flex min-w-0 flex-1 items-stretch">
+        {/* This cell mirrors the editor column, so on desktop the controls
+            can start where the document text starts — same width and
+            centering. The right cell floats over it, so only the rail's
+            width is subtracted. */}
+        <div className={`flex min-w-0 flex-1 items-stretch ${commentsOpen ? "lg:mr-[280px]" : ""}`}>
           <div className="toolbar-inset flex min-w-0 flex-1 items-stretch">
             <div className="shrink-0">
               <ModeMenu />
@@ -245,8 +247,8 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
             )}
           </div>
         </div>
-        {/* Mirrors the comments rail's width so the middle cell matches <main>. */}
-        <div className={`flex shrink-0 items-stretch justify-end ${commentsOpen ? "lg:w-[280px]" : ""}`}>
+        {/* Out of the flow on desktop so its width never shifts the centred group. */}
+        <div className="flex shrink-0 items-stretch justify-end lg:absolute lg:inset-y-0 lg:right-0">
           <button
             onClick={toggleComments}
             aria-label={commentsOpen ? "Hide comments" : "Show comments"}

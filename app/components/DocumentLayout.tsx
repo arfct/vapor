@@ -136,7 +136,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
       <header className="doc-header relative flex h-[60px] shrink-0 items-stretch overflow-hidden border-y border-border lg:border-t-0">
         <Link
           to="/"
-          className="flex shrink-0 items-center px-4 font-medium uppercase tracking-wider text-ink transition-colors hover:bg-border lg:absolute lg:inset-y-0 lg:left-0"
+          className="doc-wordmark flex shrink-0 items-center px-4 font-medium uppercase tracking-wider text-ink transition-colors hover:bg-border lg:absolute lg:inset-y-0 lg:left-0"
         >
           vapor
         </Link>

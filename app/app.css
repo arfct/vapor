@@ -84,16 +84,13 @@ body {
   }
 }
 
-/* On desktop the toolbar recedes until the pointer reaches it, a menu is
-   open, or focus is inside it. */
+/* On desktop the wordmark blurs until the pointer reaches the toolbar, a
+   menu is open, or focus is inside it. */
 @media (hover: hover) and (min-width: 1024px) {
-  .doc-header {
-    transition:
-      opacity 0.25s ease,
-      filter 0.25s ease;
+  .doc-wordmark {
+    transition: filter 0.25s ease;
   }
-  .doc-header:not(:hover):not(:focus-within):not(:has([data-popup-open])) {
-    opacity: 0.1;
+  .doc-header:not(:hover):not(:focus-within):not(:has([data-popup-open])) .doc-wordmark {
     filter: blur(2px);
   }
 }

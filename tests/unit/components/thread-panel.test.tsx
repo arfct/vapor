@@ -44,10 +44,9 @@ describe("ThreadPanel", () => {
     const props = { ...defaultProps(), active: true };
     const { container } = render(createElement(ThreadPanel, props));
 
-    // jsdom drops color-mix() from the parsed style, so read the attribute.
-    const style = (container.firstElementChild as HTMLElement).getAttribute("style") ?? "";
-    expect(style).toContain("color-mix");
-    expect(style).toContain(props.thread.author.color);
+    const wrapper = container.firstElementChild as HTMLElement;
+    expect(wrapper.style.getPropertyValue("--author-color")).toBe(props.thread.author.color);
+    expect(wrapper.className).toContain("var(--author-color)");
   });
 
   it("has no active background when inactive", () => {

@@ -127,13 +127,11 @@ export default function ThreadPanel({
   return (
     <div
       className={`group relative cursor-pointer border px-3 py-4 transition-colors ${
-        active ? "border-border" : "border-transparent hover:border-border"
-      }`}
-      style={
         active
-          ? { backgroundColor: `color-mix(in srgb, ${thread.author.color} 12%, transparent)` }
-          : undefined
-      }
+          ? "border-border bg-[color-mix(in_srgb,var(--author-color)_12%,transparent)]"
+          : "border-transparent hover:border-border"
+      }`}
+      style={{ "--author-color": thread.author.color } as React.CSSProperties}
       onClick={() => onSelect(active ? null : thread.id)}
     >
       {/* Actions float in the corner so they never stretch the author row. */}

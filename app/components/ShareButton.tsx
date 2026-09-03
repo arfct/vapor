@@ -80,12 +80,12 @@ export default function ShareButton({
         {copyLink && (
           <>
             {/* On phones the header has no room for these; they live here instead. */}
-            <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted lg:hidden">
+            <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted md:hidden">
               <ConnectionStatus compact />
               <span className="font-mono font-bold text-ink">{docId}</span>
               {createdAt && <span>vaporized in {formatRemainingTime(createdAt)}</span>}
             </div>
-            <MenuSeparator className="lg:hidden" />
+            <MenuSeparator className="md:hidden" />
           </>
         )}
         {copyLink && canShare && (

@@ -70,7 +70,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   const [mounted, setMounted] = useState(false);
   const [wide, setWide] = useState(true);
   useEffect(() => {
-    const query = window.matchMedia("(min-width: 1024px)");
+    const query = window.matchMedia("(min-width: 768px)");
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCommentsOpen(query.matches);
     setWide(query.matches);
@@ -163,13 +163,13 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
       onDragOver={isHome ? (e) => e.preventDefault() : undefined}
     >
       <header
-        className={`doc-header relative flex h-[60px] shrink-0 items-stretch overflow-hidden border-y border-border transition-colors lg:border-t-0 ${
-          scrolled ? "" : "lg:border-b-transparent"
+        className={`doc-header relative flex h-[60px] shrink-0 items-stretch overflow-hidden border-y border-border transition-colors md:border-t-0 ${
+          scrolled ? "" : "md:border-b-transparent"
         }`}
       >
         <Link
           to="/"
-          className="doc-wordmark flex shrink-0 items-center px-4 font-medium uppercase tracking-wider text-ink transition-colors hover:bg-border lg:absolute lg:inset-y-0 lg:left-0"
+          className="doc-wordmark flex shrink-0 items-center px-4 font-medium tracking-wider text-ink transition-colors hover:bg-border md:absolute md:inset-y-0 md:left-0"
         >
           vapor
         </Link>
@@ -178,8 +178,8 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
             centering. The right cell floats over it, so only the rail's
             width is subtracted. */}
         <div
-          className={`flex min-w-0 flex-1 items-stretch lg:transition-[margin-right] lg:duration-300 lg:ease-out ${
-            commentsOpen ? "lg:mr-[280px]" : ""
+          className={`flex min-w-0 flex-1 items-stretch md:transition-[margin-right] md:duration-300 md:ease-out ${
+            commentsOpen ? "md:mr-[280px]" : ""
           }`}
         >
           <div className="toolbar-inset flex min-w-0 flex-1 items-stretch">
@@ -199,7 +199,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
             {surface.kind === "doc" ? (
               // The one cell allowed to shrink: the id and expiry truncate so
               // the controls on the right stay put.
-              <div className="hidden min-w-0 shrink items-center px-3 lg:flex">
+              <div className="hidden min-w-0 shrink items-center px-3 md:flex">
                 <span className="mr-2 shrink-0">
                   <ConnectionStatus compact />
                 </span>
@@ -252,7 +252,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           </div>
         </div>
         {/* Out of the flow on desktop so its width never shifts the centred group. */}
-        <div className="flex shrink-0 items-stretch justify-end lg:absolute lg:inset-y-0 lg:right-0">
+        <div className="flex shrink-0 items-stretch justify-end md:absolute md:inset-y-0 md:right-0">
           <button
             onClick={toggleComments}
             aria-label={commentsOpen ? "Hide comments" : "Show comments"}
@@ -306,7 +306,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           {/* Stays mounted on desktop and animates its width shut, so the
               document column slides rather than jumping. */}
           <aside
-            className="hidden shrink-0 overflow-hidden transition-[width,opacity] duration-300 ease-out lg:block"
+            className="hidden shrink-0 overflow-hidden transition-[width,opacity] duration-300 ease-out md:block"
             style={{ width: commentsOpen ? 280 : 0, opacity: commentsOpen ? 1 : 0 }}
             aria-hidden={!commentsOpen}
           >

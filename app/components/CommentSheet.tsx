@@ -46,7 +46,7 @@ export default function CommentSheet({ open, onClose }: { open: boolean; onClose
 
   return (
     <div
-      className="fixed inset-x-0 bottom-0 z-30 flex max-h-[60dvh] flex-col border-t border-border bg-paper pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_rgba(0,0,0,0.08)] lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 flex max-h-[60dvh] flex-col border-t border-border bg-paper pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_rgba(0,0,0,0.08)] md:hidden"
       role="dialog"
       aria-label="Comments"
     >

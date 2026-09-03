@@ -78,7 +78,7 @@ body {
    the editor's 48rem column, centred the same way, plus its 1.5rem
    padding, less 24px so the first icon (centred in its 60px button) sits
    on the text edge — but never run under the wordmark on a narrow desktop. */
-@media (min-width: 1024px) {
+@media (min-width: 768px) {
   .toolbar-inset {
     max-width: 48rem;
     margin-left: max(calc((100% - 48rem) / 2 + 1.5rem - 24px), 7rem);
@@ -87,7 +87,7 @@ body {
 
 /* On desktop the wordmark blurs until the pointer reaches the toolbar, a
    menu is open, or focus is inside it. */
-@media (hover: hover) and (min-width: 1024px) {
+@media (hover: hover) and (min-width: 768px) {
   .doc-wordmark {
     transition: filter 0.25s ease;
   }

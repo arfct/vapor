@@ -51,7 +51,12 @@ function CommentRow({
             reserveActions ? "group-hover:pr-14" : ""
           } ${reserveActions === "always" ? "pr-14" : ""}`}
         >
-          <span className="max-w-full shrink-0 truncate text-base font-bold" style={{ color: author.color }}>
+          <span
+            className="max-w-full shrink-0 truncate text-base font-bold"
+            style={{
+              color: `color-mix(in oklab, ${author.color} 50%, var(--author-shade-base, #000))`,
+            }}
+          >
             {author.name}
           </span>
           <span className="min-w-0 truncate text-sm text-muted">
@@ -132,17 +137,13 @@ export default function ThreadPanel({
 
   return (
     <div
-      className={`group relative cursor-pointer border px-3 py-4 transition-colors ${
-        active
-          ? "border-border bg-[color-mix(in_srgb,var(--author-color)_12%,transparent)]"
-          : "border-transparent hover:border-border"
-      }`}
+      className={`thread-card group relative cursor-pointer bg-paper px-3 py-4 ${active ? "is-active" : ""}`}
       style={{ "--author-color": thread.author.color } as React.CSSProperties}
       onClick={() => onSelect(active ? null : thread.id)}
     >
       {/* Actions float in the corner so they never stretch the author row. */}
       <div
-        className={`absolute right-2 top-4 flex h-[25px] items-center gap-1 bg-inherit transition-opacity focus-within:opacity-100 group-hover:opacity-100 ${
+        className={`absolute right-2 top-4 flex h-[25px] items-center gap-1 transition-opacity focus-within:opacity-100 group-hover:opacity-100 ${
           menuOpen || active ? "opacity-100" : "opacity-0"
         }`}
         onClick={(e) => e.stopPropagation()}

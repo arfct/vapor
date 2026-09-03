@@ -494,6 +494,28 @@ body {
   font-variation-settings: "opsz" 20, "wght" 300;
 }
 
+/* Thread card: the author's colour is set inline as --author-color. The
+   name uses a deep shade of it (mixed toward black on light, white on
+   dark); the selected card gets a hairline of the colour via box-shadow,
+   plus a soft shadow in a near-black shade at 10%. */
+.thread-card {
+  --author-name: color-mix(in oklab, var(--author-color) 50%, var(--author-shade-base, #000));
+  --author-deep: color-mix(in oklab, var(--author-color) 35%, #000);
+  border-radius: 4px;
+  transition: box-shadow 0.15s ease;
+}
+@media (hover: hover) {
+  .thread-card:hover {
+    box-shadow: 0 0 0 1px var(--color-border);
+  }
+}
+.thread-card.is-active,
+.thread-card.is-active:hover {
+  box-shadow:
+    0 0 0 1px var(--author-color),
+    0 2px 8px color-mix(in srgb, var(--author-deep) 10%, transparent);
+}
+
 /* Dotted line joining a thread's avatars; the gradient (set inline) runs
    from one author's colour to the next, the mask cuts it into dots. */
 .thread-connector {
@@ -673,6 +695,7 @@ body {
   --color-border: #2a2a2a;
   --color-accent: #262626;
   --color-destructive: #f87171;
+  --author-shade-base: #fff;
   --code-keyword: #c678dd;
   --code-string: #98c379;
   --code-number: #d19a66;
@@ -693,6 +716,7 @@ body {
     --color-border: #2a2a2a;
     --color-accent: #262626;
     --color-destructive: #f87171;
+  --author-shade-base: #fff;
     --code-keyword: #c678dd;
     --code-string: #98c379;
     --code-number: #d19a66;

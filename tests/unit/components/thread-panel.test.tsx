@@ -40,22 +40,21 @@ describe("ThreadPanel", () => {
     expect(getByText("Test comment")).toBeTruthy();
   });
 
-  it("tints the card with the author's colour when active", () => {
+  it("marks the active card and exposes the author's colour for its outline", () => {
     const props = { ...defaultProps(), active: true };
     const { container } = render(createElement(ThreadPanel, props));
 
     const wrapper = container.firstElementChild as HTMLElement;
     expect(wrapper.style.getPropertyValue("--author-color")).toBe(props.thread.author.color);
-    expect(wrapper.className).toContain("var(--author-color)");
+    expect(wrapper.className).toContain("is-active");
   });
 
-  it("has no active background when inactive", () => {
+  it("is not marked active when inactive", () => {
     const props = defaultProps();
     const { container } = render(createElement(ThreadPanel, props));
 
     const wrapper = container.firstElementChild as HTMLElement;
-    expect(wrapper.className).not.toContain("bg-border/50");
-    expect(wrapper.className).not.toContain("border-coral");
+    expect(wrapper.className).not.toContain("is-active");
   });
 
   it("toggle: clicking active thread deselects (passes null)", () => {

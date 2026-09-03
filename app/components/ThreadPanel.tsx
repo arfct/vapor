@@ -20,8 +20,8 @@ function CommentRow({
   timestamp: number;
   text: string;
   connected: boolean;
-  /** Leave room on the right for the card's floating action buttons. */
-  reserveActions?: boolean;
+  /** Leave room for the card's floating actions: on hover, or always (while active). */
+  reserveActions?: boolean | "always";
 }) {
   return (
     <div className="flex gap-2">
@@ -38,9 +38,15 @@ function CommentRow({
       <div className={`min-w-0 flex-1 ${connected ? "pb-4" : ""}`}>
         {/* Exactly the avatar's height, so the name centres on it and the
             text follows right underneath. */}
-        <div className={`flex h-[25px] min-w-0 items-center gap-2 ${reserveActions ? "pr-14" : ""}`}>
-          <span className="truncate text-base font-bold">{author.name}</span>
-          <span className="shrink-0 text-sm text-muted">
+        {/* The name keeps its width; the client/time meta gives way first.
+            Room for the floating actions is only taken while they show. */}
+        <div
+          className={`flex h-[25px] min-w-0 items-center gap-2 ${
+            reserveActions ? "group-hover:pr-14" : ""
+          } ${reserveActions === "always" ? "pr-14" : ""}`}
+        >
+          <span className="max-w-full shrink-0 truncate text-base font-bold">{author.name}</span>
+          <span className="min-w-0 truncate text-sm text-muted">
             {author.agentClient ? `${author.agentClient} • ` : ""}
             {timeAgo(timestamp)}
           </span>
@@ -169,7 +175,7 @@ export default function ThreadPanel({
         timestamp={thread.createdAt}
         text={thread.commentText}
         connected={thread.replies.length > 0}
-        reserveActions
+        reserveActions={active || menuOpen ? "always" : true}
       />
 
       {thread.replies.map((reply, i) => (

@@ -180,7 +180,7 @@ export default function CommentRail({ scrollRef }: { scrollRef: RefObject<HTMLEl
   const tops = layoutComments(items, commentActive ? NEW_COMMENT : activeThreadId, GAP);
   const bottom = items.reduce((max, item) => Math.max(max, (tops.get(item.id) ?? 0) + item.height), 0);
 
-  const cardClass = `absolute inset-x-0 ${settled ? "transition-[top] duration-300 ease-out" : ""}`;
+  const cardClass = `absolute left-0 right-[12px] ${settled ? "transition-[top] duration-300 ease-out" : ""}`;
 
   return (
     <div className="relative" style={{ height: bottom + (resolvedCount > 0 ? 60 : TAIL_SPACE) }}>

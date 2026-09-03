@@ -40,7 +40,7 @@ function CommentRow({
         />
         {connectTo && (
           <div
-            className="thread-connector mt-1 w-px flex-1"
+            className="thread-connector mt-1 w-[2px] flex-1"
             style={{ backgroundImage: `linear-gradient(to bottom, ${author.color}, ${connectTo})` }}
           />
         )}

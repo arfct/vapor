@@ -237,12 +237,14 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
             title={commentsOpen ? "Hide comments" : "Show comments"}
             className={`header-button relative ${commentsOpen ? "text-ink" : "text-muted"}`}
           >
-            <Icon name="comment" />
-            {openThreads > 0 && (
-              <span className="absolute right-1.5 top-1.5 min-w-[16px] rounded-full bg-ink px-1 text-center text-[10px] font-bold leading-4 text-paper">
-                {openThreads}
-              </span>
-            )}
+            <span className="relative flex items-center justify-center">
+              <Icon name="mode_comment" />
+              {openThreads > 0 && (
+                <span className="absolute inset-0 flex items-center justify-center pb-[3px] text-[9px] font-bold leading-none">
+                  {openThreads}
+                </span>
+              )}
+            </span>
           </button>
           <FacePile alsoOnline={demoPresence} />
           <HeaderMenu />

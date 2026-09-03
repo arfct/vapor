@@ -13,13 +13,14 @@ function CommentRow({
   author,
   timestamp,
   text,
-  connected,
+  connectTo,
   reserveActions = false,
 }: {
   author: ThreadData["author"];
   timestamp: number;
   text: string;
-  connected: boolean;
+  /** Colour of the next comment's author; when set, a dotted line runs down to it. */
+  connectTo?: string;
   /** Leave room for the card's floating actions: on hover, or always (while active). */
   reserveActions?: boolean | "always";
 }) {
@@ -33,9 +34,14 @@ function CommentRow({
           color={author.color}
           className="h-[25px] w-[25px]"
         />
-        {connected && <div className="mt-1 w-0 flex-1 border-l border-dotted border-muted" />}
+        {connectTo && (
+          <div
+            className="thread-connector mt-1 w-px flex-1"
+            style={{ backgroundImage: `linear-gradient(to bottom, ${author.color}, ${connectTo})` }}
+          />
+        )}
       </div>
-      <div className={`min-w-0 flex-1 ${connected ? "pb-4" : ""}`}>
+      <div className={`min-w-0 flex-1 ${connectTo ? "pb-4" : ""}`}>
         {/* Exactly the avatar's height, so the name centres on it and the
             text follows right underneath. */}
         {/* The name keeps its width; the client/time meta gives way first.
@@ -179,7 +185,7 @@ export default function ThreadPanel({
         author={thread.author}
         timestamp={thread.createdAt}
         text={thread.commentText}
-        connected={thread.replies.length > 0}
+        connectTo={thread.replies[0]?.author.color}
         reserveActions={active || menuOpen ? "always" : true}
       />
 
@@ -189,7 +195,7 @@ export default function ThreadPanel({
           author={reply.author}
           timestamp={reply.createdAt}
           text={reply.text}
-          connected={i < thread.replies.length - 1}
+          connectTo={thread.replies[i + 1]?.author.color}
         />
       ))}
 

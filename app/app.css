@@ -493,10 +493,16 @@ body {
   font-variation-settings: "opsz" 20, "wght" 300;
 }
 
+/* Dotted line joining a thread's avatars; the gradient (set inline) runs
+   from one author's colour to the next, the mask cuts it into dots. */
+.thread-connector {
+  mask-image: repeating-linear-gradient(to bottom, #000 0 2px, transparent 2px 5px);
+}
+
 /* Monochrome animal glyphs (Noto Emoji) — tinted via `color`. */
 .anon-animal {
   font-family: "Noto Emoji", var(--font-sans);
-  font-weight: 600;
+  font-weight: 300;
   line-height: 1;
 }
 

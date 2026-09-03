@@ -177,7 +177,11 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
             can start where the document text starts — same width and
             centering. The right cell floats over it, so only the rail's
             width is subtracted. */}
-        <div className={`flex min-w-0 flex-1 items-stretch ${commentsOpen ? "lg:mr-[280px]" : ""}`}>
+        <div
+          className={`flex min-w-0 flex-1 items-stretch lg:transition-[margin-right] lg:duration-300 lg:ease-out ${
+            commentsOpen ? "lg:mr-[280px]" : ""
+          }`}
+        >
           <div className="toolbar-inset flex min-w-0 flex-1 items-stretch">
             <div className="shrink-0">
               <ModeMenu />
@@ -299,11 +303,17 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
             />
             {showPreview && <Preview />}
           </div>
-          {commentsOpen && (
-            <aside className="hidden w-[280px] shrink-0 lg:block">
+          {/* Stays mounted on desktop and animates its width shut, so the
+              document column slides rather than jumping. */}
+          <aside
+            className="hidden shrink-0 overflow-hidden transition-[width,opacity] duration-300 ease-out lg:block"
+            style={{ width: commentsOpen ? 280 : 0, opacity: commentsOpen ? 1 : 0 }}
+            aria-hidden={!commentsOpen}
+          >
+            <div className="w-[280px]">
               <CommentRail scrollRef={mainRef} />
-            </aside>
-          )}
+            </div>
+          </aside>
         </div>
       </main>
       {/* Only where the sheet is the comments UI: mounted on desktop it

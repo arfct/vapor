@@ -288,19 +288,12 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
             {showPreview && <Preview />}
           </div>
           <aside className="relative hidden w-[280px] shrink-0 md:block">
-            {/* Who's here and a way to start a comment: part of the page, so
-                they scroll off with the top of the document. */}
-            <div className="absolute right-2 top-0 flex h-[60px] items-center">
-              <HeaderMenu compact />
+            {/* Who's here, with you at the far right: part of the page, so
+                it scrolls off with the top of the document. Above the
+                rail's card layer so it stays clickable. */}
+            <div className="absolute right-2 top-0 z-10 flex h-[60px] items-center">
               <FacePile alsoOnline={demoPresence} />
-              <button
-                onClick={openCommentInput}
-                aria-label="New comment"
-                title="New comment (⌘⌥M)"
-                className="flex h-[44px] w-[44px] cursor-pointer items-center justify-center text-muted transition-colors hover:text-ink"
-              >
-                <Icon name="add" />
-              </button>
+              <HeaderMenu compact />
             </div>
             <CommentRail scrollRef={mainRef} />
           </aside>

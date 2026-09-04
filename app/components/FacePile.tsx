@@ -19,9 +19,8 @@ function statusLabel(person: Person): string {
 }
 
 /**
- * One face. Animal avatars have a translucent tint, so an opaque paper
- * disc sits underneath — otherwise overlapping faces show through each
- * other. People who aren't connected go grey and half strength.
+ * One face on an opaque paper disc, so overlapping faces don't show
+ * through each other. People who aren't connected go grey and half strength.
  */
 function Face({ person, className }: { person: Person; className: string }) {
   const away = person.status !== "online";

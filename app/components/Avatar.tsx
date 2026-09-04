@@ -33,11 +33,8 @@ export default function Avatar({
   if (glyph) {
     return (
       <span
-        className={`${className} anon-animal flex shrink-0 items-center justify-center rounded-full text-xl`}
-        style={{
-          color,
-          backgroundColor: color ? `color-mix(in srgb, ${color} 10%, transparent)` : undefined,
-        }}
+        className={`${className} anon-animal flex shrink-0 items-center justify-center rounded-full text-2xl`}
+        style={{ color }}
       >
         {glyph}
       </span>

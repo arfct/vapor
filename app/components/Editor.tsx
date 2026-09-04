@@ -1,4 +1,6 @@
 import { useEffect, useCallback, useRef } from "react";
+import type { CommentColorRange } from "~/shared/types";
+import { CommentColors, commentColorsKey, commentColorAt } from "~/lib/comment-colors";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { Extension, getMarkRange, type Editor as TiptapEditor } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
@@ -179,9 +181,11 @@ const ActiveCommentHighlight = Extension.create({
               to: number;
             } | null;
             if (!range) return DecorationSet.empty;
+            const color = commentColorAt(state, range.from);
             return DecorationSet.create(state.doc, [
               Decoration.inline(range.from, range.to, {
                 class: "cm-comment-active",
+                ...(color ? { style: `--comment-color: ${color}` } : {}),
               }),
             ]);
           },
@@ -192,6 +196,14 @@ const ActiveCommentHighlight = Extension.create({
 });
 
 type YjsEditorState = ReturnType<typeof useYjsEditor>;
+
+/** True when `el` sits inside its scroll container with some breathing room. */
+function isComfortablyInView(el: Element, margin = 48): boolean {
+  const scroller = el.closest("main") ?? document.documentElement;
+  const bounds = scroller.getBoundingClientRect();
+  const rect = el.getBoundingClientRect();
+  return rect.top >= bounds.top + margin && rect.bottom <= bounds.bottom - margin;
+}
 
 function renderCaret(user: Record<string, unknown>) {
   const cursor = document.createElement("span");
@@ -235,6 +247,7 @@ export default function Editor({
   onCommentClick,
   commentHighlight,
   activeCommentRange,
+  commentColors,
   onNewComment,
   onResolveAtCursor,
   onDeleteAtCursor,
@@ -249,6 +262,7 @@ export default function Editor({
   onCommentClick?: (commentText: string) => void;
   commentHighlight?: { from: number; to: number } | null;
   activeCommentRange?: { from: number; to: number } | null;
+  commentColors?: CommentColorRange[];
   onNewComment?: () => void;
   onResolveAtCursor?: () => void;
   onDeleteAtCursor?: () => void;
@@ -305,6 +319,7 @@ export default function Editor({
         CommentClickHandler.configure({ onCommentClick }),
         CommentHighlight,
         ActiveCommentHighlight,
+        CommentColors,
       ],
       editorProps: {
         attributes: {
@@ -350,8 +365,10 @@ export default function Editor({
     const tr = editor.state.tr.setMeta(activeCommentHighlightKey, range);
     editor.view.dispatch(tr);
 
-    // Bring the highlighted phrase into view when a thread is selected.
-    // The dispatch above renders the active decoration synchronously.
+    // Bring the highlighted phrase into view when a thread is selected —
+    // smoothly, and only if it's off screen, so picking a visible comment
+    // doesn't yank the text the reader is looking at. The dispatch above
+    // renders the active decoration synchronously.
     if (range) {
       let el: Element | null = editor.view.dom.querySelector(".cm-comment-active");
       if (!el) {
@@ -359,9 +376,20 @@ export default function Editor({
         const dom = editor.view.domAtPos(pos).node;
         el = dom instanceof HTMLElement ? dom : dom.parentElement;
       }
-      el?.scrollIntoView({ block: "center" });
+      if (el && !isComfortablyInView(el)) el.scrollIntoView({ block: "center", behavior: "smooth" });
     }
   }, [editor, activeCommentRange]);
+
+  // Push per-thread colours into the editor whenever they change.
+  const prevColorsRef = useRef("");
+  useEffect(() => {
+    if (!editor) return;
+    const ranges = commentColors ?? [];
+    const key = JSON.stringify(ranges);
+    if (key === prevColorsRef.current) return;
+    prevColorsRef.current = key;
+    editor.view.dispatch(editor.state.tr.setMeta(commentColorsKey, ranges));
+  }, [editor, commentColors]);
 
   useEffect(() => {
     if (editor && onEditorReady) {

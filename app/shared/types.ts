@@ -31,6 +31,13 @@ export interface ThreadData {
   replies: ThreadReply[];
 }
 
+/** A comment's document range, coloured with its author's colour. */
+export interface CommentColorRange {
+  from: number;
+  to: number;
+  color: string;
+}
+
 export interface CapturedSelection {
   from: number;
   to: number;

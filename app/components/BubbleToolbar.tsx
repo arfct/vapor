@@ -3,6 +3,7 @@ import { getMarkRange, isMarkActive, type Editor as TiptapEditor } from "@tiptap
 import type { EditorState } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { processRangeAtCursor } from "~/lib/suggestion-actions";
+import Icon from "~/components/Icon";
 
 type BubbleContext =
   | { kind: "selection" }
@@ -106,10 +107,10 @@ const shouldShowAnnotation = ({ editor, element, view, state }: ShouldShowProps)
   return getContext(state)?.kind === "annotation";
 };
 
-// 44px tall at every width: Accept/Reject sit side by side and a mis-tap
-// on track changes is destructive.
+// 44px square icon buttons at every width: Accept/Reject sit side by side
+// and a mis-tap on track changes is destructive.
 const btnClass =
-  "min-h-[44px] px-4 text-sm uppercase tracking-wider text-paper transition-colors hover:bg-paper/15 cursor-pointer";
+  "flex h-[44px] w-[44px] items-center justify-center text-paper transition-colors hover:bg-paper/15 cursor-pointer";
 
 const menuClass = "bubble-menu flex bg-ink shadow-md";
 
@@ -141,8 +142,8 @@ export default function BubbleToolbar({
         options={menuOptions}
         className={menuClass}
       >
-        <button className={btnClass} onClick={onNewComment}>
-          Comment
+        <button className={btnClass} onClick={onNewComment} title="Comment" aria-label="Comment">
+          <Icon name="add_comment" />
         </button>
       </BubbleMenu>
 
@@ -158,11 +159,18 @@ export default function BubbleToolbar({
         <button
           className={`${btnClass} border-r border-paper/20`}
           onClick={() => processRangeAtCursor(editor, true)}
+          title="Accept"
+          aria-label="Accept"
         >
-          Accept
+          <Icon name="check" />
         </button>
-        <button className={btnClass} onClick={() => processRangeAtCursor(editor, false)}>
-          Reject
+        <button
+          className={btnClass}
+          onClick={() => processRangeAtCursor(editor, false)}
+          title="Reject"
+          aria-label="Reject"
+        >
+          <Icon name="close" />
         </button>
       </BubbleMenu>
 
@@ -178,11 +186,13 @@ export default function BubbleToolbar({
         <button
           className={`${btnClass} border-r border-paper/20`}
           onClick={onResolveAtCursor}
+          title="Resolve"
+          aria-label="Resolve"
         >
-          Resolve
+          <Icon name="check" />
         </button>
-        <button className={btnClass} onClick={onDeleteAtCursor}>
-          Delete
+        <button className={btnClass} onClick={onDeleteAtCursor} title="Delete" aria-label="Delete">
+          <Icon name="delete" />
         </button>
       </BubbleMenu>
     </>

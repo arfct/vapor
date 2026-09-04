@@ -204,6 +204,42 @@ describe("suggestion-actions", () => {
       // Both "aa" and "bb" should be rejected as one range
       expect(getText(editor)).toBe("start  end");
     });
+
+    describe("replacement pairs (deletion followed by addition)", () => {
+      beforeEach(() => {
+        // "make it [fast][quick] now": "fast" deleted, "quick" added
+        editor = createEditor(`<p>make it ${deletionSpan("fast")}${additionSpan("quick")} now</p>`);
+      });
+
+      it("accepting from the deletion applies both halves", () => {
+        editor.commands.setTextSelection(10); // inside "fast"
+        processRangeAtCursor(editor, true);
+        expect(getText(editor)).toBe("make it quick now");
+        expect(hasSuggestionMarkup(editor)).toBe(false);
+      });
+
+      it("accepting from the addition applies both halves", () => {
+        editor.commands.setTextSelection(15); // inside "quick"
+        processRangeAtCursor(editor, true);
+        expect(getText(editor)).toBe("make it quick now");
+        expect(hasSuggestionMarkup(editor)).toBe(false);
+      });
+
+      it("rejecting restores the original text and drops the addition", () => {
+        editor.commands.setTextSelection(15);
+        processRangeAtCursor(editor, false);
+        expect(getText(editor)).toBe("make it fast now");
+        expect(hasSuggestionMarkup(editor)).toBe(false);
+      });
+
+      it("leaves an unconnected suggestion alone", () => {
+        editor = createEditor(`<p>${deletionSpan("old")} gap ${additionSpan("new")}</p>`);
+        editor.commands.setTextSelection(2);
+        processRangeAtCursor(editor, true);
+        expect(getText(editor)).toBe(" gap new");
+        expect(hasSuggestionMarkup(editor)).toBe(true);
+      });
+    });
   });
 
   /* ================================================================ */

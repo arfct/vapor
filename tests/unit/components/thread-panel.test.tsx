@@ -31,30 +31,34 @@ describe("ThreadPanel", () => {
     onDelete: vi.fn(),
   });
 
-  it("renders author name, timestamp, and comment text", () => {
-    const props = defaultProps();
-    const { getByText } = render(createElement(ThreadPanel, props));
+  it("renders author name and age only while selected, text always", () => {
+    const inactive = render(createElement(ThreadPanel, defaultProps()));
+    expect(inactive.getByText("Test comment")).toBeTruthy();
+    expect(inactive.queryByText("Alice")).toBeNull();
+    expect(inactive.queryByText("now")).toBeNull();
+    inactive.unmount();
 
+    const { getByText } = render(createElement(ThreadPanel, { ...defaultProps(), active: true }));
     expect(getByText("Alice")).toBeTruthy();
-    expect(getByText("just now")).toBeTruthy();
+    expect(getByText("now")).toBeTruthy();
     expect(getByText("Test comment")).toBeTruthy();
   });
 
-  it("applies bg-border/50 when active", () => {
+  it("marks the active card and exposes the author's colour for its outline", () => {
     const props = { ...defaultProps(), active: true };
     const { container } = render(createElement(ThreadPanel, props));
 
     const wrapper = container.firstElementChild as HTMLElement;
-    expect(wrapper.className).toContain("bg-canary/15");
+    expect(wrapper.style.getPropertyValue("--author-color")).toBe(props.thread.author.color);
+    expect(wrapper.className).toContain("is-active");
   });
 
-  it("has no active background when inactive", () => {
+  it("is not marked active when inactive", () => {
     const props = defaultProps();
     const { container } = render(createElement(ThreadPanel, props));
 
     const wrapper = container.firstElementChild as HTMLElement;
-    expect(wrapper.className).not.toContain("bg-border/50");
-    expect(wrapper.className).not.toContain("border-coral");
+    expect(wrapper.className).not.toContain("is-active");
   });
 
   it("toggle: clicking active thread deselects (passes null)", () => {
@@ -86,6 +90,7 @@ describe("ThreadPanel", () => {
   it("renders replies with author header and text", () => {
     const props = {
       ...defaultProps(),
+      active: true,
       thread: makeThread({
         replies: [
           {
@@ -114,13 +119,14 @@ describe("ThreadPanel", () => {
     expect(moreBtn.querySelector(".material-symbols-outlined")).toBeTruthy();
   });
 
-  it("actions are hidden until hover on an inactive thread", () => {
+  it("actions are hidden on an inactive thread, hover included", () => {
     const props = defaultProps();
     const { getByLabelText } = render(createElement(ThreadPanel, props));
 
     const actions = getByLabelText("Resolve").parentElement as HTMLElement;
     expect(actions.className).toContain("opacity-0");
-    expect(actions.className).toContain("group-hover:opacity-100");
+    expect(actions.className).toContain("pointer-events-none");
+    expect(actions.className).not.toContain("group-hover:opacity-100");
   });
 
   it("actions are visible when the thread is active", () => {

@@ -3,6 +3,7 @@ import type { Route } from "./+types/home";
 import { useStandaloneDoc } from "~/lib/useYjsEditor";
 import { DocumentProvider } from "~/lib/DocumentContext";
 import { deserializeThreads } from "~/lib/thread-serialization";
+import { retimeThreads } from "~/lib/retime-threads";
 import { buildMarkdownBlocks } from "~/shared/rich-markdown";
 import DocumentLayout from "~/components/DocumentLayout";
 import homeDocument from "./home.md?raw";
@@ -24,7 +25,11 @@ export function meta(_args: Route.MetaArgs) {
  */
 export default function Home() {
   const yjs = useStandaloneDoc();
-  const seed = useMemo(() => deserializeThreads(homeDocument), []);
+  // Comment dates are re-based on the visit so the tour reads as recent.
+  const seed = useMemo(() => {
+    const parsed = deserializeThreads(homeDocument);
+    return { ...parsed, threads: retimeThreads(parsed.threads) };
+  }, []);
 
   useEffect(() => {
     const frag = yjs.doc.getXmlFragment("default");

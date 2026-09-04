@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useDocument } from "~/lib/DocumentContext";
 import { hasSuggestionMarkup, processAllRanges } from "~/lib/suggestion-actions";
-import { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from "~/components/ui/menu";
+import { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator, type MenuSide } from "~/components/ui/menu";
 import Icon from "~/components/Icon";
 
 /**
@@ -9,7 +9,7 @@ import Icon from "~/components/Icon";
  * toggles the source view; Accept all / Reject all apply to every pending
  * suggestion.
  */
-export default function ModeMenu() {
+export default function ModeMenu({ menuSide }: { menuSide?: MenuSide } = {}) {
   const { editorInstance: editor, mode, setMode, showPreview, togglePreview } = useDocument();
   const [hasSuggestions, setHasSuggestions] = useState(false);
 
@@ -36,7 +36,7 @@ export default function ModeMenu() {
           <Icon name={showPreview ? "visibility" : mode === "suggest" ? "rate_review" : "edit"} />
         </button>
       </MenuTrigger>
-      <MenuContent>
+      <MenuContent side={menuSide}>
         <MenuItem
           className={itemClass}
           onClick={() => {

@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { serializeThreads } from "~/lib/thread-serialization";
 import { useDocument } from "~/lib/DocumentContext";
 import { copyText } from "~/lib/clipboard";
-import { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from "~/components/ui/menu";
+import { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator, type MenuSide } from "~/components/ui/menu";
 import Icon from "~/components/Icon";
 import ConnectionStatus from "~/components/ConnectionStatus";
 import { formatRemainingTime } from "~/lib/format-remaining";
@@ -30,9 +30,11 @@ const COPY_ICON: Record<CopyState, string> = {
 export default function ShareButton({
   onOpenAgents,
   copyLink = true,
+  menuSide,
 }: {
   onOpenAgents?: () => void;
   copyLink?: boolean;
+  menuSide?: MenuSide;
 }) {
   const { docId, createdAt, markdown, threads } = useDocument();
   const [copyState, setCopyState] = useState<CopyState>("idle");
@@ -76,16 +78,16 @@ export default function ShareButton({
           <Icon name="ios_share" />
         </button>
       </MenuTrigger>
-      <MenuContent>
+      <MenuContent side={menuSide}>
         {copyLink && (
           <>
-            {/* On phones the header has no room for these; they live here instead. */}
-            <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted lg:hidden">
+            {/* Connection, id, and expiry: the header has no room for them. */}
+            <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted">
               <ConnectionStatus compact />
               <span className="font-mono font-bold text-ink">{docId}</span>
               {createdAt && <span>vaporized in {formatRemainingTime(createdAt)}</span>}
             </div>
-            <MenuSeparator className="lg:hidden" />
+            <MenuSeparator />
           </>
         )}
         {copyLink && canShare && (

@@ -2,6 +2,7 @@ import { Mark, Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { commentColorAt } from "~/lib/comment-colors";
 
 export const CriticAddition = Mark.create({
   name: "criticAddition",
@@ -136,6 +137,7 @@ export const CriticPointMarkers = Extension.create({
               const prev = i > 0 ? runs[i - 1] : null;
               const isPaired = prev?.markName === "criticHighlight" && prev.to === run.from;
               if (isPaired) continue;
+              const color = commentColorAt(state, run.from);
               decorations.push(
                 Decoration.widget(
                   run.from,
@@ -143,9 +145,10 @@ export const CriticPointMarkers = Extension.create({
                     const el = document.createElement("span");
                     el.className = "cm-point-marker";
                     el.setAttribute("aria-label", "Comment");
+                    if (color) el.style.setProperty("--comment-color", color);
                     return el;
                   },
-                  { side: 0 },
+                  { side: 0, key: `point-${run.from}-${color ?? ""}` },
                 ),
               );
             }

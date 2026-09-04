@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useDocument } from "~/lib/DocumentContext";
-import { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from "~/components/ui/menu";
+import { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator, type MenuSide } from "~/components/ui/menu";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import Icon from "~/components/Icon";
@@ -29,22 +29,16 @@ const triggerClass = "header-button";
 
 /**
  * The formatting menu in the document header — inline marks, block styles,
- * lists, and inserts in one menu so the header fits a phone. It dims while
- * the editor is unfocused and restores on hover, focus, or an open menu.
+ * lists, and inserts in one menu so the header fits a phone.
  */
-export default function FormatToolbar() {
+export default function FormatToolbar({ menuSide }: { menuSide?: MenuSide } = {}) {
   const editor = useEditorTick();
   const { mode } = useDocument();
-  const [openMenus, setOpenMenus] = useState(0);
-  const [hovered, setHovered] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkTitle, setLinkTitle] = useState("");
 
   if (!editor) return null;
-
-  const dimmed = !editor.isFocused && !hovered && openMenus === 0;
-  const onOpenChange = (open: boolean) => setOpenMenus((n) => (open ? n + 1 : Math.max(0, n - 1)));
 
   const markButton = (mark: string, icon: string, label: string, toggle: () => void) => (
     <Button
@@ -96,22 +90,15 @@ export default function FormatToolbar() {
   };
 
   return (
-    <div
-      className={cn(
-        "flex h-full items-center transition-opacity duration-200",
-        // Dim only where hover can undim it; touch screens keep full opacity.
-        dimmed && "[@media(hover:hover)]:opacity-40",
-      )}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <Menu onOpenChange={onOpenChange}>
+    // In the side rail the (occasional) table menu stacks under Format.
+    <div className={menuSide === "right" ? "flex flex-col items-center" : "flex h-full items-center"}>
+      <Menu>
         <MenuTrigger>
           <button className={triggerClass} title="Format" aria-label="Format">
             <Icon name="format_size" />
           </button>
         </MenuTrigger>
-        <MenuContent>
+        <MenuContent side={menuSide}>
           <div className="flex items-center gap-0.5 px-1 py-1">
             {markButton("bold", "format_bold", "Bold", () => editor.chain().focus().toggleBold().run())}
             {markButton("italic", "format_italic", "Italic", () => editor.chain().focus().toggleItalic().run())}
@@ -172,13 +159,13 @@ export default function FormatToolbar() {
 
       {/* Contextual: only while the selection is inside a table. */}
       {editor.isActive("table") && (
-        <Menu onOpenChange={onOpenChange}>
+        <Menu>
           <MenuTrigger>
             <button className={triggerClass} title="Table" aria-label="Table">
               <Icon name="table" />
             </button>
           </MenuTrigger>
-          <MenuContent>
+          <MenuContent side={menuSide}>
             <MenuItem className="gap-2" onClick={() => editor.chain().focus().addRowAfter().run()}>
               <Icon name="add" />
               Add row below

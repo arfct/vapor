@@ -33,7 +33,8 @@ const themeOptions: { value: Theme; icon: string; label: string }[] = [
  * The top-right header menu: connection status, the Agents panel, the
  * account row (Google sign-in or name + sign-out), and the theme switcher.
  */
-export default function HeaderMenu() {
+/** `compact`: a bare 32px avatar for the desktop top-right cluster, not a 60px header cell. */
+export default function HeaderMenu({ compact = false }: { compact?: boolean } = {}) {
   const session = useSession();
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
@@ -125,7 +126,14 @@ export default function HeaderMenu() {
     <Popover.Root open={open} onOpenChange={handleOpenChange}>
       <Popover.Trigger
         render={
-          <button aria-label="Menu" className="header-button shrink-0">
+          <button
+            aria-label="Menu"
+            className={
+              compact
+                ? "flex h-[60px] shrink-0 cursor-pointer items-center px-2 transition-opacity hover:opacity-80"
+                : "header-button shrink-0"
+            }
+          >
             {session?.signedIn ? (
               <Avatar
                 name={session.displayName ?? "?"}

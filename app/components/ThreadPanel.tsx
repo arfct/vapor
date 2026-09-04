@@ -2,44 +2,73 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import type { ThreadData } from "~/shared/types";
 import Icon from "~/components/Icon";
 import Avatar from "~/components/Avatar";
+import { timeAgo } from "~/lib/time-ago";
 
-function timeAgo(ts: number): string {
-  const seconds = Math.floor((Date.now() - ts) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
-function AuthorHeader({
+/**
+ * One comment in a thread: avatar in a narrow left column, name, time,
+ * and text beside it. `connected` draws a line from this avatar down to
+ * the next comment's, tying a thread's replies together.
+ */
+function CommentRow({
   author,
   timestamp,
-  children,
+  text,
+  connectTo,
+  showMeta,
+  reserveActions = false,
 }: {
   author: ThreadData["author"];
   timestamp: number;
-  children?: React.ReactNode;
+  text: string;
+  /** Colour of the next comment's author; when set, a dotted line runs down to it. */
+  connectTo?: string;
+  /** Show the author name and age; an unselected thread shows avatars and text only. */
+  showMeta: boolean;
+  /** Leave room for the card's floating actions (shown only while selected). */
+  reserveActions?: boolean;
 }) {
+  const reserve = reserveActions ? "pr-14" : "";
   return (
-    <div className="flex items-center gap-2">
-      <Avatar
-        name={author.name}
-        avatar={author.avatar}
-        animal={author.animal}
-        color={author.color}
-        className="h-[25px] w-[25px]"
-      />
-      <div className="flex min-w-0 items-baseline gap-2">
-        <span className="truncate text-base font-bold">{author.name}</span>
-        <span className="shrink-0 text-sm text-muted">
-          {author.agentClient ? `${author.agentClient} • ` : ""}
-          {timeAgo(timestamp)}
-        </span>
+    <div className="flex gap-2">
+      <div className="flex w-[25px] shrink-0 flex-col items-center">
+        <Avatar
+          name={author.name}
+          avatar={author.avatar}
+          animal={author.animal}
+          color={author.color}
+          className="h-[25px] w-[25px]"
+        />
+        {connectTo && (
+          <div
+            className="thread-connector mt-1 w-[2px] flex-1"
+            style={{ backgroundImage: `linear-gradient(to bottom, ${author.color}, ${connectTo})` }}
+          />
+        )}
       </div>
-      {children}
+      <div className={`min-w-0 flex-1 ${connectTo ? "pb-4" : ""}`}>
+        {/* Exactly the avatar's height, so the name centres on it and the
+            text follows right underneath. The name keeps its width; the
+            client/time meta gives way first. Room for the floating actions
+            is only taken while they show. */}
+        {showMeta && (
+          <div className={`flex h-[25px] min-w-0 items-center gap-2 ${reserve}`}>
+            <span
+              className="max-w-full shrink-0 truncate text-base font-bold"
+              style={{
+                color: `color-mix(in oklab, ${author.color} 50%, var(--author-shade-base, #000))`,
+              }}
+            >
+              {author.name}
+            </span>
+            <span className="min-w-0 truncate text-sm text-muted">
+              {author.agentClient ? `${author.agentClient} • ` : ""}
+              {timeAgo(timestamp)}
+            </span>
+          </div>
+        )}
+        {/* Without the meta row the first line centres on the avatar instead. */}
+        <p className={showMeta ? "mt-0.5 text-base" : `pt-[2px] text-base ${reserve}`}>{text}</p>
+      </div>
     </div>
   );
 }
@@ -111,68 +140,70 @@ export default function ThreadPanel({
 
   return (
     <div
-      className={`group cursor-pointer border p-3 transition-colors ${
-        active ? "border-border bg-canary/15" : "border-transparent hover:border-border"
-      }`}
+      className={`thread-card group relative cursor-pointer bg-paper px-3 py-4 ${active ? "is-active" : ""}`}
+      style={{ "--author-color": thread.author.color } as React.CSSProperties}
       onClick={() => onSelect(active ? null : thread.id)}
     >
-      {/* Author + timestamp + actions */}
-      <AuthorHeader author={thread.author} timestamp={thread.createdAt}>
-        <div
-          className={`ml-auto flex items-center gap-1 transition-opacity focus-within:opacity-100 group-hover:opacity-100 ${
-            menuOpen || active ? "opacity-100" : "opacity-0"
-          }`}
-          onClick={(e) => e.stopPropagation()}
+      {/* Actions float in the corner so they never stretch the author row. */}
+      <div
+        className={`absolute right-2 top-4 flex h-[25px] items-center gap-1 transition-opacity ${
+          menuOpen || active ? "opacity-100" : "pointer-events-none opacity-0"
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={() => onResolve(thread.id)}
+          title={thread.resolved ? "Reopen" : "Resolve"}
+          aria-label={thread.resolved ? "Reopen" : "Resolve"}
+          className="flex h-[25px] w-[25px] cursor-pointer items-center justify-center text-muted transition-colors hover:text-ink"
         >
+          <Icon name={thread.resolved ? "undo" : "check"} />
+        </button>
+        <div className="relative" ref={menuRef}>
           <button
-            onClick={() => onResolve(thread.id)}
-            title={thread.resolved ? "Reopen" : "Resolve"}
-            aria-label={thread.resolved ? "Reopen" : "Resolve"}
-            className="cursor-pointer p-2.5 text-muted transition-colors hover:text-ink"
+            onClick={() => setMenuOpen((v) => !v)}
+            title="More actions"
+            aria-label="More actions"
+            className="flex h-[25px] w-[25px] cursor-pointer items-center justify-center text-muted transition-colors hover:text-ink"
           >
-            <Icon name={thread.resolved ? "undo" : "check"} />
+            <Icon name="more_vert" />
           </button>
-          <div className="relative" ref={menuRef}>
-            <button
-              onClick={() => setMenuOpen((v) => !v)}
-              title="More actions"
-              aria-label="More actions"
-              className="cursor-pointer p-2.5 text-muted transition-colors hover:text-ink"
-            >
-              <Icon name="more_vert" />
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-full z-10 min-w-28 border border-border bg-paper py-1 shadow-lg">
-                <button
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onDelete(thread.id);
-                  }}
-                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-red-500 transition-colors hover:bg-border"
-                >
-                  <Icon name="delete" />
-                  Delete
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </AuthorHeader>
-
-      {/* Comment text */}
-      <p className="mt-1 pl-[33px] text-base">{thread.commentText}</p>
-
-      {/* Replies */}
-      {thread.replies.length > 0 && (
-        <div className="mt-3 space-y-3">
-          {thread.replies.map((reply) => (
-            <div key={reply.id}>
-              <AuthorHeader author={reply.author} timestamp={reply.createdAt} />
-              <p className="mt-1 pl-[33px] text-base">{reply.text}</p>
+          {menuOpen && (
+            <div className="absolute right-0 top-full z-10 min-w-28 border border-border bg-paper py-1 shadow-lg">
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  onDelete(thread.id);
+                }}
+                className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-red-500 transition-colors hover:bg-border"
+              >
+                <Icon name="delete" />
+                Delete
+              </button>
             </div>
-          ))}
+          )}
         </div>
-      )}
+      </div>
+
+      <CommentRow
+        author={thread.author}
+        timestamp={thread.createdAt}
+        text={thread.commentText}
+        connectTo={thread.replies[0]?.author.color}
+        showMeta={active}
+        reserveActions={active || menuOpen}
+      />
+
+      {thread.replies.map((reply, i) => (
+        <CommentRow
+          key={reply.id}
+          author={reply.author}
+          timestamp={reply.createdAt}
+          text={reply.text}
+          connectTo={thread.replies[i + 1]?.author.color}
+          showMeta={active}
+        />
+      ))}
 
       {/* Reply link, shown only while the thread is selected; input appears on click */}
       {active && (

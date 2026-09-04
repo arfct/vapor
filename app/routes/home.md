@@ -8,8 +8,8 @@ vapor:
       color: "#E57373"
       created: "2026-08-30T09:12:00Z"
       resolved: false
-    - comment: "Stronger word?"
-      highlight: "good"
+    - comment: "Does this include agents?"
+      highlight: "no account needed"
       author: "Alice"
       color: "#BA68C8"
       created: "2026-08-30T10:00:00Z"
@@ -19,58 +19,54 @@ vapor:
           animal: "🦡"
           client: "Claude"
           color: "#64B5F6"
-          text: "Try \"clear\" — it says what the sentence means."
+          text: "It does. I connect the same way, and can read and suggest without signing in."
           created: "2026-08-30T10:05:00Z"
     - comment: "Every collaborator gets a name and a color, agents included."
-      highlight: "visible cursor"
+      highlight: "its own cursor"
       author: "Agentic Otter"
       animal: "🦦"
       client: "Claude"
       color: "#4DB6AC"
       created: "2026-08-30T10:24:00Z"
       resolved: false
+    - comment: "Comments stay with the text: each thread sits beside its line, moves as the doc changes, and steps aside when resolved."
+      highlight: "the threads come back"
+      author: "Alice"
+      color: "#BA68C8"
+      created: "2026-08-30T10:40:00Z"
+      resolved: false
 ---
 
 # vapor
 
-Live Markdown for people and agents, side by side. Public by URL, gone after {==99 hours==}{>>Docs are ephemeral. Export what you want to keep.<<}.
+A shared doc that lasts {==99 hours==}{>>Docs are ephemeral. Export what you want to keep.<<}. Send the link and anyone can read, edit, and comment, {==no account needed==}{>>Does this include agents?<<}. Connect an agent and it works alongside you, with its own cursor and name. Then the doc is gone, which is the point: a draft, a plan, or a quick review doesn't need to last, and it never becomes a pile to manage. Download the file when you want to keep something. The markdown is yours.
 
-This page is a live document: type, comment, or switch to **Suggest** in the header. Changes stay in this browser; **+** starts a real one.
+## Agents work here like people
 
-## Markdown
+Point Claude at a doc and it shows up with {==its own cursor==}{>>Every collaborator gets a name and a color, agents included.<<}, reads the document, and edits with the rest of you: suggestions you can accept or reject, comments you can answer. Mention it in a comment and it replies. It types at a human pace, so you can watch what it's doing and step in if you don't like where it's going.
 
-**Bold**, _italic_, ~~strike~~, `code`, [links](https://github.com/arfct/vapor), lists, and fenced code blocks. No images.
-
-## Suggestions
-
-In suggest mode, edits become {++proposals++} and {--deletions--} that anyone can accept or reject.
-
-## Comments
-
-Select text and use the bubble menu to comment on a {==good==}{>>Stronger word?<<} span. Tap a highlight to open its thread.
-
-## From your terminal
-
-```bash
-curl https://vapor.fyi/new -T file.md
-```
-
-## From your agent
+To connect Claude Code, run this once:
 
 ```bash
 claude mcp add --transport http vapor https://vapor.fyi/mcp
 ```
 
-Agents join with a {==visible cursor==}{>>Every collaborator gets a name and a color, agents included.<<} and edit like a person. Leave them standing instructions in a block like this one:
+## Changes can be proposals
 
-```agent
-Keep suggestions short. Ask in a comment before rewriting a whole section.
-```
+Switch to **Suggest** and edits become tracked changes, like {--this--}{++these++}, that anyone can accept or reject with a click. Ask an agent to suggest rather than edit and nothing it writes lands until a person says so.
 
-## As a habit
+## Names are optional
+
+You arrive as an animal with a color. Sign in with Google if you'd like your own name and face on your edits. Agents get a name and a color too, so you can always tell who did what.
+
+## Keep what matters
+
+Download the doc and you get a plain markdown file with the comments tucked into its front matter. Open it anywhere. Upload it here again and {==the threads come back==}{>>Comments stay with the text: each thread sits beside its line, moves as the doc changes, and steps aside when resolved.<<}. Or start from a file in the terminal:
 
 ```bash
-claude plugin marketplace add arfct/vapor && claude plugin install vapor@vapor
+curl https://vapor.fyi/new -T file.md
 ```
 
-MCP plus a skill: Claude drafts here, discusses in comments, and saves back to your repo before the doc expires.
+## Try it
+
+This doc is live. Type anywhere, select something to comment on, or switch to **Suggest**. Nothing here is saved, so go ahead. The **+** button starts a real doc.

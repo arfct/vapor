@@ -74,6 +74,15 @@ body {
   color: var(--color-paper);
 }
 
+/* Desktop side rail: 60px down the left edge with the wordmark and
+   expiry set vertically and 60px square buttons stacked between. */
+.vertical-text {
+  writing-mode: vertical-rl;
+}
+.side-rail .header-button {
+  height: 60px;
+}
+
 /* Editor styles */
 .tiptap {
   outline: none;
@@ -117,6 +126,13 @@ body {
 .tiptap h2:first-child,
 .tiptap h3:first-child {
   margin-top: 0;
+}
+
+/* A document that opens with an H1 has a title: 40px and lighter. An H1
+   further down is an ordinary heading. */
+.tiptap > h1:first-child {
+  font-size: 40px;
+  font-weight: 500;
 }
 
 .tiptap ul,
@@ -418,8 +434,8 @@ body {
 
 /* The empty first line is the title-to-be: show its hint at heading size. */
 .tiptap .is-title {
-  font-size: 1.875rem;
-  font-weight: bold;
+  font-size: 40px;
+  font-weight: 500;
   line-height: 1.3;
   margin-bottom: 1rem;
 }
@@ -472,10 +488,38 @@ body {
   font-variation-settings: "opsz" 20, "wght" 300;
 }
 
+/* Thread card: the author's colour is set inline as --author-color. The
+   name uses a deep shade of it (mixed toward black on light, white on
+   dark); the selected card gets a hairline of the colour via box-shadow,
+   plus a soft shadow in a near-black shade at 10%. */
+.thread-card {
+  --author-name: color-mix(in oklab, var(--author-color) 50%, var(--author-shade-base, #000));
+  --author-deep: color-mix(in oklab, var(--author-color) 35%, #000);
+  border-radius: 4px;
+  transition: box-shadow 0.15s ease;
+}
+@media (hover: hover) {
+  .thread-card:hover {
+    box-shadow: 0 0 0 1px var(--color-border);
+  }
+}
+.thread-card.is-active,
+.thread-card.is-active:hover {
+  box-shadow:
+    0 0 0 1px var(--author-color),
+    0 2px 8px color-mix(in srgb, var(--author-deep) 10%, transparent);
+}
+
+/* Dotted line joining a thread's avatars; the gradient (set inline) runs
+   from one author's colour to the next, the mask cuts it into dots. */
+.thread-connector {
+  mask-image: repeating-linear-gradient(to bottom, #000 0 2px, transparent 2px 5px);
+}
+
 /* Monochrome animal glyphs (Noto Emoji) — tinted via `color`. */
 .anon-animal {
   font-family: "Noto Emoji", var(--font-sans);
-  font-weight: 600;
+  font-weight: 300;
   line-height: 1;
 }
 
@@ -518,21 +562,32 @@ body {
 }
 
 .cm-deletion {
-  color: #ef4444;
+  color: var(--color-muted);
   text-decoration: line-through;
 }
 
 /* Comment/highlight underline: border-bottom rather than text-decoration —
+   `--comment-color` is set per range by the editor to the commenter's colour;
+   canary is the fallback for ranges without a known thread.
    decoration shorthands fall back to currentColor when the variable fails
    to resolve, which rendered as a black bar in some contexts. */
 .cm-comment,
 .cm-highlight {
-  border-bottom: 3px solid var(--color-canary, #ffe014);
+  border-bottom: 3px solid var(--comment-color, var(--color-canary, #ffe014));
+}
+
+/* Per-author colour: the decoration span draws the underline in place of
+   the mark it sits inside (marks render outside inline decorations). */
+.cm-highlight > .cm-colored {
+  border-bottom: 3px solid var(--comment-color);
+}
+.cm-highlight:has(> .cm-colored) {
+  border-bottom-color: transparent;
 }
 
 /* Active: underline + background */
 .cm-comment-active {
-  background-color: color-mix(in srgb, var(--color-canary) 22%, transparent);
+  background-color: color-mix(in srgb, var(--comment-color, var(--color-canary)) 22%, transparent);
 }
 
 /* Point comment marker (square + vertical line for location-only comments) */
@@ -541,7 +596,7 @@ body {
   position: relative;
   width: 8px;
   height: 3px;
-  background: var(--color-canary);
+  background: var(--comment-color, var(--color-canary));
   vertical-align: -2px;
   margin: 0 1px;
   cursor: pointer;
@@ -556,7 +611,7 @@ body {
   transform: translateX(-50%);
   width: 1.5px;
   height: 1.1em;
-  background: var(--color-canary);
+  background: var(--comment-color, var(--color-canary));
   opacity: 0.5;
 }
 
@@ -566,8 +621,8 @@ body {
 :has(> .cm-comment-active) > .cm-point-marker,
 .cm-comment-active .cm-point-marker {
   height: 1.3em;
-  background-color: color-mix(in srgb, var(--color-canary) 30%, transparent);
-  border-bottom: 3px solid var(--color-canary);
+  background-color: color-mix(in srgb, var(--comment-color, var(--color-canary)) 30%, transparent);
+  border-bottom: 3px solid var(--comment-color, var(--color-canary));
 }
 
 :has(> .cm-comment-active) > .cm-point-marker::before,
@@ -634,6 +689,7 @@ body {
   --color-border: #2a2a2a;
   --color-accent: #262626;
   --color-destructive: #f87171;
+  --author-shade-base: #fff;
   --code-keyword: #c678dd;
   --code-string: #98c379;
   --code-number: #d19a66;
@@ -643,7 +699,6 @@ body {
 }
 
 [data-theme="dark"] .cm-addition { color: #4ade80; }
-[data-theme="dark"] .cm-deletion { color: #f87171; }
 
 /* Dark theme — auto mode follows system preference */
 @media (prefers-color-scheme: dark) {
@@ -654,6 +709,7 @@ body {
     --color-border: #2a2a2a;
     --color-accent: #262626;
     --color-destructive: #f87171;
+  --author-shade-base: #fff;
     --code-keyword: #c678dd;
     --code-string: #98c379;
     --code-number: #d19a66;
@@ -663,7 +719,6 @@ body {
   }
 
   [data-theme="auto"] .cm-addition { color: #4ade80; }
-  [data-theme="auto"] .cm-deletion { color: #f87171; }
 }
 
 /* Wide gamut accents */

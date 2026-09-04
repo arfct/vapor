@@ -1,4 +1,5 @@
 import type { Editor as TiptapEditor } from "@tiptap/core";
+import type { Transaction } from "@tiptap/pm/state";
 
 export function hasSuggestionMarkup(editor: TiptapEditor): boolean {
   const { doc } = editor.state;
@@ -128,34 +129,50 @@ function findMarkRangeAtCursor(editor: TiptapEditor): MarkRange | null {
   return null;
 }
 
+/** Merges runs of one mark that touch or overlap into single ranges. */
+function mergeRuns(runs: MarkRange[]): MarkRange[] {
+  const sorted = [...runs].sort((a, b) => a.from - b.from);
+  const merged: MarkRange[] = [];
+  for (const run of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && run.from <= last.to) last.to = Math.max(last.to, run.to);
+    else merged.push({ ...run });
+  }
+  return merged;
+}
+
+/**
+ * The other half of a replacement: a deletion immediately followed by an
+ * addition (or the reverse) is one suggestion — "change this to that" —
+ * so it is accepted or rejected as a pair.
+ */
+function findPairedRange(editor: TiptapEditor, range: MarkRange): MarkRange | null {
+  const otherName = range.markName === "criticAddition" ? "criticDeletion" : "criticAddition";
+  const others = mergeRuns(collectSuggestionRanges(editor).filter((r) => r.markName === otherName));
+  return others.find((r) => r.to === range.from || r.from === range.to) ?? null;
+}
+
+function applyDecision(tr: Transaction, editor: TiptapEditor, range: MarkRange, accept: boolean) {
+  const markType = editor.schema.marks[range.markName];
+  if (!markType) return;
+  const keepText = range.markName === "criticAddition" ? accept : !accept;
+  if (keepText) tr.removeMark(range.from, range.to, markType);
+  else tr.delete(range.from, range.to);
+}
+
 export function processRangeAtCursor(editor: TiptapEditor, accept: boolean) {
   const range = findMarkRangeAtCursor(editor);
   if (!range) return;
 
-  const markType = editor.schema.marks[range.markName];
-  if (!markType) return;
+  const paired = findPairedRange(editor, range);
+  // Later range first so earlier positions stay valid.
+  const ranges = [range, ...(paired ? [paired] : [])].sort((a, b) => b.from - a.from);
 
   editor
     .chain()
     .focus()
     .command(({ tr }) => {
-      if (range.markName === "criticAddition") {
-        if (accept) {
-          // Accept addition: remove mark, keep text
-          tr.removeMark(range.from, range.to, markType);
-        } else {
-          // Reject addition: delete the text
-          tr.delete(range.from, range.to);
-        }
-      } else if (range.markName === "criticDeletion") {
-        if (accept) {
-          // Accept deletion: delete the text
-          tr.delete(range.from, range.to);
-        } else {
-          // Reject deletion: remove mark, keep text
-          tr.removeMark(range.from, range.to, markType);
-        }
-      }
+      for (const r of ranges) applyDecision(tr, editor, r, accept);
       return true;
     })
     .run();

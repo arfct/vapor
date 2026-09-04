@@ -229,7 +229,6 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
         <ModeMenu menuSide="right" />
         <FormatToolbar menuSide="right" />
         {shareButton("right")}
-        <div className="my-2 h-px w-7 bg-border" />
         {isHome && createMenu("right")}
         <div className="grow" />
         {surface.kind === "doc" && (

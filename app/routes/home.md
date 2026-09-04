@@ -8,8 +8,8 @@ vapor:
       color: "#E57373"
       created: "2026-08-30T09:12:00Z"
       resolved: false
-    - comment: "Stronger word?"
-      highlight: "good"
+    - comment: "Does this include agents?"
+      highlight: "no account needed"
       author: "Alice"
       color: "#BA68C8"
       created: "2026-08-30T10:00:00Z"
@@ -19,7 +19,7 @@ vapor:
           animal: "🦡"
           client: "Claude"
           color: "#64B5F6"
-          text: "Try \"clear\" — it says what the sentence means."
+          text: "It does. I connect the same way, and can read and suggest without signing in."
           created: "2026-08-30T10:05:00Z"
     - comment: "Every collaborator gets a name and a color, agents included."
       highlight: "its own cursor"
@@ -33,11 +33,7 @@ vapor:
 
 # vapor
 
-A shared page that lasts 99 hours. Send the link and anyone can read, edit, and comment, no account needed. Connect an agent and it works alongside you, with its own cursor and name. Keep what matters. The rest evaporates.
-
-## It doesn't stick around
-
-Every page here is deleted after {==99 hours==}{>>Docs are ephemeral. Export what you want to keep.<<}. That's the point. It's {==good==}{>>Stronger word?<<} for the things that don't need to last, a draft, a plan, a quick review, and it never becomes a pile you have to manage. Download the file when you want to keep something. The markdown is yours.
+A shared page that lasts {==99 hours==}{>>Docs are ephemeral. Export what you want to keep.<<}. Send the link and anyone can read, edit, and comment, {==no account needed==}{>>Does this include agents?<<}. Connect an agent and it works alongside you, with its own cursor and name. Then the page is gone, which is the point: a draft, a plan, or a quick review doesn't need to last, and it never becomes a pile to manage. Download the file when you want to keep something. The markdown is yours.
 
 ## Agents work here like people
 

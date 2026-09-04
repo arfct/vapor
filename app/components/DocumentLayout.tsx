@@ -217,7 +217,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
       {/* Desktop: a 60px rail down the left — wordmark, then Edit, Format,
           Share (menus open to the right), and the expiry at the foot. */}
       <nav
-        className="side-rail absolute inset-y-0 left-0 z-20 hidden w-[60px] flex-col items-center md:flex"
+        className="side-rail absolute inset-y-0 left-0 z-20 hidden w-[60px] flex-col items-center pt-[100px] md:flex"
         aria-label="Document tools"
       >
         <Link

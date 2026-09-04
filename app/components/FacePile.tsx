@@ -26,7 +26,9 @@ function statusLabel(person: Person): string {
 function Face({ person, className }: { person: Person; className: string }) {
   const away = person.status !== "online";
   return (
-    <span className={`inline-flex rounded-full bg-paper ${away ? "opacity-50 grayscale" : ""}`}>
+    // opacity/filter create stacking contexts that would float dimmed faces
+    // above the others; give every face one, with the present ones on top.
+    <span className={`relative inline-flex rounded-full bg-paper ${away ? "z-0 opacity-50 grayscale" : "z-10"}`}>
       <Avatar
         name={person.user.name}
         avatar={person.user.avatar}

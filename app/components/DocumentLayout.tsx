@@ -18,7 +18,7 @@ import FacePile from "~/components/FacePile";
 import CommentRail from "~/components/CommentRail";
 import CommentSheet from "~/components/CommentSheet";
 import Icon from "~/components/Icon";
-import { Menu, MenuTrigger, MenuContent, MenuItem } from "~/components/ui/menu";
+import { Menu, MenuTrigger, MenuContent, MenuItem, type MenuSide } from "~/components/ui/menu";
 
 /**
  * The two places a vapor editor appears. A "doc" lives at /:id behind a
@@ -85,17 +85,6 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (activeThreadId || commentActive) setCommentsOpen(true);
   }, [activeThreadId, commentActive]);
-  // On desktop the header's bottom rule appears only once the document
-  // has scrolled up under it.
-  const [scrolled, setScrolled] = useState(false);
-  useEffect(() => {
-    const main = mainRef.current;
-    if (!main) return;
-    const onScroll = () => setScrolled(main.scrollTop > 110);
-    onScroll();
-    main.addEventListener("scroll", onScroll, { passive: true });
-    return () => main.removeEventListener("scroll", onScroll);
-  }, []);
   // ⌘⌥M (Ctrl+Alt+M elsewhere) starts a comment. Lives here, not in the
   // comment box, which only mounts once a comment is open. Compare the
   // physical key: with Option held, macOS reports e.key as "µ".
@@ -156,129 +145,139 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     [isHome, uploadFile],
   );
 
+  const shareButton = (menuSide?: MenuSide) =>
+    isHome ? (
+      <ShareButton copyLink={false} menuSide={menuSide} />
+    ) : (
+      <ShareButton onOpenAgents={() => setAgentsOpen(true)} menuSide={menuSide} />
+    );
+
+  const createMenu = (menuSide?: MenuSide) => (
+    <Menu>
+      <MenuTrigger>
+        <button aria-label="Create" title="Create" className="header-button">
+          <Icon name="add" />
+        </button>
+      </MenuTrigger>
+      <MenuContent side={menuSide}>
+        <MenuItem className="gap-2" onClick={createBlankDocument}>
+          <Icon name="note_add" />
+          <span>New document</span>
+        </MenuItem>
+        <MenuItem className="gap-2" onClick={() => fileInputRef.current?.click()}>
+          <Icon name="upload_file" />
+          <span>Upload .md file</span>
+        </MenuItem>
+      </MenuContent>
+    </Menu>
+  );
+
   return (
     <div
-      className="flex h-[100dvh] flex-col pt-[env(safe-area-inset-top)]"
+      className="relative flex h-[100dvh] flex-col pt-[env(safe-area-inset-top)]"
       onDrop={handleDrop}
       onDragOver={isHome ? (e) => e.preventDefault() : undefined}
     >
-      <header
-        className={`doc-header relative flex h-[60px] shrink-0 items-stretch overflow-hidden border-y border-border transition-colors md:border-t-0 ${
-          scrolled ? "" : "md:border-b-transparent"
-        }`}
-      >
+      {/* Phones: a horizontal header. */}
+      <header className="flex h-[60px] shrink-0 items-stretch overflow-hidden border-y border-border md:hidden">
         <Link
           to="/"
-          className="doc-wordmark flex shrink-0 items-center px-4 font-medium tracking-wider text-ink transition-colors hover:bg-border md:absolute md:inset-y-0 md:left-0"
+          className="flex shrink-0 items-center px-4 font-medium tracking-wider text-ink transition-colors hover:bg-border"
         >
           vapor
         </Link>
-        {/* This cell mirrors the editor column, so on desktop the controls
-            can start where the document text starts — same width and
-            centering. The right cell floats over it, so only the rail's
-            width is subtracted. */}
-        <div
-          className={`flex min-w-0 flex-1 items-stretch md:transition-[margin-right] md:duration-300 md:ease-out ${
-            commentsOpen ? "md:mr-[280px]" : ""
-          }`}
+        <div className="shrink-0">
+          <ModeMenu />
+        </div>
+        <div className="shrink-0">{shareButton()}</div>
+        <div className="shrink-0">
+          <FormatToolbar />
+        </div>
+        {isHome && <div className="shrink-0">{createMenu()}</div>}
+        <div className="grow" />
+        <button
+          onClick={toggleComments}
+          aria-label={commentsOpen ? "Hide comments" : "Show comments"}
+          aria-pressed={commentsOpen}
+          title={commentsOpen ? "Hide comments" : "Show comments"}
+          className={`header-button relative ${commentsOpen ? "text-ink" : "text-muted"}`}
         >
-          <div className="toolbar-inset flex min-w-0 flex-1 items-stretch">
-            <div className="shrink-0">
-              <ModeMenu />
-            </div>
-            <div className="shrink-0">
-              {isHome ? (
-                <ShareButton copyLink={false} />
-              ) : (
-                <ShareButton onOpenAgents={() => setAgentsOpen(true)} />
-              )}
-            </div>
-            <div className="shrink-0">
-              <FormatToolbar />
-            </div>
-            {surface.kind === "doc" ? (
-              // The one cell allowed to shrink: the id and expiry truncate so
-              // the controls on the right stay put.
-              <div className="hidden min-w-0 shrink items-center px-3 md:flex">
-                <span className="mr-2 shrink-0">
-                  <ConnectionStatus compact />
-                </span>
-                <span className="min-w-0 truncate">
-                  <span className="font-mono font-bold">{surface.id}</span>
-                  {surface.createdAt && (
-                    <span className="ml-2 text-muted">
-                      vaporized in {formatRemainingTime(surface.createdAt)}
-                    </span>
-                  )}
-                </span>
-              </div>
-            ) : (
-              <>
-                <div className="shrink-0">
-                  <Menu>
-                    <MenuTrigger>
-                      <button
-                        aria-label="Create"
-                        title="Create"
-                        className="header-button"
-                      >
-                        <Icon name="add" />
-                      </button>
-                    </MenuTrigger>
-                    <MenuContent>
-                      <MenuItem className="gap-2" onClick={createBlankDocument}>
-                        <Icon name="note_add" />
-                        <span>New document</span>
-                      </MenuItem>
-                      <MenuItem className="gap-2" onClick={() => fileInputRef.current?.click()}>
-                        <Icon name="upload_file" />
-                        <span>Upload .md file</span>
-                      </MenuItem>
-                    </MenuContent>
-                  </Menu>
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".md"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) uploadFile(file);
-                  }}
-                  className="hidden"
-                />
-              </>
+          <span className="relative flex items-center justify-center">
+            <Icon name="mode_comment" />
+            {openThreads > 0 && (
+              <span className="absolute inset-0 flex items-center justify-center pb-[3px] text-[9px] font-bold leading-none">
+                {openThreads}
+              </span>
+            )}
+          </span>
+        </button>
+        <HeaderMenu />
+      </header>
+
+      {/* Desktop: a 60px rail down the left — wordmark, then Edit, Format,
+          Share (menus open to the right), and the expiry at the foot. */}
+      <nav
+        className="side-rail absolute inset-y-0 left-0 z-20 hidden w-[60px] flex-col items-center md:flex"
+        aria-label="Document tools"
+      >
+        <Link
+          to="/"
+          className="doc-wordmark vertical-text flex h-[100px] w-full items-center justify-center font-medium uppercase tracking-widest text-ink transition-colors hover:bg-border"
+        >
+          vapor
+        </Link>
+        <ModeMenu menuSide="right" />
+        <FormatToolbar menuSide="right" />
+        {shareButton("right")}
+        <div className="my-2 h-px w-7 bg-border" />
+        {isHome && createMenu("right")}
+        <div className="grow" />
+        {surface.kind === "doc" && (
+          <div className="flex flex-col items-center gap-3 pb-5">
+            <ConnectionStatus compact />
+            {surface.createdAt && (
+              <span
+                className="vertical-text text-xs font-medium uppercase tracking-widest text-muted"
+                title={`${surface.id} vaporizes in ${formatRemainingTime(surface.createdAt)}`}
+              >
+                {formatRemainingTime(surface.createdAt)} left
+              </span>
             )}
           </div>
-        </div>
-        {/* Out of the flow on desktop so its width never shifts the centred group. */}
-        <div className="flex shrink-0 items-stretch justify-end md:absolute md:inset-y-0 md:right-0">
-          <button
-            onClick={toggleComments}
-            aria-label={commentsOpen ? "Hide comments" : "Show comments"}
-            aria-pressed={commentsOpen}
-            title={commentsOpen ? "Hide comments" : "Show comments"}
-            className={`header-button relative ${commentsOpen ? "text-ink" : "text-muted"}`}
-          >
-            <span className="relative flex items-center justify-center">
-              <Icon name="mode_comment" />
-              {openThreads > 0 && (
-                <span className="absolute inset-0 flex items-center justify-center pb-[3px] text-[9px] font-bold leading-none">
-                  {openThreads}
-                </span>
-              )}
-            </span>
-          </button>
-          <FacePile alsoOnline={demoPresence} />
-          <HeaderMenu />
-        </div>
-      </header>
+        )}
+      </nav>
+
+      {/* Desktop: who's here and a way to start a comment, top right. */}
+      <div className="absolute right-0 top-0 z-20 hidden h-[60px] items-center pr-2 md:flex">
+        <HeaderMenu compact />
+        <FacePile alsoOnline={demoPresence} />
+        <button
+          onClick={openCommentInput}
+          aria-label="New comment"
+          title="New comment (⌘⌥M)"
+          className="flex h-[44px] w-[44px] cursor-pointer items-center justify-center text-muted transition-colors hover:text-ink"
+        >
+          <Icon name="add" />
+        </button>
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".md"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) uploadFile(file);
+        }}
+        className="hidden"
+      />
+
       {surface.kind === "doc" && (
         <AgentsPanel open={agentsOpen} onClose={() => setAgentsOpen(false)} />
       )}
       {/* One scroller for document and comments, so the rail's cards ride
           along with the text they annotate. */}
-      <main ref={mainRef} className="flex-1 overflow-y-auto">
+      <main ref={mainRef} className="flex-1 overflow-y-auto md:pl-[60px]">
         <div className="flex min-h-full items-start">
           <div className="min-w-0 flex-1">
             {/* Server-rendered stand-in until TipTap mounts: keeps the tour's copy indexable. */}
@@ -303,16 +302,8 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
             />
             {showPreview && <Preview />}
           </div>
-          {/* Stays mounted on desktop and animates its width shut, so the
-              document column slides rather than jumping. */}
-          <aside
-            className="hidden shrink-0 overflow-hidden transition-[width,opacity] duration-300 ease-out md:block"
-            style={{ width: commentsOpen ? 280 : 0, opacity: commentsOpen ? 1 : 0 }}
-            aria-hidden={!commentsOpen}
-          >
-            <div className="w-[280px]">
-              <CommentRail scrollRef={mainRef} />
-            </div>
+          <aside className="hidden w-[280px] shrink-0 md:block">
+            <CommentRail scrollRef={mainRef} />
           </aside>
         </div>
       </main>

@@ -74,24 +74,22 @@ body {
   color: var(--color-paper);
 }
 
-/* Desktop toolbar: the controls start where the document text starts —
-   the editor's 48rem column, centred the same way, plus its 1.5rem
-   padding, less 24px so the first icon (centred in its 60px button) sits
-   on the text edge — but never run under the wordmark on a narrow desktop. */
-@media (min-width: 768px) {
-  .toolbar-inset {
-    max-width: 48rem;
-    margin-left: max(calc((100% - 48rem) / 2 + 1.5rem - 24px), 7rem);
-  }
+/* Desktop side rail: 60px down the left edge with the wordmark and
+   expiry set vertically and 60px square buttons stacked between. */
+.vertical-text {
+  writing-mode: vertical-rl;
+}
+.side-rail .header-button {
+  height: 60px;
 }
 
-/* On desktop the wordmark blurs until the pointer reaches the toolbar, a
-   menu is open, or focus is inside it. */
+/* The wordmark blurs until the pointer reaches the rail, a menu is open,
+   or focus is inside it. */
 @media (hover: hover) and (min-width: 768px) {
   .doc-wordmark {
     transition: filter 0.25s ease;
   }
-  .doc-header:not(:hover):not(:focus-within):not(:has([data-popup-open])) .doc-wordmark {
+  .side-rail:not(:hover):not(:focus-within):not(:has([data-popup-open])) .doc-wordmark {
     filter: blur(2px);
   }
 }

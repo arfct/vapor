@@ -23,17 +23,21 @@ export function MenuTrigger({
   return <BaseMenu.Trigger render={children} {...props} />;
 }
 
+export type MenuSide = "bottom" | "right";
+
 interface MenuContentProps extends React.ComponentPropsWithoutRef<"div"> {
   align?: "start" | "end";
+  /** Where the menu hangs: below the trigger (header) or beside it (side rail). */
+  side?: MenuSide;
 }
 
 export const MenuContent = React.forwardRef<HTMLDivElement, MenuContentProps>(
-  ({ className, align = "start", children, ...props }, ref) => {
+  ({ className, align = "start", side = "bottom", children, ...props }, ref) => {
     return (
       <BaseMenu.Portal>
         <BaseMenu.Positioner
-          align={align}
-          side="bottom"
+          align={side === "right" ? "start" : align}
+          side={side}
           sideOffset={0}
           collisionPadding={0}
           className="z-50"

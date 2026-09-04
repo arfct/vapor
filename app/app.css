@@ -83,17 +83,6 @@ body {
   height: 60px;
 }
 
-/* The wordmark blurs until the pointer reaches the rail, a menu is open,
-   or focus is inside it. */
-@media (hover: hover) and (min-width: 768px) {
-  .doc-wordmark {
-    transition: filter 0.25s ease;
-  }
-  .side-rail:not(:hover):not(:focus-within):not(:has([data-popup-open])) .doc-wordmark {
-    filter: blur(2px);
-  }
-}
-
 /* Editor styles */
 .tiptap {
   outline: none;

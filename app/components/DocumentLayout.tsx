@@ -222,7 +222,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
       >
         <Link
           to="/"
-          className="doc-wordmark vertical-text flex h-[100px] w-full items-center justify-center font-medium uppercase tracking-widest text-ink transition-colors hover:bg-border"
+          className="vertical-text flex h-[100px] w-full items-center justify-center font-medium uppercase tracking-widest text-ink transition-colors hover:bg-border"
         >
           vapor
         </Link>
@@ -246,20 +246,6 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           </div>
         )}
       </nav>
-
-      {/* Desktop: who's here and a way to start a comment, top right. */}
-      <div className="absolute right-0 top-0 z-20 hidden h-[60px] items-center pr-2 md:flex">
-        <HeaderMenu compact />
-        <FacePile alsoOnline={demoPresence} />
-        <button
-          onClick={openCommentInput}
-          aria-label="New comment"
-          title="New comment (⌘⌥M)"
-          className="flex h-[44px] w-[44px] cursor-pointer items-center justify-center text-muted transition-colors hover:text-ink"
-        >
-          <Icon name="add" />
-        </button>
-      </div>
 
       <input
         ref={fileInputRef}
@@ -302,7 +288,21 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
             />
             {showPreview && <Preview />}
           </div>
-          <aside className="hidden w-[280px] shrink-0 md:block">
+          <aside className="relative hidden w-[280px] shrink-0 md:block">
+            {/* Who's here and a way to start a comment: part of the page, so
+                they scroll off with the top of the document. */}
+            <div className="absolute right-2 top-0 flex h-[60px] items-center">
+              <HeaderMenu compact />
+              <FacePile alsoOnline={demoPresence} />
+              <button
+                onClick={openCommentInput}
+                aria-label="New comment"
+                title="New comment (⌘⌥M)"
+                className="flex h-[44px] w-[44px] cursor-pointer items-center justify-center text-muted transition-colors hover:text-ink"
+              >
+                <Icon name="add" />
+              </button>
+            </div>
             <CommentRail scrollRef={mainRef} />
           </aside>
         </div>

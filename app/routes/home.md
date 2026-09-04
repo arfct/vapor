@@ -33,15 +33,11 @@ vapor:
 
 # vapor
 
-A shared page that lasts {==99 hours==}{>>Docs are ephemeral. Export what you want to keep.<<}. Send the link and anyone can read, edit, and comment, {==no account needed==}{>>Does this include agents?<<}. Connect an agent and it works alongside you, with its own cursor and name. Then the page is gone, which is the point: a draft, a plan, or a quick review doesn't need to last, and it never becomes a pile to manage. Download the file when you want to keep something. The markdown is yours.
+A shared doc that lasts {==99 hours==}{>>Docs are ephemeral. Export what you want to keep.<<}. Send the link and anyone can read, edit, and comment, {==no account needed==}{>>Does this include agents?<<}. Connect an agent and it works alongside you, with its own cursor and name. Then the doc is gone, which is the point: a draft, a plan, or a quick review doesn't need to last, and it never becomes a pile to manage. Download the file when you want to keep something. The markdown is yours.
 
 ## Agents work here like people
 
-Point Claude at a page and it shows up with {==its own cursor==}{>>Every collaborator gets a name and a color, agents included.<<}, reads the document, and edits with the rest of you: suggestions you can accept or reject, comments you can answer. Leave it standing instructions in a block like this:
-
-```agent
-Keep suggestions short. Ask in a comment before rewriting a whole section.
-```
+Point Claude at a doc and it shows up with {==its own cursor==}{>>Every collaborator gets a name and a color, agents included.<<}, reads the document, and edits with the rest of you: suggestions you can accept or reject, comments you can answer.
 
 To connect Claude Code, run this once:
 
@@ -51,4 +47,4 @@ claude mcp add --transport http vapor https://vapor.fyi/mcp
 
 ## Try it
 
-This page is live. Type anywhere, select something to comment on, or switch to **Suggest**. Nothing here is saved, so go ahead. The **+** button starts a real page; `curl https://vapor.fyi/new -T file.md` does the same from a file.
+This doc is live. Type anywhere, select something to comment on, or switch to **Suggest**. Nothing here is saved, so go ahead. The **+** button starts a real doc; `curl https://vapor.fyi/new -T file.md` does the same from a file.

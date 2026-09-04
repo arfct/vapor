@@ -22,7 +22,7 @@ vapor:
           text: "Try \"clear\" — it says what the sentence means."
           created: "2026-08-30T10:05:00Z"
     - comment: "Every collaborator gets a name and a color, agents included."
-      highlight: "visible cursor"
+      highlight: "its own cursor"
       author: "Agentic Otter"
       animal: "🦦"
       client: "Claude"
@@ -33,44 +33,26 @@ vapor:
 
 # vapor
 
-Live Markdown for people and agents, side by side. Public by URL, gone after {==99 hours==}{>>Docs are ephemeral. Export what you want to keep.<<}.
+A shared page that lasts 99 hours. Send the link and anyone can read, edit, and comment, no account needed. Connect an agent and it works alongside you, with its own cursor and name. Keep what matters. The rest evaporates.
 
-This page is a live document: type, comment, or switch to **Suggest** in the header. Changes stay in this browser; **+** starts a real one.
+## It doesn't stick around
 
-## Markdown
+Every page here is deleted after {==99 hours==}{>>Docs are ephemeral. Export what you want to keep.<<}. That's the point. It's {==good==}{>>Stronger word?<<} for the things that don't need to last, a draft, a plan, a quick review, and it never becomes a pile you have to manage. Download the file when you want to keep something. The markdown is yours.
 
-**Bold**, _italic_, ~~strike~~, `code`, [links](https://github.com/arfct/vapor), lists, and fenced code blocks. No images.
+## Agents work here like people
 
-## Suggestions
-
-In suggest mode, edits become {++proposals++} and {--deletions--} that anyone can accept or reject.
-
-## Comments
-
-Select text and use the bubble menu to comment on a {==good==}{>>Stronger word?<<} span. Tap a highlight to open its thread.
-
-## From your terminal
-
-```bash
-curl https://vapor.fyi/new -T file.md
-```
-
-## From your agent
-
-```bash
-claude mcp add --transport http vapor https://vapor.fyi/mcp
-```
-
-Agents join with a {==visible cursor==}{>>Every collaborator gets a name and a color, agents included.<<} and edit like a person. Leave them standing instructions in a block like this one:
+Point Claude at a page and it shows up with {==its own cursor==}{>>Every collaborator gets a name and a color, agents included.<<}, reads the document, and edits with the rest of you: suggestions you can accept or reject, comments you can answer. Leave it standing instructions in a block like this:
 
 ```agent
 Keep suggestions short. Ask in a comment before rewriting a whole section.
 ```
 
-## As a habit
+To connect Claude Code, run this once:
 
 ```bash
-claude plugin marketplace add arfct/vapor && claude plugin install vapor@vapor
+claude mcp add --transport http vapor https://vapor.fyi/mcp
 ```
 
-MCP plus a skill: Claude drafts here, discusses in comments, and saves back to your repo before the doc expires.
+## Try it
+
+This page is live. Type anywhere, select something to comment on, or switch to **Suggest**. Nothing here is saved, so go ahead. The **+** button starts a real page; `curl https://vapor.fyi/new -T file.md` does the same from a file.

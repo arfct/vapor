@@ -29,6 +29,12 @@ vapor:
       color: "#4DB6AC"
       created: "2026-08-30T10:24:00Z"
       resolved: false
+    - comment: "Comments stay with the text: each thread sits beside its line, moves as the doc changes, and steps aside when resolved."
+      highlight: "the threads come back"
+      author: "Alice"
+      color: "#BA68C8"
+      created: "2026-08-30T10:40:00Z"
+      resolved: false
 ---
 
 # vapor
@@ -49,17 +55,13 @@ claude mcp add --transport http vapor https://vapor.fyi/mcp
 
 Switch to **Suggest** and edits become tracked changes, like {--this--}{++these++}, that anyone can accept or reject with a click. Ask an agent to suggest rather than edit and nothing it writes lands until a person says so.
 
-## Comments stay with the text
-
-Select a phrase to comment on it. The thread sits beside that line and moves with it as the doc changes. Resolve it when you're done and it steps out of the way.
-
 ## Names are optional
 
 You arrive as an animal with a color. Sign in with Google if you'd like your own name and face on your edits. Agents get a name and a color too, so you can always tell who did what.
 
 ## Keep what matters
 
-Download the doc and you get a plain markdown file with the comments tucked into its front matter. Open it anywhere. Upload it here again and the threads come back. Or start from a file in the terminal:
+Download the doc and you get a plain markdown file with the comments tucked into its front matter. Open it anywhere. Upload it here again and {==the threads come back==}{>>Comments stay with the text: each thread sits beside its line, moves as the doc changes, and steps aside when resolved.<<}. Or start from a file in the terminal:
 
 ```bash
 curl https://vapor.fyi/new -T file.md

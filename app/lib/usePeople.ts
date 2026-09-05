@@ -14,6 +14,10 @@ function othersOnline(awareness: Awareness): PresenceUser[] {
   return users;
 }
 
+// A stable default: a fresh `[]` per render would re-run the merge effect
+// on every render, and its setState would render again — forever.
+const NOBODY: PresenceUser[] = [];
+
 /**
  * Everyone else on this document: connected now (awareness), has
  * commented (threads), or has viewed it (the shared `viewers` map). Also
@@ -25,7 +29,7 @@ function othersOnline(awareness: Awareness): PresenceUser[] {
 export function usePeople(
   yjs: YjsEditorState,
   threads: ThreadData[],
-  alsoOnline: PresenceUser[] = [],
+  alsoOnline: PresenceUser[] = NOBODY,
 ): Person[] {
   const { doc, awareness, user } = yjs;
   const [tick, setTick] = useState(0);

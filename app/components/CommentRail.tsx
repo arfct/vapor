@@ -20,14 +20,14 @@ function sameMap(a: Map<string, number>, b: Map<string, number>): boolean {
 }
 
 /**
- * Desktop comments beside the document, inside the same scroll container
- * so they travel with the text. Each card sits level with its highlight;
+ * Desktop comments beside the document, in the same page flow so they
+ * travel with the text. Each card sits level with its highlight;
  * overlapping cards stack; the selected card (or the new-comment input)
  * is pinned to its anchor and the rest slide around it. Anchors are
- * measured from the editor's DOM in the scroller's content coordinates,
- * so scrolling itself costs nothing — only edits and resizes re-measure.
+ * measured from the editor's DOM relative to the rail element, so
+ * scrolling itself costs nothing — only edits and resizes re-measure.
  */
-export default function CommentRail({ scrollRef }: { scrollRef: RefObject<HTMLElement | null> }) {
+export default function CommentRail({ originRef }: { originRef: RefObject<HTMLElement | null> }) {
   const {
     threads,
     activeThreadId,
@@ -53,13 +53,13 @@ export default function CommentRail({ scrollRef }: { scrollRef: RefObject<HTMLEl
   const resolvedCount = threads.filter((t) => t.resolved).length;
 
   const measureAnchors = useCallback(() => {
-    const container = scrollRef.current;
+    const container = originRef.current;
     if (!editor || !container || editor.isDestroyed) return;
     const view = editor.view;
     const editorVisible = !showPreview && view.dom.offsetParent !== null;
-    // Content-space origin: subtracting this from a viewport y gives a
-    // position that doesn't change as the container scrolls.
-    const origin = container.getBoundingClientRect().top - container.scrollTop;
+    // Rail-relative origin: subtracting this from a viewport y gives a
+    // position that doesn't change as the page scrolls.
+    const origin = container.getBoundingClientRect().top;
     const yAt = (pos: number | undefined): number | null => {
       if (pos === undefined || !editorVisible) return null;
       const clamped = Math.max(0, Math.min(pos, view.state.doc.content.size));
@@ -91,7 +91,7 @@ export default function CommentRail({ scrollRef }: { scrollRef: RefObject<HTMLEl
       if (y !== null) next.set(NEW_COMMENT, y);
     }
     setAnchors((prev) => (sameMap(prev, next) ? prev : next));
-  }, [editor, scrollRef, threads, commentActive, commentHighlight, showPreview]);
+  }, [editor, originRef, threads, commentActive, commentHighlight, showPreview]);
 
   // Synchronous on data changes (a new thread, the comment box opening) so
   // a card never paints at a fallback spot and then jumps; editor events

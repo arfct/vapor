@@ -22,21 +22,21 @@ describe("ShareButton", () => {
     vi.restoreAllMocks();
   });
 
-  it("opens with copy, download, and invite-an-agent rows", () => {
-    renderWithDocument(createElement(ShareButton, { onOpenAgents: vi.fn() }));
+  it("opens with copy and download rows, and no agent row without a handler", () => {
+    renderWithDocument(createElement(ShareButton));
     fireEvent.click(screen.getByLabelText("Share options"));
 
     expect(screen.getByText("Copy link")).toBeTruthy();
     expect(screen.getByText("Download")).toBeTruthy();
-    expect(screen.getByText("Invite an agent")).toBeTruthy();
+    expect(screen.queryByText("Invite an agent")).toBeNull();
   });
 
-  it("invite-an-agent row calls onOpenAgents", () => {
-    const onOpenAgents = vi.fn();
-    renderWithDocument(createElement(ShareButton, { onOpenAgents }));
+  it("invite-an-agent row calls its handler", () => {
+    const onInviteAgent = vi.fn();
+    renderWithDocument(createElement(ShareButton, { onInviteAgent }));
     fireEvent.click(screen.getByLabelText("Share options"));
     fireEvent.click(screen.getByText("Invite an agent"));
-    expect(onOpenAgents).toHaveBeenCalledOnce();
+    expect(onInviteAgent).toHaveBeenCalledOnce();
   });
 
   it("shows Copied after the link is written to the clipboard", async () => {

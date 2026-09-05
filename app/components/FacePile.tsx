@@ -64,7 +64,7 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
           <button
             aria-label={label}
             title={label}
-            className="hidden h-full cursor-pointer items-center px-3 transition-colors data-[popup-open]:bg-ink md:flex [@media(hover:hover)]:hover:bg-border"
+            className="toolbar-item hidden h-[48px] cursor-pointer items-center rounded-full px-3 transition-[background-color,opacity] data-[popup-open]:bg-ink md:flex [@media(hover:hover)]:hover:bg-border"
           >
             <span className="flex items-center">
               {overflow > 0 && (
@@ -82,7 +82,7 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
         }
       />
       <Popover.Portal>
-        <Popover.Positioner side="bottom" align="end" sideOffset={0} collisionPadding={0} className="z-50">
+        <Popover.Positioner side="bottom" align="end" sideOffset={6} collisionPadding={0} className="z-50">
           <Popover.Popup className="max-h-[60vh] w-80 overflow-y-auto border border-border bg-paper py-1 shadow-md outline-none">
             {people.map((person) => (
               <div key={person.key} className="flex min-h-[36px] items-center gap-2 px-3 text-sm">

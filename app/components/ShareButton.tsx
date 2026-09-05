@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { serializeThreads } from "~/lib/thread-serialization";
 import { useDocument } from "~/lib/DocumentContext";
 import { copyText } from "~/lib/clipboard";
-import { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator, type MenuSide } from "~/components/ui/menu";
+import { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from "~/components/ui/menu";
 import Icon from "~/components/Icon";
 import ConnectionStatus from "~/components/ConnectionStatus";
 import { formatRemainingTime } from "~/lib/format-remaining";
@@ -24,18 +24,10 @@ const COPY_ICON: Record<CopyState, string> = {
 };
 
 /**
- * Copy link and Invite an agent only make sense for a document that lives
- * at a URL; the homepage's standalone doc omits both and keeps Download.
+ * Share a document: its id, connection, and expiry; the system share
+ * sheet where there is one; Copy link; Download; and inviting an agent.
  */
-export default function ShareButton({
-  onOpenAgents,
-  copyLink = true,
-  menuSide,
-}: {
-  onOpenAgents?: () => void;
-  copyLink?: boolean;
-  menuSide?: MenuSide;
-}) {
+export default function ShareButton({ onInviteAgent }: { onInviteAgent?: () => void } = {}) {
   const { docId, createdAt, markdown, threads } = useDocument();
   const [copyState, setCopyState] = useState<CopyState>("idle");
 
@@ -78,38 +70,32 @@ export default function ShareButton({
           <Icon name="ios_share" />
         </button>
       </MenuTrigger>
-      <MenuContent side={menuSide}>
-        {copyLink && (
-          <>
-            {/* Connection, id, and expiry: the header has no room for them. */}
-            <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted">
-              <ConnectionStatus compact />
-              <span className="font-mono font-bold text-ink">{docId}</span>
-              {createdAt && <span>vaporized in {formatRemainingTime(createdAt)}</span>}
-            </div>
-            <MenuSeparator />
-          </>
-        )}
-        {copyLink && canShare && (
+      <MenuContent align="end">
+        {/* Connection, id, and expiry: the header has no room for them. */}
+        <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted">
+          <ConnectionStatus compact />
+          <span className="font-mono font-bold text-ink">{docId}</span>
+          {createdAt && <span>vaporized in {formatRemainingTime(createdAt)}</span>}
+        </div>
+        <MenuSeparator />
+        {canShare && (
           <MenuItem className="gap-2" onClick={handleShare}>
             <Icon name="ios_share" />
             <span>Share link</span>
           </MenuItem>
         )}
-        {copyLink && (
-          <MenuItem className="gap-2" onClick={handleCopy}>
-            <Icon name={COPY_ICON[copyState]} />
-            <span>{COPY_LABEL[copyState]}</span>
-          </MenuItem>
-        )}
+        <MenuItem className="gap-2" onClick={handleCopy}>
+          <Icon name={COPY_ICON[copyState]} />
+          <span>{COPY_LABEL[copyState]}</span>
+        </MenuItem>
         <MenuItem className="gap-2" onClick={handleDownload}>
           <Icon name="download" />
           <span>Download</span>
         </MenuItem>
-        {onOpenAgents && (
+        {onInviteAgent && (
           <>
             <MenuSeparator />
-            <MenuItem className="gap-2" onClick={onOpenAgents}>
+            <MenuItem className="gap-2" onClick={onInviteAgent}>
               <Icon name="robot_2" />
               <span>Invite an agent</span>
             </MenuItem>

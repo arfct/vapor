@@ -5,15 +5,25 @@ import CommentInput from "~/components/CommentInput";
 import Icon from "~/components/Icon";
 
 const navButton =
-  "flex h-[44px] w-[44px] cursor-pointer items-center justify-center text-ink transition-colors hover:bg-border disabled:cursor-default disabled:text-border";
+  "flex h-[48px] w-[48px] cursor-pointer items-center justify-center text-ink transition-colors hover:bg-border disabled:cursor-default disabled:text-border";
 
 /**
  * Comments on a narrow screen: a bottom sheet showing one thread at a
- * time, with arrows to step through the open threads in document order.
+ * time, with a bar along the bottom edge to step through the open threads
+ * in document order. The bar sits under the thread so it never moves as
+ * threads change height, and steps aside while the keyboard is up.
  * Selecting a thread here highlights it in the document, the same as
  * clicking it in the desktop rail.
  */
-export default function CommentSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export default function CommentSheet({
+  open,
+  onClose,
+  keyboardUp = false,
+}: {
+  open: boolean;
+  onClose: () => void;
+  keyboardUp?: boolean;
+}) {
   const {
     threads,
     activeThreadId,
@@ -44,43 +54,14 @@ export default function CommentSheet({ open, onClose }: { open: boolean; onClose
     if (next) setActiveThreadId(next.id);
   };
 
+  // Absolute within the chrome layer, which is pinned to the visual viewport:
+  // on iOS that shrinks above the keyboard while the layout viewport doesn't.
   return (
     <div
-      className="fixed inset-x-0 bottom-0 z-30 flex max-h-[60dvh] flex-col border-t border-border bg-paper pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_rgba(0,0,0,0.08)] md:hidden"
+      className="pointer-events-auto absolute inset-x-0 bottom-0 flex max-h-[60%] flex-col border-t border-border bg-paper pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_rgba(0,0,0,0.08)] md:hidden"
       role="dialog"
       aria-label="Comments"
     >
-      <div className="flex h-[44px] shrink-0 items-center border-b border-border">
-        <button onClick={() => step(-1)} disabled={at <= 0} aria-label="Previous comment" className={navButton}>
-          <Icon name="chevron_left" />
-        </button>
-        <span className="min-w-0 flex-1 truncate text-center text-sm text-muted">
-          {commentActive
-            ? "New comment"
-            : visible.length === 0
-              ? "No comments"
-              : `${at + 1} of ${visible.length}`}
-        </span>
-        <button
-          onClick={() => step(1)}
-          disabled={at < 0 || at >= visible.length - 1}
-          aria-label="Next comment"
-          className={navButton}
-        >
-          <Icon name="chevron_right" />
-        </button>
-        <button
-          onClick={openCommentInput}
-          disabled={commentActive}
-          aria-label="New comment"
-          className={navButton}
-        >
-          <Icon name="add_comment" />
-        </button>
-        <button onClick={onClose} aria-label="Close comments" className={navButton}>
-          <Icon name="close" />
-        </button>
-      </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <CommentInput />
         {current && !commentActive && (
@@ -94,6 +75,39 @@ export default function CommentSheet({ open, onClose }: { open: boolean; onClose
           />
         )}
       </div>
+      {!keyboardUp && (
+        <div className="sheet-toolbar flex h-[48px] shrink-0 items-center border-t border-border">
+          <button onClick={() => step(-1)} disabled={at <= 0} aria-label="Previous comment" className={navButton}>
+            <Icon name="chevron_left" />
+          </button>
+          <span className="min-w-0 flex-1 truncate text-center text-sm text-muted">
+            {commentActive
+              ? "New comment"
+              : visible.length === 0
+                ? "No comments"
+                : `${at + 1} of ${visible.length}`}
+          </span>
+          <button
+            onClick={() => step(1)}
+            disabled={at < 0 || at >= visible.length - 1}
+            aria-label="Next comment"
+            className={navButton}
+          >
+            <Icon name="chevron_right" />
+          </button>
+          <button
+            onClick={openCommentInput}
+            disabled={commentActive}
+            aria-label="New comment"
+            className={navButton}
+          >
+            <Icon name="add_comment" />
+          </button>
+          <button onClick={onClose} aria-label="Close comments" className={navButton}>
+            <Icon name="close" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

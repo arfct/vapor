@@ -5,7 +5,9 @@ vapor's URLs get opened on phones — and often inside in-app browsers (Claude, 
 
 An audit of the current code found the connectivity layer already solid (idle-sleep + full resync on reconnect survives webview suspension) and `16px` input font already prevents iOS zoom-on-focus. The gaps are layout and touch.
 
-> **Status (2026-09-02):** implemented on `feat/mobile-web` — one layout at every width (six-cell header, comments as a rail at `lg`+ and a bottom sheet stepping one thread at a time below), `viewport-fit=cover` + `dvh` + safe-area insets, bubble menu without the focus gate, 44px targets, `enterkeyhint`, storage/clipboard/GSI hardening. Not done: moving the doc id into the Share menu (the id and connection dot stay in the header by choice, truncating first on narrow screens) and the `visualViewport` fallback, held until `dvh` proves insufficient on a device.
+> **Status (2026-09-02):** implemented on `feat/mobile-web` — one layout at every width (six-cell header, comments as a rail at `lg`+ and a bottom sheet stepping one thread at a time below), `viewport-fit=cover` + `dvh` + safe-area insets, bubble menu without the focus gate, 44px targets, `enterkeyhint`, storage/clipboard/GSI hardening. Not done: moving the doc id into the Share menu (the id and connection dot stay in the header by choice, truncating first on narrow screens).
+>
+> **Status (2026-09-05):** `dvh` proved insufficient in the iOS Simulator (iPhone 17 Pro, iOS 26): it stays at full height with the keyboard up, so the scroller couldn't reach the end of the document and Safari panned the header off screen when the caret or a comment input sat under the keyboard. The page itself now scrolls (so mobile browsers collapse their toolbar and content runs under it), with half a screen of padding after the document so its end clears the keyboard. The header and comment sheet sit on a fixed chrome layer that `useVisualViewportFrame` pins to `visualViewport` (height, and translate to follow Safari's pan).
 
 ## Review notes
 

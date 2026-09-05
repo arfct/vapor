@@ -53,16 +53,18 @@ body {
   min-height: 100dvh;
 }
 
-/* Square 60px header buttons. A button whose menu is open inverts to ink,
-   and the menu hangs flush beneath it. */
+/* Round 48px header buttons in a 60px bar (6px padding and gaps). A button
+   whose menu is open inverts to ink, and the menu hangs from the bar's
+   bottom edge. */
 .header-button {
   display: flex;
-  height: 100%;
-  width: 60px;
+  height: 48px;
+  width: 48px;
   align-items: center;
   justify-content: center;
+  border-radius: 9999px;
   cursor: pointer;
-  transition: background-color 0.15s, color 0.15s;
+  transition: background-color 0.15s, color 0.15s, opacity 0.15s;
 }
 @media (hover: hover) {
   .header-button:hover {
@@ -74,13 +76,60 @@ body {
   color: var(--color-paper);
 }
 
-/* Desktop side rail: 60px down the left edge with the wordmark and
-   expiry set vertically and 60px square buttons stacked between. */
-.vertical-text {
-  writing-mode: vertical-rl;
+/* Toolbar items sit back until wanted: 84% on touch screens; with a
+   pointer, 50% at rest, 84% while the bar is hovered, and full strength
+   for the hovered or open item. */
+.header-button,
+.toolbar-item {
+  opacity: 0.84;
 }
-.side-rail .header-button {
-  height: 60px;
+@media (hover: hover) {
+  .header-button,
+  .toolbar-item {
+    opacity: 0.5;
+  }
+  header:hover .header-button,
+  header:hover .toolbar-item {
+    opacity: 0.84;
+  }
+  .header-button:hover,
+  .toolbar-item:hover {
+    opacity: 1;
+  }
+}
+.header-button[data-popup-open],
+.toolbar-item[data-popup-open] {
+  opacity: 1;
+}
+
+/* Chrome glyphs are one size everywhere: header cells, the system menu
+   trigger and its rows, menu items, and the comment sheet's bar. */
+.header-button .material-symbols-outlined,
+.system-trigger .material-symbols-outlined,
+.sheet-toolbar .material-symbols-outlined,
+.theme-switch .material-symbols-outlined,
+[role="menuitem"] .material-symbols-outlined {
+  font-size: 24px;
+}
+
+/* The homepage tour's own touches: its title is vapor, condensing to
+   solid text under the reader's pointer or while their caret is anywhere
+   in the document. */
+.tour .tiptap > h1:first-child {
+  filter: blur(0.1em);
+  opacity: 0.6;
+  transition: filter 0.4s ease, opacity 0.4s ease;
+}
+.tour .tiptap > h1:first-child:hover,
+.tour .tiptap:focus-within > h1:first-child {
+  filter: none;
+  opacity: 1;
+}
+/* Its section headings are bold body text, not display type. */
+.tour .tiptap h2 {
+  font-size: inherit;
+  line-height: inherit;
+  margin: 1rem 0 0.5rem;
 }
 
 /* Editor styles */
@@ -101,7 +150,7 @@ body {
 .tiptap h1 {
   font-size: 1.875rem;
   font-weight: bold;
-  line-height: 1.3;
+  line-height: 1.2;
   margin: 1.5rem 0 1rem;
   max-width: 65ch;
 }
@@ -133,6 +182,7 @@ body {
 .tiptap > h1:first-child {
   font-size: 40px;
   font-weight: 500;
+  line-height: 1.1;
 }
 
 .tiptap ul,
@@ -423,20 +473,26 @@ body {
 }
 
 /* Placeholders on empty blocks — decoration-only, never content. */
+/* In flow, so a hint that wraps makes its block taller and pushes what
+   follows down. The block's trailing <br> would add an empty line under
+   the hint, so it hides while the hint shows; the caret still sits on the
+   hint's first line. */
 .tiptap .is-empty::before {
   color: var(--color-muted);
   content: attr(data-placeholder);
-  float: left;
-  height: 0;
+  display: block;
   pointer-events: none;
   user-select: none;
+}
+.tiptap .is-empty > .ProseMirror-trailingBreak {
+  display: none;
 }
 
 /* The empty first line is the title-to-be: show its hint at heading size. */
 .tiptap .is-title {
   font-size: 40px;
   font-weight: 500;
-  line-height: 1.3;
+  line-height: 1.1;
   margin-bottom: 1rem;
 }
 
@@ -481,6 +537,12 @@ body {
   letter-spacing: normal;
   text-transform: none;
   display: inline-block;
+  /* A glyph is 1em square. Clipping to that keeps a misspelt or missing
+     ligature (which renders as its name in text) from overflowing. */
+  width: 1em;
+  height: 1em;
+  overflow: hidden;
+  white-space: nowrap;
   white-space: nowrap;
   word-wrap: normal;
   direction: ltr;

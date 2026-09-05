@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef } from "react";
 import type { CommentColorRange } from "~/shared/types";
 import { CommentColors, commentColorsKey, commentColorAt } from "~/lib/comment-colors";
 import { useEditor, EditorContent } from "@tiptap/react";
-import { Extension, getMarkRange, type Editor as TiptapEditor } from "@tiptap/core";
+import { Extension, type Editor as TiptapEditor } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import StarterKit from "@tiptap/starter-kit";
@@ -13,6 +13,7 @@ import { BlockId } from "~/lib/block-id";
 import { CodeBlock } from "~/lib/code-block";
 import { CodeBlockCopy } from "~/lib/code-block-copy";
 import { AgentInstructions } from "~/lib/agent-instructions";
+import { CommentClickHandler } from "~/lib/comment-click";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
 import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
 
@@ -35,78 +36,6 @@ const SuggestMode = Extension.create<{ docState: ReturnType<typeof useYjsEditor>
   addProseMirrorPlugins() {
     if (!this.options.docState) return [];
     return [suggestModePlugin(this.options.docState)];
-  },
-});
-
-const CommentClickHandler = Extension.create<{
-  onCommentClick?: (commentText: string) => void;
-}>({
-  name: "commentClickHandler",
-  addOptions() {
-    return { onCommentClick: undefined };
-  },
-  addProseMirrorPlugins() {
-    const onCommentClick = this.options.onCommentClick;
-    if (!onCommentClick) return [];
-    return [
-      new Plugin({
-        props: {
-          handleDOMEvents: {
-            // A touch on a comment or highlight should open its thread, not
-            // focus the editor and raise the keyboard. Cancelling pointerdown
-            // suppresses the mouse events that focus and place the caret;
-            // the click still fires and handleClick below does the rest.
-            pointerdown(view, event) {
-              if (event.pointerType !== "touch") return false;
-              const hit = view.posAtCoords({ left: event.clientX, top: event.clientY });
-              if (!hit) return false;
-              const node = view.state.doc.nodeAt(hit.pos);
-              const marks = node?.isText ? node.marks : view.state.doc.resolve(hit.pos).marks();
-              if (marks.some((m) => m.type.name === "criticComment" || m.type.name === "criticHighlight")) {
-                event.preventDefault();
-              }
-              return false;
-            },
-          },
-          handleClick(view, pos) {
-            const $pos = view.state.doc.resolve(pos);
-            // Use nodeAt for reliable mark detection at boundaries (inclusive:false)
-            const node = view.state.doc.nodeAt(pos);
-            const marks = node?.isText ? node.marks : $pos.marks();
-
-            // Direct click on comment text (or point marker at comment boundary)
-            const commentMark = marks.find((m) => m.type.name === "criticComment");
-            if (commentMark) {
-              if (node?.isText) {
-                onCommentClick(node.text ?? "");
-              }
-              return true;
-            }
-
-            // Click on highlighted text → find adjacent comment
-            const highlightMark = marks.find((m) => m.type.name === "criticHighlight");
-            if (highlightMark) {
-              const highlightType = view.state.schema.marks.criticHighlight;
-              const commentType = view.state.schema.marks.criticComment;
-              if (highlightType && commentType) {
-                const hlRange = getMarkRange($pos, highlightType);
-                if (hlRange) {
-                  const $afterHl = view.state.doc.resolve(hlRange.to);
-                  const cmRange = getMarkRange($afterHl, commentType);
-                  if (cmRange) {
-                    const text = view.state.doc.textBetween(cmRange.from, cmRange.to);
-                    onCommentClick(text);
-                    return true;
-                  }
-                }
-              }
-            }
-
-            return false;
-          },
-        },
-      }),
-    ];
   },
 });
 
@@ -197,12 +126,13 @@ const ActiveCommentHighlight = Extension.create({
 
 type YjsEditorState = ReturnType<typeof useYjsEditor>;
 
-/** True when `el` sits inside its scroll container with some breathing room. */
+const HEADER_HEIGHT_PX = 60;
+
+/** True when `el` sits inside the viewport, clear of the header, with some breathing room. */
 function isComfortablyInView(el: Element, margin = 48): boolean {
-  const scroller = el.closest("main") ?? document.documentElement;
-  const bounds = scroller.getBoundingClientRect();
+  const viewportHeight = window.visualViewport?.height ?? document.documentElement.clientHeight;
   const rect = el.getBoundingClientRect();
-  return rect.top >= bounds.top + margin && rect.bottom <= bounds.bottom - margin;
+  return rect.top >= HEADER_HEIGHT_PX + margin && rect.bottom <= viewportHeight - margin;
 }
 
 function renderCaret(user: Record<string, unknown>) {
@@ -316,7 +246,7 @@ export default function Editor({
         SuggestFormatting.configure({ docState }),
         SuggestStructureGuard.configure({ docState }),
         TitleBlock.configure(placeholders),
-        CommentClickHandler.configure({ onCommentClick }),
+        CommentClickHandler,
         CommentHighlight,
         ActiveCommentHighlight,
         CommentColors,
@@ -343,6 +273,12 @@ export default function Editor({
     },
     [doc, awareness],
   );
+
+  // The tap handler's callback must follow the latest threads; extension
+  // options were fixed when the editor was created.
+  useEffect(() => {
+    editor?.commands.setCommentClickHandler(onCommentClick ?? null);
+  }, [editor, onCommentClick]);
 
   // Update the comment highlight decoration when the prop changes
   useEffect(() => {

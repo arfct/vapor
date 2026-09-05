@@ -25,6 +25,9 @@ export function MenuTrigger({
 
 export type MenuSide = "bottom" | "right";
 
+// Header cells sit 6px inside the bar; the menu hangs from the bar's edge.
+const HEADER_PADDING_PX = 6;
+
 interface MenuContentProps extends React.ComponentPropsWithoutRef<"div"> {
   align?: "start" | "end";
   /** Where the menu hangs: below the trigger (header) or beside it (side rail). */
@@ -38,7 +41,7 @@ export const MenuContent = React.forwardRef<HTMLDivElement, MenuContentProps>(
         <BaseMenu.Positioner
           align={side === "right" ? "start" : align}
           side={side}
-          sideOffset={0}
+          sideOffset={HEADER_PADDING_PX}
           collisionPadding={0}
           className="z-50"
         >

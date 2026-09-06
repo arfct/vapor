@@ -80,8 +80,8 @@ const refuse = (error: AttachmentError) => json({ error }, STATUS[error]);
 
 /**
  * Who is uploading: a signed-in person (session cookie, same-origin only)
- * or an agent on the OAuth door holding `write` (Bearer token). Anonymous
- * visitors and the tokenless MCP door cannot upload; storage is the one
+ * or an agent on the OAuth endpoint holding `write` (Bearer token). Anonymous
+ * visitors and the anonymous MCP endpoint cannot upload; storage is the one
  * place a stranger can impose a durable, metered cost.
  */
 export async function resolvePrincipal(request: Request, deps: AttachmentDeps): Promise<Principal | AttachmentError> {

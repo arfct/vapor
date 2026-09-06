@@ -110,7 +110,7 @@ export function mcpHelpHtml(origin: string): string {
 </p>
 
 <p>
-  <strong>${mcpUrl}</strong> is the main door: signing in gives your agent a
+  <strong>${mcpUrl}</strong> is the main URL: signing in gives your agent a
   stable identity ("Ada's Agent") and, if you grant it at consent, write access.
   Adding it in a client pops a browser sign-in the first time. Prefer no account?
   <strong>${anonUrl}</strong> connects with zero setup and can suggest and
@@ -119,8 +119,8 @@ export function mcpHelpHtml(origin: string): string {
 
 <h2>Connect a client</h2>
 <p>
-  Every client below takes the same URL. Use the main door to sign in, or the
-  anonymous door to skip it. Swap the URL to switch.
+  Every client below takes the same URL. Use the main URL to sign in, or the
+  anonymous URL to skip it. Swap one for the other to switch.
 </p>
 
 <h3>Claude Code</h3>
@@ -145,7 +145,7 @@ export function mcpHelpHtml(origin: string): string {
 <p>
   <strong>Settings → Connectors → Advanced → Developer mode</strong>, then
   <strong>Create</strong> a connector with the URL. OAuth signs in; the anonymous
-  door needs no authentication. Paid plans only.
+  URL needs no authentication. Paid plans only.
 </p>
 <pre>${mcpUrl}</pre>
 
@@ -172,7 +172,7 @@ codex mcp login vapor</pre>
 <pre>${mcpServersJson}</pre>
 <p class="muted">
   Building your own agent? The Anthropic and OpenAI APIs both take a remote MCP
-  server URL directly; point them at the anonymous door, or at the main door with
+  server URL directly; point them at the anonymous URL, or at the main URL with
   an access token from the OAuth flow.
 </p>
 
@@ -246,7 +246,7 @@ Reply to comments in the thread, not in the body.
   deprecated.)
 </p>
 <p>
-  <strong>Subscribe with a webhook.</strong> An agent on the signed-in door with a
+  <strong>Subscribe with a webhook.</strong> A signed-in agent with a
   reachable HTTPS receiver can register one with <code>events_subscribe</code>: pass
   the URL and a client-generated secret (<code>whsec_</code> + base64 of 24&ndash;64
   random bytes), and vapor POSTs each occurrence there, signed per
@@ -285,7 +285,7 @@ export function mcpHelpMarkdown(origin: string): string {
 
 ## Connect
 
-Two doors, same tools. Signed in (${mcpUrl}) gives the agent a stable identity and, if granted at consent, write access; the client opens a browser sign-in the first time. Anonymous (${anonUrl}) needs no account and can suggest and comment.
+Two URLs, same tools. Signed in (${mcpUrl}) gives the agent a stable identity and, if granted at consent, write access; the client opens a browser sign-in the first time. Anonymous (${anonUrl}) needs no account and can suggest and comment.
 
 - Claude Code: \`claude mcp add --transport http vapor ${mcpUrl}\`
 - claude.ai and Claude Desktop: Settings → Connectors → Add custom connector, with ${mcpUrl}
@@ -325,7 +325,7 @@ A fenced block whose language is \`agent\` carries guidance for agents that read
 
 ## Watching
 
-Documents emit mention (the text says @agent-name), thread.reply (a person answered in the agent's thread), and document.changed. After sharing a link, stay about ten minutes: call events_poll with the last cursor, wait at least retryAfterMs between empty polls, answer what arrives, then return when asked or mentioned. With an HTTPS receiver on the signed-in door, events_subscribe registers a Standard Webhooks-signed webhook instead.
+Documents emit mention (the text says @agent-name), thread.reply (a person answered in the agent's thread), and document.changed. After sharing a link, stay about ten minutes: call events_poll with the last cursor, wait at least retryAfterMs between empty polls, answer what arrives, then return when asked or mentioned. A signed-in agent with an HTTPS receiver can call events_subscribe, which registers a Standard Webhooks-signed webhook instead.
 
 ## Links
 

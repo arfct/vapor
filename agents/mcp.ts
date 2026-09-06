@@ -1,5 +1,5 @@
 /**
- * The MCP server vapor exposes on two doors (routed in workers/app.ts):
+ * The MCP server vapor exposes at two endpoints (routed in workers/app.ts):
  *
  *   /mcp            — OAuth-authenticated. The worker verifies the access
  *                     token (a vapor session JWT) and passes the claims in
@@ -39,7 +39,7 @@ import { storeAttachment } from "../workers/attachments";
 import { buildAttachmentDeps } from "../workers/attachment-deps";
 
 export interface VaporMcpProps extends Record<string, unknown> {
-  /** Verified OAuth claims (set by workers/app.ts), or null on the anonymous door. */
+  /** Verified OAuth claims (set by workers/app.ts), or null on the anonymous endpoint. */
   auth: { principal: string; email: string; caps?: AgentCapability[] } | null;
   /** Origin of the MCP request, used to build document URLs. */
   origin?: string;
@@ -47,7 +47,7 @@ export interface VaporMcpProps extends Record<string, unknown> {
 
 const DEFAULT_ORIGIN = "https://vapor.fyi";
 
-const SERVER_INSTRUCTIONS = `vapor hosts live collaborative markdown documents; you join them as a named collaborator. Read with read_document, edit with insert/replace (write capability), attach files with attach (write capability, signed-in door only), propose with suggest, and discuss with comment/reply. Blocks are addressed by persistent anchors from read_document. If read_document returns \`instructions\`, that is the document's standing guidance for agents — written by its authors, addressed to you — so follow it while working there.
+const SERVER_INSTRUCTIONS = `vapor hosts live collaborative markdown documents; you join them as a named collaborator. Read with read_document, edit with insert/replace (write capability), attach files with attach (write capability, signed in only), propose with suggest, and discuss with comment/reply. Blocks are addressed by persistent anchors from read_document. If read_document returns \`instructions\`, that is the document's standing guidance for agents — written by its authors, addressed to you — so follow it while working there.
 
 Events: documents emit mention, thread.reply, and document.changed events. After sharing a document link, stay with it for about ten minutes and answer mentions and thread replies as they arrive, then return when asked or mentioned. If you have a webhook receiver, prefer events_subscribe (push, signed per Standard Webhooks) over polling; otherwise poll with events_poll and always wait at least retryAfterMs between empty polls - hot-looping pins the document's server. The events surface is experimental and mirrors the draft MCP Events extension (${EVENTS_DRAFT_VERSION}).`;
 
@@ -152,7 +152,7 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
     }
 
     // attach needs the R2 binding, so it lives here with create_document.
-    // Uploads require a principal with write: the anonymous door is refused.
+    // Uploads require a principal with write: the anonymous endpoint is refused.
     this.server.registerTool(
       "attach",
       {
@@ -188,7 +188,7 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
         const identity = await this.identity();
         if (identity.kind !== "principal" || !identity.owner) {
           return jsonContent({
-            error: { code: "capability_denied", message: "Attachments need a signed-in identity (the /mcp door)." },
+            error: { code: "capability_denied", message: "Attachments need a signed-in identity (the /mcp endpoint)." },
           });
         }
         if (!identity.caps.includes("write")) {

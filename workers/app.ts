@@ -115,7 +115,7 @@ export default {
       return markdownResponse;
     }
 
-    // The MCP server has two doors. /mcp/anonymous never challenges:
+    // The MCP server has two endpoints. /mcp/anonymous never challenges:
     // tokenless sessions run as per-session anonymous identities.
     if (url.pathname === "/mcp/anonymous" || url.pathname.startsWith("/mcp/anonymous/")) {
       const props: VaporMcpProps = { auth: null, origin: url.origin };
@@ -129,7 +129,7 @@ export default {
       return anonMcpHandler.fetch(request, env, mcpCtx);
     }
 
-    // /mcp is the identity door: it accepts exactly one credential type — a
+    // /mcp is the signed-in endpoint: it accepts exactly one credential type — a
     // vapor OAuth access token (session JWT). A bare or invalid request gets
     // the 401 challenge that drives MCP clients into the consent flow.
     if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) {

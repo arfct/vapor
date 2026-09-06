@@ -305,7 +305,7 @@ export const TOOLS: ToolDef[] = [
   docTool({
     name: "events_subscribe",
     description:
-      "Register a webhook for an event type (experimental — mirrors the draft MCP Events extension). The server POSTs each occurrence to your HTTPS URL, signed per Standard Webhooks with your whsec_ secret. Requires the authenticated /mcp door. Idempotent per (you, url, name): re-subscribing refreshes the TTL — which runs to the document's remaining lifetime by default — and reactivates a suspended subscription.",
+      "Register a webhook for an event type (experimental — mirrors the draft MCP Events extension). The server POSTs each occurrence to your HTTPS URL, signed per Standard Webhooks with your whsec_ secret. Requires the signed-in /mcp endpoint. Idempotent per (you, url, name): re-subscribing refreshes the TTL — which runs to the document's remaining lifetime by default — and reactivates a suspended subscription.",
     schema: {
       name: z.string().describe("Event type name from events_list, e.g. mention."),
       url: z.string().describe("HTTPS webhook URL to POST occurrences to."),

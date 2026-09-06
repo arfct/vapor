@@ -8,7 +8,7 @@ describe("mcpHelpHtml", () => {
     expect(html).toContain("claude mcp add");
   });
 
-  it("offers both the signed-in and anonymous doors", () => {
+  it("offers both the signed-in and anonymous URLs", () => {
     const html = mcpHelpHtml("https://vapor.fyi");
     expect(html).toContain("claude mcp add --transport http vapor https://vapor.fyi/mcp</pre>");
     expect(html).toContain(
@@ -44,7 +44,7 @@ describe("mcpHelpHtml", () => {
     expect(html).toContain("gemini extensions install https://github.com/arfct/vapor");
   });
 
-  it("the markdown guide carries the same doors and installs as the page, safely", () => {
+  it("the markdown guide carries the same URLs and installs as the page, safely", () => {
     const md = mcpHelpMarkdown("https://vapor.fyi");
     for (const needle of [
       "claude mcp add --transport http vapor https://vapor.fyi/mcp",

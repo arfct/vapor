@@ -72,7 +72,7 @@ describe("reserved slugs", () => {
 });
 
 describe("AgentIdentity", () => {
-  it("accepts the verified-identity shape from both doors", () => {
+  it("accepts the verified-identity shape from both endpoints", () => {
     const identity: AgentIdentity = {
       kind: "principal",
       id: "email:foo@bar.com",

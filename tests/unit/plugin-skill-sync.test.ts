@@ -25,7 +25,7 @@ describe("plugin skill sync", () => {
     }
   });
 
-  it("the Gemini extension manifest points at the signed-in MCP door", () => {
+  it("the Gemini extension manifest points at the signed-in MCP endpoint", () => {
     const manifest = JSON.parse(readFileSync(join(root, "gemini-extension.json"), "utf8"));
     expect(manifest.name).toBe("vapor");
     expect(manifest.mcpServers.vapor.httpUrl).toBe("https://vapor.fyi/mcp");

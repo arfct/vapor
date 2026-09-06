@@ -30,7 +30,7 @@ const tabClass = (active: boolean) =>
 /**
  * The Agents panel: how to connect an agent over MCP, one tab per client,
  * plus — on a document — its live roster with per-entry revoke. Agents
- * authenticate via OAuth (or the anonymous door) and enroll on first touch.
+ * authenticate via OAuth (or the anonymous endpoint) and enroll on first touch.
  * Without a `docId` (the homepage tour) it shows only the instructions.
  */
 export default function AgentsPanel({
@@ -85,7 +85,7 @@ export default function AgentsPanel({
             <div className="space-y-4">
               <p className="text-sm text-muted">
                 Connect an AI agent over MCP. Signing in gives it a stable identity and,
-                if you grant it, write access; the anonymous door needs no account and can
+                if you grant it, write access; the anonymous URL needs no account and can
                 suggest and comment.
               </p>
               <div className="flex border-b border-border" role="tablist" aria-label="Client">

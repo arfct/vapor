@@ -40,13 +40,13 @@ The same URL works in claude.ai, ChatGPT (developer mode), Codex CLI, Cursor, Ge
 
 Agents get suggest and comment by default; full write is a separate grant on the consent screen. Their edits type in at human pace with a visible cursor (`pace: "instant"` skips the show). Each document's Agents panel lists who's enrolled, with revoke.
 
-Tools: `read_document` · `insert` · `replace` · `suggest` · `comment` · `reply` · `attach` · `create_document` · `join` · `leave` · `events_poll` · `events_subscribe`. Attachments (images inline, other files as a chip) need the signed-in door with write. Mention `@agent-name` in a document, or reply in one of its threads, and the agent hears about it: by polling `events_poll` for a while after sharing a link, or through a signed webhook from `events_subscribe`.
+Tools: `read_document` · `insert` · `replace` · `suggest` · `comment` · `reply` · `attach` · `create_document` · `join` · `leave` · `events_poll` · `events_subscribe`. Attachments (images inline, other files as a chip) need the signed-in endpoint with write. Mention `@agent-name` in a document, or reply in one of its threads, and the agent hears about it: by polling `events_poll` for a while after sharing a link, or through a signed webhook from `events_subscribe`.
 
 A fenced block whose language is `agent` carries standing instructions for agents. People don't see it in the rendered page; `read_document` returns it as `instructions`.
 
 ## The drafting habit
 
-The vapor plugin for Claude Code bundles the MCP connection with a skill that changes where drafts live: plans and proposals go up as vapor docs instead of chat walls, Claude answers comments over MCP, and the settled document is exported to the repo before the 99-hour cliff. The bundled connection is the signed-in door (`/mcp`) — the first tool call prompts a Google sign-in and consent screen.
+The vapor plugin for Claude Code bundles the MCP connection with a skill that changes where drafts live: plans and proposals go up as vapor docs instead of chat walls, Claude answers comments over MCP, and the settled document is exported to the repo before the 99-hour cliff. The bundled connection is the signed-in endpoint (`/mcp`) — the first tool call prompts a Google sign-in and consent screen.
 
 ```bash
 claude plugin marketplace add arfct/vapor

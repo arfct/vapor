@@ -145,3 +145,10 @@ The two downloaded files should be byte-identical. If they are not, it is a bug.
 
 - [CriticMarkup spec](https://criticmarkup.com/)
 - [`critic-markup` npm package](https://www.npmjs.com/package/critic-markup)
+
+## Version history
+
+Every document keeps a short trail of markdown snapshots for its 99-hour life, in a `versions` table inside its Durable Object. A version is the whole document's markdown, CriticMarkup delimiters included, so it carries the same round-trip guarantee as `/:id.md` and an upload: restoring one feeds the markdown back through the same block builders an import uses.
+
+Versions are taken when typing settles (60s idle), when the size swings by more than a fifth or ten minutes pass mid-edit, before an agent `replace`, before Accept all or Reject all, and before and after a restore. Each is attributed to whoever edited since the last one, humans through their Yjs client ids and awareness, agents through their roster label. Restore replaces every block in one transaction that connected browsers receive immediately; threads are untouched, so anchors present in the restored markdown come back with it. The trail is capped at 200 versions, oldest automatic ones pruned first, and dropped at expiry. The policy lives in `app/shared/version-policy.ts`; the HTTP surface is `GET|POST /agents/document-agent/:id/versions[/:vid[/restore]]`.
+

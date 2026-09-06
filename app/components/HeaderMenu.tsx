@@ -65,7 +65,7 @@ function Row({
 
 /**
  * The one menu at the top right. The wordmark (a link home) with the
- * theme switch; New document; the editing mode (Edit, Suggest, Markdown);
+ * theme switch; New document and History; the editing mode (Edit, Suggest, Markdown);
  * comments (start one, and on phones show or hide the sheet); Accept all /
  * Reject all; and the account row (Google sign-in or name + sign-out) at
  * the foot.
@@ -76,15 +76,26 @@ function Row({
 export default function HeaderMenu({
   comments,
   onNewDocument,
+  onHistory,
 }: {
   /** Phones only: the comment sheet's open state and toggle. */
   comments?: { open: boolean; onToggle: () => void };
   onNewDocument?: () => void;
+  /** Documents only: open the version history. */
+  onHistory?: () => void;
 } = {}) {
   const session = useSession();
   const { theme, setTheme } = useTheme();
-  const { editorInstance: editor, mode, setMode, showPreview, togglePreview, threads, openCommentInput } =
-    useDocument();
+  const {
+    editorInstance: editor,
+    mode,
+    setMode,
+    showPreview,
+    togglePreview,
+    threads,
+    openCommentInput,
+    requestSnapshot,
+  } = useDocument();
   const [open, setOpen] = useState(false);
   const [hasSuggestions, setHasSuggestions] = useState(false);
   const [hasSelection, setHasSelection] = useState(false);
@@ -248,9 +259,10 @@ export default function HeaderMenu({
                 ))}
               </div>
             </div>
-            {onNewDocument && (
+            {(onNewDocument || onHistory) && (
               <div className="border-t border-border py-1">
-                <Row icon="note_add" label="New document" onClick={run(onNewDocument)} />
+                {onNewDocument && <Row icon="note_add" label="New document" onClick={run(onNewDocument)} />}
+                {onHistory && <Row icon="history" label="History" onClick={run(onHistory)} />}
               </div>
             )}
             <div className="border-t border-border py-1" role="group" aria-label="Editing mode">
@@ -294,13 +306,21 @@ export default function HeaderMenu({
                 icon="done_all"
                 label="Accept all"
                 disabled={!hasSuggestions}
-                onClick={run(() => editor && processAllRanges(editor, true))}
+                onClick={run(() => {
+                  if (!editor) return;
+                  requestSnapshot("pre_accept_all");
+                  processAllRanges(editor, true);
+                })}
               />
               <Row
                 icon="remove_done"
                 label="Reject all"
                 disabled={!hasSuggestions}
-                onClick={run(() => editor && processAllRanges(editor, false))}
+                onClick={run(() => {
+                  if (!editor) return;
+                  requestSnapshot("pre_accept_all");
+                  processAllRanges(editor, false);
+                })}
               />
             </div>
             {session?.signedIn ? (

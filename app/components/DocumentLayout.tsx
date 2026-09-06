@@ -10,6 +10,7 @@ import Editor from "~/components/Editor";
 import Preview from "~/components/Preview";
 import ShareButton from "~/components/ShareButton";
 import NewDocumentDialog from "~/components/NewDocumentDialog";
+import HistoryDialog from "~/components/HistoryDialog";
 import Icon from "~/components/Icon";
 import AgentsPanel from "~/components/AgentsPanel";
 import FormatToolbar from "~/components/FormatToolbar";
@@ -116,6 +117,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   const toggleComments = useCallback(() => setCommentsOpen((v) => !v), []);
   const inviteAgent = () => setAgentsOpen(true);
   const [newOpen, setNewOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   // `vapor:` links in the text are actions: the Agents panel (which on the
   // tour shows how to connect without a roster) and the New document dialog.
   const handleAppLink = useCallback((url: string) => {
@@ -180,6 +182,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
         <HeaderMenu
           comments={wide ? undefined : { open: commentsOpen, onToggle: toggleComments }}
           onNewDocument={isHome ? undefined : () => setNewOpen(true)}
+          onHistory={isHome ? undefined : () => setHistoryOpen(true)}
         />
       </header>
       {/* The comment sheet rides a fixed layer pinned to the visual viewport,
@@ -206,6 +209,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
         onBlank={createBlankDocument}
         onFile={uploadFile}
       />
+      {surface.kind === "doc" && <HistoryDialog open={historyOpen} onClose={() => setHistoryOpen(false)} />}
       {/* The page itself scrolls, so mobile browsers collapse their toolbar
           and let the text run under it. Half a screen at the foot so the end
           of the document can scroll clear of the keyboard. */}

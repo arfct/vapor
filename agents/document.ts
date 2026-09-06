@@ -46,6 +46,19 @@ import {
   type EventOccurrence,
 } from "./events";
 import { encodeAgentAwareness, agentClientId, type AgentPresenceState } from "../app/lib/agent-awareness";
+import {
+  IDLE_SNAPSHOT_MS,
+  MAX_VERSION_BYTES,
+  RESTORE_COOLDOWN_MS,
+  clientIdsInUpdate,
+  primaryAuthor,
+  pruneOrder,
+  shouldSnapshotOnDelta,
+  type VersionAuthor,
+  type VersionReason,
+  type VersionSummary,
+} from "../app/shared/version-policy";
+import { handleVersionRequest, type VersionStub } from "./version-routes";
 import type { ThreadData, ThreadReply } from "../app/shared/types";
 
 /** A recorded document event's public shape, as returned by agentAwaitEvents. */
@@ -207,6 +220,17 @@ class DocumentAgent extends Agent {
 
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // ---- Version history (docs/plans/2026-09-05-version-history-plan.md) ----
+  /** 60s quiet edge for an `idle` version; separate from the 1s persist timer so persistence stays cheap. */
+  private idleSnapshotTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Everyone whose structs landed since the last version, most recent last. */
+  private contributorsSinceSnapshot = new Map<string, VersionAuthor>();
+  /** Content has changed since the last version (or since creation). */
+  private dirtySinceSnapshot = false;
+  /** The Yjs client ids each WebSocket connection has published awareness for. */
+  private connectionClients = new Map<string, Set<number>>();
+  private lastRestoreAt = 0;
+
   private schedulePersist(): void {
     if (this.persistTimer) return;
     this.persistTimer = setTimeout(() => {
@@ -226,6 +250,7 @@ class DocumentAgent extends Agent {
       INSERT INTO doc_state (key, value) VALUES ('state', ${sqlBlob(state)})
       ON CONFLICT(key) DO UPDATE SET value = excluded.value
     `;
+    this.snapshotOnDelta();
   }
 
   private ensureInitialised(): { doc: Y.Doc; awareness: awarenessProtocol.Awareness } {
@@ -235,6 +260,18 @@ class DocumentAgent extends Agent {
 
     this.doc = new Y.Doc();
     this.awareness = new awarenessProtocol.Awareness(this.doc);
+    // Remember which Yjs clients each connection speaks for, so a control
+    // message from a connection can be attributed to its awareness user.
+    this.awareness.on(
+      "update",
+      ({ added, updated }: { added: number[]; updated: number[] }, origin: unknown) => {
+        const id = (origin as { id?: unknown } | null)?.id;
+        if (typeof id !== "string") return;
+        const clients = this.connectionClients.get(id) ?? new Set<number>();
+        for (const c of [...added, ...updated]) clients.add(c);
+        this.connectionClients.set(id, clients);
+      },
+    );
 
     // Create tables if needed
     this.sql`
@@ -274,6 +311,18 @@ class DocumentAgent extends Agent {
       )
     `;
     this.sql`
+      CREATE TABLE IF NOT EXISTS versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at INTEGER,
+        reason TEXT,
+        author TEXT,
+        contributors TEXT,
+        markdown TEXT,
+        bytes INTEGER,
+        restored_from INTEGER
+      )
+    `;
+    this.sql`
       CREATE TABLE IF NOT EXISTS subscriptions (
         id TEXT PRIMARY KEY,
         principal TEXT,
@@ -307,6 +356,11 @@ class DocumentAgent extends Agent {
     // creation (so a freshly imported doc survives immediate eviction).
     this.doc.on("update", (update: Uint8Array, origin: unknown) => {
       this.schedulePersist();
+      this.dirtySinceSnapshot = true;
+      this.scheduleIdleSnapshot();
+      // Agent edits are credited when dispatched (see dispatchMutation);
+      // human edits are traced back to their clients' awareness here.
+      if (origin !== "agent") this.noteContributors(update);
 
       // Agent-originated mutations (doc.transact(fn, "agent")) never pass
       // through onMessage's relay — they mutate this DO's Y.Doc directly —
@@ -463,7 +517,7 @@ class DocumentAgent extends Agent {
 
   async onMessage(connection: Connection, message: WSMessage) {
     if (typeof message === "string") {
-      // JSON control messages — reserved for future use
+      this.handleControlMessage(connection, message);
       return;
     }
 
@@ -523,12 +577,18 @@ class DocumentAgent extends Agent {
       );
     }
 
+    this.connectionClients.delete(connection.id);
+
     // Last human gone: flush any pending persistence and drop every
     // standing timer so nothing keeps the DO pinned in memory — agent
     // presence only matters while someone is watching, and it rebuilds
-    // from the roster on the next performance anyway.
+    // from the roster on the next performance anyway. The pending idle
+    // version is taken now rather than left to a timer that would pin the
+    // DO (or be lost to eviction).
     if (!this.hasHumanConnections()) {
       this.flushDocState();
+      this.clearIdleSnapshotTimer();
+      this.maybeSnapshot("idle");
       for (const timer of this.agentIdleTimers.values()) {
         clearTimeout(timer);
       }
@@ -558,6 +618,12 @@ class DocumentAgent extends Agent {
     this.sql`DELETE FROM events`;
     // Webhook subscriptions die with the document.
     this.sql`DELETE FROM subscriptions`;
+    // So does its version history.
+    this.sql`DELETE FROM versions`;
+    this.clearIdleSnapshotTimer();
+    this.contributorsSinceSnapshot.clear();
+    this.connectionClients.clear();
+    this.dirtySinceSnapshot = false;
     for (const finish of this.eventWaiters) finish();
     this.eventWaiters = [];
     // Agent presence belongs to a document that no longer exists — drop it
@@ -578,6 +644,10 @@ class DocumentAgent extends Agent {
   };
 
   async onRequest(request: Request) {
+    // /versions… under this document's path; null for the bare create/exists routes.
+    const versionResponse = await handleVersionRequest(request, this.versionStub());
+    if (versionResponse) return versionResponse;
+
     if (request.method === "POST") {
       // Create / initialise the document
       const { doc } = this.ensureInitialised();
@@ -646,7 +716,11 @@ class DocumentAgent extends Agent {
       }
 
       // Persist immediately: a freshly created document must survive an
-      // eviction that lands inside the debounce window.
+      // eviction that lands inside the debounce window. Creation is not an
+      // edit: the trail starts with the first change, not with the import.
+      this.dirtySinceSnapshot = false;
+      this.contributorsSinceSnapshot.clear();
+      this.clearIdleSnapshotTimer();
       this.flushDocState();
 
       return new Response(JSON.stringify({ ok: true }), {
@@ -1376,6 +1450,256 @@ class DocumentAgent extends Agent {
    * (workers/routes.ts) as well as any future read-only surface that wants
    * plain markdown without the anchors/presence/threads agentRead returns.
    */
+  // ---------------------------------------------------------------------
+  // Version history
+  // ---------------------------------------------------------------------
+
+  private scheduleIdleSnapshot(): void {
+    this.clearIdleSnapshotTimer();
+    this.idleSnapshotTimer = setTimeout(() => {
+      this.idleSnapshotTimer = null;
+      this.maybeSnapshot("idle");
+    }, IDLE_SNAPSHOT_MS);
+  }
+
+  private clearIdleSnapshotTimer(): void {
+    if (this.idleSnapshotTimer) {
+      clearTimeout(this.idleSnapshotTimer);
+      this.idleSnapshotTimer = null;
+    }
+  }
+
+  /** On each persist: a version now if the document has swung in size or gone long enough without one. */
+  private snapshotOnDelta(): void {
+    if (!this.doc || !this.dirtySinceSnapshot) return;
+    // History is a side trail: nothing about it may break persistence.
+    try {
+      const latest = this.sql<{ bytes: number; created_at: number }>`
+        SELECT bytes, created_at FROM versions ORDER BY id DESC LIMIT 1
+      `;
+      const prevBytes = latest.length ? latest[0].bytes : null;
+      const lastAt = latest.length ? latest[0].created_at : null;
+      const nextBytes = yDocToMarkdown(this.doc).length;
+      if (shouldSnapshotOnDelta(prevBytes, nextBytes, lastAt, Date.now())) this.maybeSnapshot("delta");
+    } catch (err) {
+      console.warn("Version check skipped:", err);
+    }
+  }
+
+  /** Human edits: the clients whose structs an update carries, named through awareness. */
+  private noteContributors(update: Uint8Array): void {
+    if (!this.awareness) return;
+    const states = this.awareness.getStates();
+    for (const client of clientIdsInUpdate(update)) {
+      const user = (states.get(client) as { user?: Record<string, unknown> } | undefined)?.user;
+      const author: VersionAuthor = user
+        ? {
+            kind: "human",
+            id: typeof user.id === "string" && user.id ? user.id : `client:${client}`,
+            name: typeof user.name === "string" && user.name ? user.name : "Someone",
+            color: typeof user.color === "string" ? user.color : "#999",
+            avatar: typeof user.avatar === "string" ? user.avatar : null,
+            animal: typeof user.animal === "string" ? user.animal : undefined,
+          }
+        : { kind: "unknown", id: `client:${client}`, name: "Someone", color: "#999" };
+      // Re-insert so the most recent contributor is last.
+      this.contributorsSinceSnapshot.delete(author.id);
+      this.contributorsSinceSnapshot.set(author.id, author);
+    }
+  }
+
+  /** An agent as a version author: the roster's label and colour. */
+  private agentAuthor(agentName: string): VersionAuthor {
+    const rows = this.sql<RosterRow>`SELECT * FROM roster WHERE name = ${agentName}`;
+    const row = rows[0];
+    const name = row?.label ?? row?.name ?? agentName;
+    return {
+      kind: "agent",
+      id: row?.identity_id ?? `agent:${agentName}`,
+      name,
+      color: row?.color ?? "#999",
+      animal: animalGlyphForLabel(name),
+    };
+  }
+
+  /** The awareness user behind a connection, for control messages it sends. */
+  private authorForConnection(connection: Connection): VersionAuthor | undefined {
+    const clients = this.connectionClients.get(connection.id);
+    if (!clients || !this.awareness) return undefined;
+    const states = this.awareness.getStates();
+    for (const client of clients) {
+      const user = (states.get(client) as { user?: Record<string, unknown> } | undefined)?.user;
+      if (!user) continue;
+      return {
+        kind: "human",
+        id: typeof user.id === "string" && user.id ? user.id : `client:${client}`,
+        name: typeof user.name === "string" && user.name ? user.name : "Someone",
+        color: typeof user.color === "string" ? user.color : "#999",
+        avatar: typeof user.avatar === "string" ? user.avatar : null,
+        animal: typeof user.animal === "string" ? user.animal : undefined,
+      };
+    }
+    return undefined;
+  }
+
+  /**
+   * JSON control messages on the document socket. The one so far asks for
+   * a version before a client-side bulk action (Accept all / Reject all)
+   * the server could not otherwise tell from typing; per-connection
+   * ordering guarantees it lands before that action's sync update.
+   */
+  private handleControlMessage(connection: Connection, message: string): void {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(message);
+    } catch {
+      return;
+    }
+    const msg = parsed as { type?: unknown; reason?: unknown } | null;
+    if (msg?.type !== "snapshot" || msg.reason !== "pre_accept_all") return;
+    this.ensureInitialised();
+    this.maybeSnapshot("pre_accept_all", this.authorForConnection(connection));
+  }
+
+  /**
+   * Take a version now unless the markdown matches the latest one. `actor`
+   * takes the byline (an agent about to replace, a person restoring);
+   * otherwise it goes to the most recent contributor. Returns the row id.
+   */
+  private maybeSnapshot(reason: VersionReason, actor?: VersionAuthor): number | null {
+    if (!this.doc || !this.docExists()) return null;
+    let markdown: string;
+    try {
+      markdown = yDocToMarkdown(this.doc);
+    } catch (err) {
+      // A document the serializer can't read yet is not worth a version,
+      // and must not stop the edit it was meant to precede.
+      console.warn(`Version (${reason}) skipped:`, err);
+      return null;
+    }
+    const latest = this.sql<{ markdown: string }>`SELECT markdown FROM versions ORDER BY id DESC LIMIT 1`;
+    if (latest.length && latest[0].markdown === markdown) {
+      this.dirtySinceSnapshot = false;
+      return null;
+    }
+    if (markdown.length > MAX_VERSION_BYTES) {
+      console.warn(`Skipping version (${reason}): ${markdown.length} chars exceeds the cap`);
+      return null;
+    }
+    const contributors = [...this.contributorsSinceSnapshot.values()].filter((c) => c.id !== actor?.id);
+    if (actor) contributors.push(actor);
+    try {
+      return this.recordVersion(reason, actor ?? primaryAuthor(contributors), contributors, markdown, null);
+    } catch (err) {
+      console.warn(`Version (${reason}) not recorded:`, err);
+      return null;
+    }
+  }
+
+  private recordVersion(
+    reason: VersionReason,
+    author: VersionAuthor,
+    contributors: VersionAuthor[],
+    markdown: string,
+    restoredFrom: number | null,
+  ): number {
+    const now = Date.now();
+    this.sql`
+      INSERT INTO versions (created_at, reason, author, contributors, markdown, bytes, restored_from)
+      VALUES (${now}, ${reason}, ${JSON.stringify(author)}, ${JSON.stringify(contributors)}, ${markdown}, ${markdown.length}, ${restoredFrom})
+    `;
+    const idRows = this.sql<{ id: number }>`SELECT last_insert_rowid() AS id`;
+    this.contributorsSinceSnapshot.clear();
+    this.dirtySinceSnapshot = false;
+    const all = this.sql<{ id: number; reason: VersionReason; created_at: number }>`
+      SELECT id, reason, created_at FROM versions
+    `;
+    for (const id of pruneOrder(all ?? [])) this.sql`DELETE FROM versions WHERE id = ${id}`;
+    return idRows?.[0]?.id ?? 0;
+  }
+
+  listVersions(): VersionSummary[] {
+    this.ensureInitialised();
+    const rows = this.sql<{
+      id: number;
+      created_at: number;
+      reason: VersionReason;
+      author: string;
+      contributors: string;
+      bytes: number;
+      restored_from: number | null;
+    }>`
+      SELECT id, created_at, reason, author, contributors, bytes, restored_from
+      FROM versions ORDER BY id DESC
+    `;
+    return rows.map((r) => ({
+      id: r.id,
+      createdAt: r.created_at,
+      reason: r.reason,
+      author: JSON.parse(r.author) as VersionAuthor,
+      contributors: JSON.parse(r.contributors) as VersionAuthor[],
+      bytes: r.bytes,
+      restoredFrom: r.restored_from,
+    }));
+  }
+
+  getVersionMarkdown(id: number): string | null {
+    this.ensureInitialised();
+    const rows = this.sql<{ markdown: string }>`SELECT markdown FROM versions WHERE id = ${id}`;
+    return rows.length ? rows[0].markdown : null;
+  }
+
+  saveVersion(reason: "manual", author: VersionAuthor): { id: number } | { error: string } {
+    this.ensureInitialised();
+    if (!this.docExists()) return { error: "doc_not_found" };
+    const id = this.maybeSnapshot(reason, author);
+    return id === null ? { error: "unchanged" } : { id };
+  }
+
+  /**
+   * Restore a version as an ordinary edit: the current text is saved first
+   * (`pre_restore`), then every block is replaced through the same builders
+   * an upload uses, in one "agent"-origin transaction so connected browsers
+   * receive it and the mention/digest observers stay quiet. Threads are
+   * untouched: anchors present in the restored markdown come back with it.
+   */
+  restoreVersion(id: number, actor: VersionAuthor): { ok: true } | { error: string } {
+    const { doc } = this.ensureInitialised();
+    if (!this.docExists()) return { error: "doc_not_found" };
+    const now = Date.now();
+    if (now - this.lastRestoreAt < RESTORE_COOLDOWN_MS) return { error: "rate_limited" };
+    const rows = this.sql<{ markdown: string }>`SELECT markdown FROM versions WHERE id = ${id}`;
+    if (!rows.length) return { error: "version_not_found" };
+    const markdown = rows[0].markdown;
+    // Parse before the transaction: Yjs cannot roll back a half-applied restore.
+    const built = buildMarkdownBlocks(markdown);
+    if (!built.ok) return { error: "unsupported_markup" };
+
+    this.maybeSnapshot("pre_restore", actor);
+    const frag = doc.getXmlFragment("default");
+    doc.transact(() => {
+      if (frag.length > 0) deleteBlocks(doc, 0, frag.length - 1);
+      insertBlockNodes(doc, 0, built.nodes);
+    }, "agent");
+    this.lastRestoreAt = now;
+    try {
+      this.recordVersion("restore", actor, [actor], markdown, id);
+    } catch (err) {
+      console.warn("Restore version not recorded:", err);
+    }
+    this.flushDocState();
+    return { ok: true };
+  }
+
+  private versionStub(): VersionStub {
+    return {
+      listVersions: () => (this.docExists() ? this.listVersions() : []),
+      getVersionMarkdown: (id) => this.getVersionMarkdown(id),
+      saveVersion: (reason, author) => this.saveVersion(reason, author),
+      restoreVersion: (id, actor) => this.restoreVersion(id, actor),
+    };
+  }
+
   async exportMarkdown(): Promise<{ markdown: string } | { error: AgentError }> {
     this.ensureInitialised();
 
@@ -1664,10 +1988,17 @@ class DocumentAgent extends Agent {
       }
     }
 
+    // Credit the agent for whatever lands; the update handler skips
+    // "agent"-origin transactions for attribution.
+    const actor = this.agentAuthor(agentName);
+    this.contributorsSinceSnapshot.delete(actor.id);
+    this.contributorsSinceSnapshot.set(actor.id, actor);
+
     const effectivePace = pace ?? "instant";
     if (effectivePace !== "instant" && this.hasHumanConnections()) {
       return this.enqueuePerformance(agentName, effectivePace, mutation);
     }
+    if (mutation.kind === "replace") this.maybeSnapshot("pre_replace", actor);
     return this.applyMutation(mutation);
   }
 
@@ -1756,6 +2087,7 @@ class DocumentAgent extends Agent {
     const pace: "natural" | "fast" = item.pace === "fast" ? "fast" : "natural";
 
     if (item.mutation.kind === "replace") {
+      this.maybeSnapshot("pre_replace", this.agentAuthor(item.agentName));
       this.applyMutation(item.mutation);
       this.deletePerformanceRow(item.id);
       return;

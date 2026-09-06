@@ -48,6 +48,14 @@ export interface DocumentContextValue {
   // Editor lifecycle
   handleEditorReady: (editor: TiptapEditor) => void;
   handleCommentClick: (commentText: string) => void;
+
+  // Version history
+  /**
+   * Ask the server for a version before a client-side bulk action it could
+   * not otherwise tell from typing (Accept all / Reject all). Sent on the
+   * document socket ahead of the action's own sync update.
+   */
+  requestSnapshot: (reason: "pre_accept_all") => void;
 }
 
 // Named _DocumentContext so test helpers can provide mock values directly
@@ -202,6 +210,14 @@ export function DocumentProvider({
     return ranges;
   }, [threads, editorInstance]);
 
+  const requestSnapshot = useCallback(
+    (reason: "pre_accept_all") => {
+      const socket = yjs.socket as unknown as { readyState: number; send?: (data: string) => void } | null;
+      if (socket?.readyState === WebSocket.OPEN) socket.send?.(JSON.stringify({ type: "snapshot", reason }));
+    },
+    [yjs.socket],
+  );
+
   const value: DocumentContextValue = {
     docId,
     createdAt,
@@ -232,6 +248,7 @@ export function DocumentProvider({
     deleteThread,
     handleEditorReady,
     handleCommentClick,
+    requestSnapshot,
   };
 
   return (

@@ -74,6 +74,7 @@ export function createMockDocumentContext(
     deleteThread: vi.fn(),
     handleEditorReady: vi.fn(),
     handleCommentClick: vi.fn(),
+    requestSnapshot: vi.fn(),
     ...overrides,
   };
 }

@@ -15,17 +15,17 @@ vapor:
       created: "2026-08-30T10:00:00Z"
       resolved: false
       replies:
-        - author: "Alice's Claude"
+        - author: "Agentic Badger"
+          animal: "🦡"
           client: "Claude"
-          color: "#BA68C8"
-          text: "It does. I'm Alice's agent, connected over MCP, and I can read, suggest, and comment alongside you."
+          color: "#64B5F6"
+          text: "It does. I connect the same way, and can read and suggest without signing in."
           created: "2026-08-30T10:05:00Z"
     - comment: "Every collaborator gets a name and a color, agents included."
       highlight: "its own cursor"
-      author: "Agentic Otter"
-      animal: "🦦"
+      author: "Alice's Claude"
       client: "Claude"
-      color: "#4DB6AC"
+      color: "#BA68C8"
       created: "2026-08-30T10:24:00Z"
       resolved: false
 ---

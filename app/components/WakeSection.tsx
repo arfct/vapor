@@ -4,7 +4,6 @@ import { CLAUDE_ROUTINE_PROMPT, wakeKindInfo, type WakeKind, type WakeTargetView
 import { useSession } from "~/lib/useSession";
 import { timeAgo } from "~/lib/time-ago";
 import { Input } from "~/components/ui/input";
-import { Button } from "~/components/ui/button";
 
 type Outcome =
   | { fired: true; status: number }
@@ -44,6 +43,7 @@ export default function WakeSection({
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [promptCopied, setPromptCopied] = useState(false);
+  const [lastAttempt, setLastAttempt] = useState("");
   const info = wakeKindInfo(kind)!;
 
   useEffect(() => {
@@ -64,6 +64,7 @@ export default function WakeSection({
   }, [signedIn]);
 
   const save = useCallback(async () => {
+    setLastAttempt(`${kind}|${url}|${secret}`);
     setBusy(true);
     setError(null);
     setNote(null);
@@ -82,6 +83,7 @@ export default function WakeSection({
       setEditing(false);
       setSecret("");
       setNote("Saved. Test it to be sure it answers.");
+      setLastAttempt("");
     } catch {
       setError("Could not save.");
     } finally {
@@ -158,6 +160,21 @@ export default function WakeSection({
     );
   }, []);
 
+  // No Save button: the target is saved when both fields are filled in and
+  // the person leaves a field or presses Enter. The same values are not
+  // re-sent after a failure until one of them changes.
+  const complete = url.trim() !== "" && (secret.trim() !== "" || info.secretOptional);
+  const maybeSave = () => {
+    if (busy || !complete || lastAttempt === `${kind}|${url}|${secret}`) return;
+    void save();
+  };
+  const onFieldKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      maybeSave();
+    }
+  };
+
   const startEditing = () => {
     setUrl(target?.kind === kind ? target.url : "");
     setSecret("");
@@ -167,7 +184,7 @@ export default function WakeSection({
   };
 
   const mine = signedIn ? roster.find((entry) => entry.owner === session?.principal) : undefined;
-  const title = kind === "claude-routine" ? "Wake a routine on mentions" : "Wake a webhook on mentions";
+  const title = "Listen for changes and mentions";
 
   let body: React.ReactNode;
   if (!signedIn) {
@@ -216,59 +233,55 @@ export default function WakeSection({
     );
   } else {
     body = (
-      <div className="space-y-3">
+      <div className="space-y-2">
         {kind === "claude-routine" ? (
-          <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
-            <li>
-              <a href={ROUTINES_URL} target="_blank" rel="noreferrer" className={link}>
-                Create a routine
-              </a>{" "}
-              with{" "}
-              <button className="cursor-pointer underline hover:text-ink" onClick={copyPrompt}>
-                {promptCopied ? "prompt copied" : "this prompt"}
-              </button>{" "}
-              and the Vapor connector attached.
-            </li>
-            <li>
-              Add an <strong className="font-semibold text-ink">API</strong> trigger and generate a token.
-            </li>
-            <li>Paste its URL and token here.</li>
-          </ol>
+          <p className="text-sm text-muted">
+            <a href={ROUTINES_URL} target="_blank" rel="noreferrer" className={link}>
+              <strong className="font-semibold text-ink">claude.ai → Code → Routines → New routine</strong>
+            </a>{" "}
+            with{" "}
+            <button className="cursor-pointer underline hover:text-ink" onClick={copyPrompt}>
+              {promptCopied ? "prompt copied" : "this prompt"}
+            </button>{" "}
+            and the Vapor connector. Add an API trigger, then paste its URL and token.
+          </p>
         ) : (
           <p className="text-sm text-muted">
             A JSON POST for each mention or reply, with a <code className="font-mono">text</code> field saying what
-            happened. A <code className="font-mono">whsec_</code> secret signs it per Standard Webhooks; any other
-            secret is sent as a bearer token.
+            happened. A <code className="font-mono">whsec_</code> secret signs it; any other secret is sent as a
+            bearer token.
           </p>
         )}
-        <label className="block text-sm">
-          <span className="mb-1 block text-muted">{info.urlLabel}</span>
-          <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder={info.urlPlaceholder} spellCheck={false} />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block text-muted">
-            {info.secretLabel}
-            {info.secretOptional && <span> (optional)</span>}
-          </span>
+        <div className="flex gap-2">
+          <Input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onBlur={maybeSave}
+            onKeyDown={onFieldKeyDown}
+            placeholder={info.urlPlaceholder}
+            aria-label={info.urlLabel}
+            spellCheck={false}
+            className="min-w-0 flex-1"
+          />
           <Input
             type="password"
             value={secret}
             onChange={(e) => setSecret(e.target.value)}
-            placeholder={info.secretPlaceholder}
+            onBlur={maybeSave}
+            onKeyDown={onFieldKeyDown}
+            placeholder={info.secretOptional ? `${info.secretLabel} (optional)` : info.secretLabel}
+            aria-label={info.secretLabel}
             autoComplete="off"
             spellCheck={false}
+            className="w-36 shrink-0"
           />
-        </label>
-        <div className="flex items-center gap-4">
-          <Button size="sm" onClick={save} disabled={busy || !url}>
-            Save
-          </Button>
-          {target && (
-            <button className={textButton} onClick={() => setEditing(false)} disabled={busy}>
-              Cancel
-            </button>
-          )}
         </div>
+        {busy && <p className="text-sm text-muted">Saving…</p>}
+        {target && !busy && (
+          <button className={textButton} onClick={() => setEditing(false)}>
+            Cancel
+          </button>
+        )}
       </div>
     );
   }

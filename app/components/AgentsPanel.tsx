@@ -51,16 +51,20 @@ function Pulldown({
   className?: string;
 }) {
   const current = options.find((o) => o.id === value)?.label ?? "";
+  // The visible label and chevron are plain text sized by their content; the
+  // real select lies transparent over them, so a native control's habit of
+  // sizing to its longest option never widens the row.
   return (
-    <span className={`relative inline-grid items-center ${className}`}>
-      <span aria-hidden="true" className="invisible col-start-1 row-start-1 whitespace-nowrap pr-5">
+    <span className={`relative inline-flex items-center focus-within:underline ${className}`}>
+      <span aria-hidden="true" className="whitespace-nowrap">
         {current}
       </span>
+      <Icon name="expand_more" className="ml-0.5 text-[18px]" />
       <select
         aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="col-start-1 row-start-1 m-0 w-full min-w-0 cursor-pointer appearance-none bg-transparent p-0 pr-5 focus:outline-none"
+        className="absolute inset-0 m-0 h-full w-full cursor-pointer appearance-none p-0 opacity-0"
       >
         {options.map((o) => (
           <option key={o.id} value={o.id}>
@@ -68,7 +72,6 @@ function Pulldown({
           </option>
         ))}
       </select>
-      <Icon name="expand_more" className="pointer-events-none absolute right-0 text-[18px]" />
     </span>
   );
 }
@@ -169,7 +172,7 @@ export default function AgentsPanel({
       value={mode}
       options={MODES}
       onChange={(v) => setMode(v as Mode)}
-      className="text-sm text-muted hover:text-ink"
+      className="text-lg font-medium text-muted hover:text-ink"
     />
   );
 

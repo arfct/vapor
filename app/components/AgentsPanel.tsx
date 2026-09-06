@@ -4,11 +4,6 @@ import { AGENT_CLIENTS, type AgentClientId } from "~/shared/agent-clients";
 import Dialog, { SnippetRow } from "~/components/ui/dialog";
 import AgentClientIcon from "~/components/AgentClientIcon";
 import WakeSection from "~/components/WakeSection";
-import { timeAgo } from "~/lib/time-ago";
-
-function relativeTime(ts: number | null): string {
-  return ts == null ? "never" : timeAgo(ts);
-}
 
 /** Whether the agent connects as the signed-in person or as an anonymous animal. */
 type Mode = "you" | "anonymous";
@@ -34,11 +29,12 @@ const tabClass = (active: boolean) =>
 
 /**
  * The Agents panel: how to connect an agent over MCP, one tab per client
- * with its mark, plus — on a document — its live roster with per-entry
- * revoke. Wake-on-mention setup lives inside the tab it belongs to: a
- * Claude Code routine under Claude, a webhook under Other. Agents
+ * with its mark. Wake-on-mention setup lives inside the tab it belongs to:
+ * a Claude Code routine under Claude, a webhook under Other. Agents
  * authenticate via OAuth (or the anonymous endpoint) and enroll on first
- * touch. Without a `docId` (the homepage tour) it shows only the instructions.
+ * touch. The document's roster is managed from the face pile, not here; it
+ * is loaded only so the wake sections know whether the person's own agent
+ * is on the document.
  */
 export default function AgentsPanel({
   open,
@@ -65,15 +61,6 @@ export default function AgentsPanel({
   useEffect(() => {
     if (open) loadRoster();
   }, [open, loadRoster]);
-
-  async function handleRevoke(name: string) {
-    await fetch(`/${docId}/agents`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ intent: "revoke", name }),
-    });
-    loadRoster();
-  }
 
   const mcpUrl = `${origin}/mcp`;
   const anonUrl = `${origin}/mcp/anonymous`;
@@ -194,38 +181,6 @@ export default function AgentsPanel({
           </div>
         )}
 
-        {docId && (
-          <div className="border-t border-border pt-4">
-            <h3 className="mb-2 text-sm uppercase tracking-wider text-muted">In this document</h3>
-            {roster.length === 0 ? (
-              <p className="text-sm text-muted">No agents yet.</p>
-            ) : (
-              <ul className="space-y-2">
-                {roster.map((entry) => (
-                  <li key={entry.name} className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-2">
-                      <span className="inline-block h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: entry.color }} />
-                      <span className="text-sm">{entry.label ?? entry.name}</span>
-                      {entry.label && <span className="font-mono text-xs text-muted">@{entry.name}</span>}
-                      <span className="flex gap-1">
-                        {entry.capabilities.map((c) => (
-                          <span key={c} className="rounded bg-border px-1 text-[0.65rem] uppercase text-muted">
-                            {c}
-                          </span>
-                        ))}
-                      </span>
-                      {entry.owner && <span className="text-xs text-muted">{entry.owner}</span>}
-                      <span className="text-xs text-muted">{relativeTime(entry.lastSeenAt)}</span>
-                    </span>
-                    <button onClick={() => handleRevoke(entry.name)} className="cursor-pointer text-sm text-muted hover:text-coral">
-                      Revoke
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
       </div>
     </Dialog>
   );

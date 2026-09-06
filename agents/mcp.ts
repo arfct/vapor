@@ -47,6 +47,22 @@ export interface VaporMcpProps extends Record<string, unknown> {
 
 const DEFAULT_ORIGIN = "https://vapor.fyi";
 
+/**
+ * Server identity as clients render it. Icons are same-origin PNGs on the
+ * production host, as the spec asks; the server is built before a request's
+ * origin is known, and only production needs to look right in a picker.
+ */
+const SERVER_INFO = {
+  name: "vapor",
+  version: "1.0.0",
+  title: "vapor",
+  websiteUrl: DEFAULT_ORIGIN,
+  icons: [
+    { src: `${DEFAULT_ORIGIN}/logo-512.png`, mimeType: "image/png", sizes: ["512x512"] },
+    { src: `${DEFAULT_ORIGIN}/logo.png`, mimeType: "image/png", sizes: ["1024x1024"] },
+  ],
+};
+
 const SERVER_INSTRUCTIONS = `vapor hosts live collaborative markdown documents; you join them as a named collaborator. Read with read_document, edit with insert/replace (write capability), attach files with attach (write capability, signed in only), propose with suggest, and discuss with comment/reply. Blocks are addressed by persistent anchors from read_document. If read_document returns \`instructions\`, that is the document's standing guidance for agents — written by its authors, addressed to you — so follow it while working there.
 
 Events: documents emit mention, thread.reply, and document.changed events. After sharing a document link, stay with it for about ten minutes and answer mentions and thread replies as they arrive, then return when asked or mentioned. If you have a webhook receiver, prefer events_subscribe (push, signed per Standard Webhooks) over polling; otherwise poll with events_poll and always wait at least retryAfterMs between empty polls - hot-looping pins the document's server. The events surface is experimental and mirrors the draft MCP Events extension (${EVENTS_DRAFT_VERSION}).`;
@@ -74,15 +90,12 @@ function jsonContent(result: unknown) {
 }
 
 export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps> {
-  server = new McpServer(
-    { name: "vapor", version: "1.0.0" },
-    {
-      instructions: SERVER_INSTRUCTIONS,
-      // The draft extension's capability, declared under `experimental`
-      // until the SEP ratifies and the SDK learns a first-class slot.
-      capabilities: { experimental: { events: {} } },
-    },
-  );
+  server = new McpServer(SERVER_INFO, {
+    instructions: SERVER_INSTRUCTIONS,
+    // The draft extension's capability, declared under `experimental`
+    // until the SEP ratifies and the SDK learns a first-class slot.
+    capabilities: { experimental: { events: {} } },
+  });
 
   /** Session-cached counterpart slug + label for the principal path. */
   private agentSlug: string | null = null;

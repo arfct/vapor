@@ -32,7 +32,51 @@ const VARIANTS: Partial<Record<AgentClientId, VariantSet>> = {
   },
 };
 
-const pulldownClass = "m-0 cursor-pointer bg-transparent p-0 text-sm text-muted hover:text-ink focus:outline-none";
+/**
+ * A native select that is exactly as wide as its current label, with the
+ * chevron right after it: an invisible copy of the label sets the width
+ * and the select sits on top of it. Font comes from the wrapper's class.
+ */
+function Pulldown({
+  value,
+  options,
+  onChange,
+  label,
+  className = "",
+}: {
+  value: string;
+  options: { id: string; label: string }[];
+  onChange: (value: string) => void;
+  label: string;
+  className?: string;
+}) {
+  const current = options.find((o) => o.id === value)?.label ?? "";
+  return (
+    <span className={`relative inline-grid items-center ${className}`}>
+      <span aria-hidden="true" className="invisible col-start-1 row-start-1 whitespace-nowrap pr-5">
+        {current}
+      </span>
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="col-start-1 row-start-1 m-0 w-full min-w-0 cursor-pointer appearance-none bg-transparent p-0 pr-5 focus:outline-none"
+      >
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <Icon name="expand_more" className="pointer-events-none absolute right-0 text-[18px]" />
+    </span>
+  );
+}
+
+const MODES = [
+  { id: "you", label: "personally" },
+  { id: "anonymous", label: "anonymously" },
+];
 
 /** Opens claude.ai's add-connector dialog with the name and URL filled in; the person reviews and confirms. */
 export function claudeConnectorLink(mcpUrl: string): string {
@@ -120,15 +164,13 @@ export default function AgentsPanel({
   const asYou = mode === "you";
 
   const modePicker = (
-    <select
-      aria-label="Connect as"
+    <Pulldown
+      label="Connect as"
       value={mode}
-      onChange={(e) => setMode(e.target.value as Mode)}
-      className={pulldownClass}
-    >
-      <option value="you">personally</option>
-      <option value="anonymous">anonymously</option>
-    </select>
+      options={MODES}
+      onChange={(v) => setMode(v as Mode)}
+      className="text-sm text-muted hover:text-ink"
+    />
   );
 
   return (
@@ -154,18 +196,15 @@ export default function AgentsPanel({
           ))}
         </div>
         {variants && (
-          <select
-            aria-label="App or command line"
-            value={variant}
-            onChange={(e) => setVariant(e.target.value)}
-            className="m-0 cursor-pointer bg-transparent p-0 text-lg font-medium text-ink focus:outline-none"
-          >
-            {variants.options.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          <div className="pb-1">
+            <Pulldown
+              label="App or command line"
+              value={variant}
+              options={variants.options}
+              onChange={setVariant}
+              className="text-lg font-medium text-ink"
+            />
+          </div>
         )}
 
         {client === "claude" && (

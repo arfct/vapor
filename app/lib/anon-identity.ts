@@ -2,6 +2,7 @@ import { ANON_ANIMALS, ANON_ADJECTIVES } from "~/shared/anon-animals";
 import { USER_COLOURS } from "~/shared/constants";
 import type { AnonAnimal } from "~/shared/anon-animals";
 import { readStorage, writeStorage, removeStorage } from "~/lib/safe-storage";
+import { randomShortId } from "~/shared/short-id";
 
 const STORAGE_KEY = "vapor-anon";
 const FORMER_KEY = "vapor-former-anon-id";
@@ -42,11 +43,10 @@ function toIdentity(stored: StoredAnon): AnonIdentity {
  * environments) or holds corrupt data.
  */
 export function getAnonIdentity(): AnonIdentity {
+  // A short public id, the shape a mention token carries. Identities stored
+  // as UUIDs before short ids existed keep theirs; shortIdOf reduces them.
   const fresh: StoredAnon = {
-    id:
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `anon-${Date.now()}-${randomIndex(1_000_000)}`,
+    id: randomShortId(),
     animalIndex: randomIndex(ANON_ANIMALS.length),
     colorIndex: randomIndex(USER_COLOURS.length),
     adjectiveIndex: randomIndex(ANON_ADJECTIVES.length),

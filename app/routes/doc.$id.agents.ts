@@ -4,7 +4,9 @@ import { isValidDocumentId } from "~/shared/constants";
 import { getCloudflare } from "~/lib/cloudflare.server";
 import {
   DEFAULT_CAPABILITIES,
+  counterpartLabel,
   slugifyAgentName,
+  slugifyName,
   type AgentError,
   type AgentErrorCode,
   type AgentIdentity,
@@ -21,8 +23,7 @@ interface AgentStub {
 
 /** The subset of the Registry RPC surface this route calls. */
 interface RegistryStub {
-  ensureAgentSlug(principal: string): Promise<{ slug: string } | { error: { code: string; message: string } }>;
-  getProfile(principal: string): Promise<{ profile: { displayName: string } | null }>;
+  getProfile(principal: string): Promise<{ profile: { uid: string; displayName: string } | null }>;
 }
 
 function jsonResponse(body: unknown, status = 200) {
@@ -120,17 +121,16 @@ export async function action({ params, context, request }: Route.ActionArgs) {
     const session = await sessionFromRequest(request, env.SESSION_SECRET ?? "");
     if (!session) return jsonResponse({ error: { message: "sign_in_required" } }, 401);
     const registry = (await getAgentByName(env.Registry, "global")) as unknown as RegistryStub;
-    const ensured = await registry.ensureAgentSlug(session.principal);
-    const fallback = slugifyAgentName(session.email.split("@")[0] ?? "agent");
-    const name = "slug" in ensured ? ensured.slug : fallback;
     const { profile } = await registry.getProfile(session.principal);
-    const firstName = (profile?.displayName ?? session.email.split("@")[0] ?? "Someone").trim().split(/\s+/)[0] || "Someone";
+    const ownerName = profile?.displayName ?? session.email.split("@")[0] ?? "Someone";
     const identity: AgentIdentity = {
       kind: "principal",
       id: session.principal,
-      name,
-      label: `${firstName}'s Agent`,
+      name: slugifyName(ownerName) ?? slugifyAgentName(session.email.split("@")[0] ?? "agent"),
+      label: counterpartLabel(ownerName, null),
       owner: session.principal,
+      ownerUid: profile?.uid ?? null,
+      ownerName,
       caps: [...DEFAULT_CAPABILITIES],
     };
     const joined = await stub.agentJoin(identity, "listening");

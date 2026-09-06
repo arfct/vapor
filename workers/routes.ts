@@ -19,6 +19,7 @@ import {
   clearSessionCookieHeader,
   sameOrigin,
   principalFromEmail,
+  principalFromSub,
 } from "../app/lib/auth.server";
 
 /** The subset of the DocumentAgent RPC surface handleRawMarkdown calls. */
@@ -168,14 +169,27 @@ export interface AuthDeps {
   verifyGoogle: (
     credential: string,
     clientId: string,
-  ) => Promise<{ email: string; name: string; picture?: string } | null>;
+  ) => Promise<{ sub: string; email: string; name: string; picture?: string } | null>;
   upsertProfile: (
     principal: string,
-    info: { displayName: string; avatar?: string },
-  ) => Promise<{ profile: { displayName: string; agentSlug: string | null; avatar: string | null } }>;
-  getProfile: (
-    principal: string,
-  ) => Promise<{ profile: { displayName: string; agentSlug: string | null; avatar: string | null } | null }>;
+    info: { displayName: string; avatar?: string; email?: string; legacyPrincipal?: string },
+  ) => Promise<{ profile: AuthProfile }>;
+  getProfile: (principal: string) => Promise<{ profile: AuthProfile | null }>;
+  /** A typed address to the person behind it; see Registry.resolveEmail. */
+  resolveEmail?: (
+    requester: string,
+    email: string,
+  ) => Promise<
+    | { person: { uid: string; displayName: string; avatar: string | null } | null }
+    | { error: { code: string; message: string } }
+  >;
+}
+
+/** The profile fields the auth routes read. `uid` is the public id; nothing here is the principal. */
+export interface AuthProfile {
+  uid: string;
+  displayName: string;
+  avatar: string | null;
 }
 
 function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
@@ -199,18 +213,36 @@ export async function handleAuth(request: Request, deps: AuthDeps): Promise<Resp
     return json({ googleClientId: deps.googleClientId });
   }
 
+  // The signed-in person's own view of themselves. `uid` is the public id
+  // the client uses for presence and attribution; the principal never
+  // leaves the server (docs/plans/2026-09-06-agent-identity-plan.md).
   if (request.method === "GET" && url.pathname === "/auth/me") {
     const session = await sessionFromRequest(request, deps.secret);
     if (!session) return json({ signedIn: false });
     const { profile } = await deps.getProfile(session.principal);
     return json({
       signedIn: true,
-      principal: session.principal,
+      uid: profile?.uid ?? null,
       email: session.email,
       displayName: profile?.displayName ?? session.email,
-      agentSlug: profile?.agentSlug ?? null,
       avatar: profile?.avatar ?? null,
     });
+  }
+
+  // `@` completion typed an address: hand back the person's name and public
+  // id so the token can be inserted, or nothing. Signed-in callers only —
+  // the answer says whether an address has an account here.
+  if (request.method === "GET" && url.pathname === "/auth/resolve") {
+    const session = await sessionFromRequest(request, deps.secret);
+    if (!session) return json({ error: "sign_in_required" }, 401);
+    const email = url.searchParams.get("email")?.trim().toLowerCase() ?? "";
+    if (!/^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(email) || email.length > 254) {
+      return json({ error: "invalid_email" }, 400);
+    }
+    if (!deps.resolveEmail) return json({ person: null });
+    const result = await deps.resolveEmail(session.principal, email);
+    if ("error" in result) return json(result, result.error.code === "rate_limited" ? 429 : 400);
+    return json(result);
   }
 
   if (request.method === "POST" && url.pathname === "/auth/logout") {
@@ -233,10 +265,12 @@ export async function handleAuth(request: Request, deps: AuthDeps): Promise<Resp
     const verified = await deps.verifyGoogle(credential, deps.googleClientId);
     if (!verified) return json({ error: "invalid credential" }, 401);
 
-    const principal = principalFromEmail(verified.email);
+    const principal = principalFromSub(verified.sub);
     const { profile } = await deps.upsertProfile(principal, {
       displayName: verified.name || verified.email,
       avatar: verified.picture,
+      email: verified.email.toLowerCase(),
+      legacyPrincipal: principalFromEmail(verified.email),
     });
     const token = await mintSessionToken(
       { principal, email: verified.email.toLowerCase() },
@@ -244,7 +278,7 @@ export async function handleAuth(request: Request, deps: AuthDeps): Promise<Resp
       SESSION_TTL_SECONDS,
     );
     return json(
-      { signedIn: true, principal, displayName: profile.displayName },
+      { signedIn: true, uid: profile.uid, displayName: profile.displayName },
       200,
       { "Set-Cookie": sessionCookieHeader(token, SESSION_TTL_SECONDS, secure) },
     );

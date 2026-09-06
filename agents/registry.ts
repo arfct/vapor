@@ -1,6 +1,6 @@
 import { Agent } from "agents";
-import { slugifyAgentName } from "../app/shared/agent-protocol";
 import type { AgentCapability } from "../app/shared/agent-protocol";
+import { randomShortId } from "../app/shared/short-id";
 import { ledgerAllows, pruneLedger, type AttachmentError, type LedgerRow } from "../app/shared/attachment-policy";
 import {
   buildWakeRequest,
@@ -19,18 +19,31 @@ import { deriveWakeKey, openSecret, sealSecret } from "../app/shared/wake-crypto
 // vapor's kv-on-sql test conventions. Key namespaces:
 //   p:<principal>   -> Profile
 //   u:<uid>         -> principal
-//   a:<agentSlug>   -> principal
+//   e:<email>       -> principal (for resolving a typed address to a person)
+//   alias:<old>     -> principal (a legacy `email:` principal, after re-keying)
 //   oc:<clientId>   -> OAuthClient
 //   code:<code>     -> AuthCode (single-use, 10 min TTL)
 //   rt:<token>      -> RefreshGrant (rotated on use)
+//   w:<principal>   -> WakeRecord
 
 export interface Profile {
   principal: string;
+  /** Public short id (eight lowercase alphanumerics): the only identity clients ever see. */
   uid: string;
   displayName: string;
   avatar: string | null;
-  agentSlug: string | null;
+  /** Private contact data; never sent to other collaborators. */
+  email: string | null;
 }
+
+/** What a typed address resolves to for the `@` popup: name and public id, never the address back. */
+export interface ResolvedPerson {
+  uid: string;
+  displayName: string;
+  avatar: string | null;
+}
+
+const RESOLVE_PER_MINUTE = 30;
 
 export interface OAuthClient {
   clientId: string;
@@ -176,53 +189,99 @@ class Registry extends Agent {
 
   /* ---------------- profiles ---------------- */
 
+  /** A legacy `email:` principal that was re-keyed follows its alias to the live one. */
+  private canonical(principal: string): string {
+    return this.kvGet<string>(`alias:${principal}`) ?? principal;
+  }
+
+  /** Eight lowercase alphanumerics, unused: uniqueness is enforced here, not assumed from length. */
+  private mintUid(): string {
+    for (;;) {
+      const uid = randomShortId();
+      if (this.kvGet<string>(`u:${uid}`) === null) return uid;
+    }
+  }
+
+  /**
+   * Creates or refreshes the profile a sign-in describes. A profile still
+   * keyed by the legacy `email:` principal is re-keyed to the new one in
+   * place: same displayName, a fresh short uid, its wake target carried
+   * over, and an alias so sessions and grants minted under the old
+   * principal keep resolving until they expire.
+   */
   async upsertProfile(
     principal: string,
-    info: { displayName: string; avatar?: string },
+    info: { displayName: string; avatar?: string; email?: string; legacyPrincipal?: string },
   ): Promise<{ profile: Profile }> {
-    const existing = this.kvGet<Profile>(`p:${principal}`);
+    const email = info.email?.toLowerCase() ?? null;
+    let existing = this.kvGet<Profile>(`p:${principal}`);
+
+    if (!existing && info.legacyPrincipal && info.legacyPrincipal !== principal) {
+      const legacy = this.kvGet<Profile & { agentSlug?: string | null }>(`p:${info.legacyPrincipal}`);
+      if (legacy) {
+        existing = { principal, uid: this.mintUid(), displayName: legacy.displayName, avatar: legacy.avatar, email };
+        this.kvDelete(`p:${info.legacyPrincipal}`);
+        this.kvDelete(`u:${legacy.uid}`);
+        if (legacy.agentSlug) this.kvDelete(`a:${legacy.agentSlug}`);
+        const wake = this.kvGet<WakeRecord>(`w:${info.legacyPrincipal}`);
+        if (wake) {
+          this.kvPut(`w:${principal}`, wake);
+          this.kvDelete(`w:${info.legacyPrincipal}`);
+        }
+        this.kvPut(`alias:${info.legacyPrincipal}`, principal);
+        this.kvPut(`u:${existing.uid}`, principal);
+      }
+    }
+
     const profile: Profile = existing
-      ? { ...existing, displayName: info.displayName, avatar: info.avatar ?? existing.avatar }
+      ? {
+          principal,
+          uid: existing.uid,
+          displayName: info.displayName,
+          avatar: info.avatar ?? existing.avatar,
+          email: email ?? existing.email ?? null,
+        }
       : {
           principal,
-          uid: crypto.randomUUID(),
+          uid: this.mintUid(),
           displayName: info.displayName,
           avatar: info.avatar ?? null,
-          agentSlug: null,
+          email,
         };
     this.kvPut(`p:${principal}`, profile);
-    if (!existing) {
-      this.kvPut(`u:${profile.uid}`, principal);
-    }
+    this.kvPut(`u:${profile.uid}`, principal);
+    if (profile.email) this.kvPut(`e:${profile.email}`, principal);
     return { profile };
   }
 
   async getProfile(principal: string): Promise<{ profile: Profile | null }> {
-    return { profile: this.kvGet<Profile>(`p:${principal}`) };
+    return { profile: this.kvGet<Profile>(`p:${this.canonical(principal)}`) };
   }
 
   /**
-   * The user's stable counterpart-agent slug: derived from the display
-   * name on first request, globally unique, then never changed here.
+   * The person behind a typed address, for the `@` popup: their name and
+   * public id, so the mention can be inserted without the address ever
+   * reaching the document. Signed-in requesters only (enforced by the
+   * route), and at most RESOLVE_PER_MINUTE lookups a minute each, since
+   * the answer reveals that an address has an account here.
    */
-  async ensureAgentSlug(
-    principal: string,
-  ): Promise<{ slug: string } | { error: { code: string; message: string } }> {
-    const profile = this.kvGet<Profile>(`p:${principal}`);
-    if (!profile) {
-      return { error: { code: "not_found", message: "No profile for principal" } };
+  async resolveEmail(
+    requester: string,
+    email: string,
+  ): Promise<{ person: ResolvedPerson | null } | { error: { code: "rate_limited"; message: string } }> {
+    const now = Date.now();
+    const key = `rl:resolve:${this.canonical(requester)}`;
+    const recent = (this.kvGet<number[]>(key) ?? []).filter((t) => now - t < 60_000);
+    if (recent.length >= RESOLVE_PER_MINUTE) {
+      return { error: { code: "rate_limited", message: "Too many lookups; try again in a minute." } };
     }
-    if (profile.agentSlug) return { slug: profile.agentSlug };
+    recent.push(now);
+    this.kvPut(key, recent);
 
-    const base = slugifyAgentName(profile.displayName);
-    let candidate = base;
-    for (let n = 2; this.kvGet<string>(`a:${candidate}`) !== null; n++) {
-      candidate = `${base}-${n}`;
-    }
-    profile.agentSlug = candidate;
-    this.kvPut(`p:${principal}`, profile);
-    this.kvPut(`a:${candidate}`, principal);
-    return { slug: candidate };
+    const principal = this.kvGet<string>(`e:${email.toLowerCase()}`);
+    const profile = principal ? this.kvGet<Profile>(`p:${this.canonical(principal)}`) : null;
+    if (!profile) return { person: null };
+    return { person: { uid: profile.uid, displayName: profile.displayName, avatar: profile.avatar } };
   }
 
   /* ---------------- wake targets ---------------- */
@@ -249,7 +308,7 @@ class Registry extends Agent {
   }
 
   async getWakeTarget(principal: string): Promise<{ target: WakeTargetView | null }> {
-    const rec = this.kvGet<WakeRecord>(`w:${principal}`);
+    const rec = this.kvGet<WakeRecord>(`w:${this.canonical(principal)}`);
     return { target: rec ? this.wakeView(rec) : null };
   }
 
@@ -263,6 +322,7 @@ class Registry extends Agent {
     if ("error" in checked) return { error: { code: "invalid_params", message: checked.error } };
     const { target } = checked;
     const now = Date.now();
+    principal = this.canonical(principal);
     const existing = this.kvGet<WakeRecord>(`w:${principal}`);
     const rec: WakeRecord = {
       kind: target.kind,
@@ -283,7 +343,7 @@ class Registry extends Agent {
   }
 
   async deleteWakeTarget(principal: string): Promise<{ ok: true }> {
-    this.kvDelete(`w:${principal}`);
+    this.kvDelete(`w:${this.canonical(principal)}`);
     return { ok: true };
   }
 
@@ -294,7 +354,7 @@ class Registry extends Agent {
    * receiver's status are kept for the owner to see.
    */
   async wake(args: { principal: string; event: WakeEvent; origin?: string }): Promise<WakeOutcome> {
-    const key = `w:${args.principal}`;
+    const key = `w:${this.canonical(args.principal)}`;
     const rec = this.kvGet<WakeRecord>(key);
     if (!rec) return { fired: false, reason: "no_target" };
 

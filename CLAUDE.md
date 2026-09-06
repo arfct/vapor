@@ -131,7 +131,7 @@ Files live in R2 (`ATTACHMENTS` binding, keyed `<docId>/<attachmentId>`), metada
 
 #### Mentions and slash commands
 
-Both are `@tiptap/suggestion` popups (`app/lib/suggestion-popup.ts`, `app/components/SuggestionList.tsx`). Mentions are plain text (`@slug` for agents, `@ada@example.com` for signed-in people; matching and ranking in `app/shared/agent-protocol.ts`), coloured by `app/lib/mention-highlight.ts`, completed by `app/lib/mention-suggestion.ts` in the body and in `CommentEditor`. `/` at the start of a block runs `app/lib/slash-commands.ts`, whose items mirror the Format menu. Bare emails are deliberately not auto-linked. See `docs/markdown-and-criticmarkup.md` and issue #51.
+Both are `@tiptap/suggestion` popups (`app/lib/suggestion-popup.ts`, `app/components/SuggestionList.tsx`). A mention is a token `@slug[+agent]~sid` carrying a short public id (grammar, matching, and ranking in `app/shared/agent-protocol.ts`; ids in `app/shared/short-id.ts`), stored as a `mention` node (`app/lib/mention.ts`, mirrored in `richSchema`) that shows the name and hides the id. Completion is `app/lib/mention-suggestion.ts` in the body and in `CommentEditor`; a typed email resolves through `GET /auth/resolve` and is never written into the document. `/` at the start of a block runs `app/lib/slash-commands.ts`, whose items mirror the Format menu. See `docs/markdown-and-criticmarkup.md`, issue #51, and `docs/plans/2026-09-06-agent-identity-plan.md`.
 
 #### Agent collaborators
 
@@ -146,8 +146,8 @@ AI agents connect as MCP clients and edit through the same CriticMarkup/Yjs mach
 
 Ported from subpixel's dependency-free auth stack. Full design: `docs/plans/2026-08-30-identity-design.md`.
 
-- **`app/lib/auth.server.ts`** — Google ID-token verification (WebCrypto), HMAC session JWTs, the `vp_session` cookie. Identity is a principal (`email:<addr>`); sign-in is optional.
-- **`agents/registry.ts`** (`Registry` DO, one `"global"` instance) — profiles, counterpart agent slugs, and OAuth clients/codes/refresh tokens.
+- **`app/lib/auth.server.ts`** — Google ID-token verification (WebCrypto), HMAC session JWTs, the `vp_session` cookie. Identity is a principal (`google:<sub>`, server-side only); each profile has a public eight-character `uid` that is all clients ever see. Sign-in is optional.
+- **`agents/registry.ts`** (`Registry` DO, one `"global"` instance) — profiles (with the legacy `email:` principal re-keyed on sign-in), email → person resolution for mentions, wake targets, and OAuth clients/codes/refresh tokens. People are circles and agents are hexagons with their client's mark (`app/components/Avatar.tsx`).
 - **`workers/oauth.ts`** — OAuth 2.1 AS (PKCE, dynamic registration, discovery). Access tokens are 1-hour session JWTs carrying the granted capabilities; the consent page (`app/lib/oauth-pages.ts`) is where write is granted. `/mcp` requires one of these; `/mcp/anonymous` needs none.
 - Secrets: `SESSION_SECRET` (Workers secret), `GOOGLE_CLIENT_ID` (public var). See `.dev.vars.example`. Both optional: without them an instance is anonymous-only.
 

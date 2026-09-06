@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
 import { USER_COLOURS } from "~/shared/constants";
+import { colorIndexFor } from "~/shared/short-id";
 import { getAnonIdentity, retireAnonId } from "./anon-identity";
 import { useSession } from "./useSession";
 import { reattributeThreads } from "./thread-reattribution";
@@ -40,15 +41,20 @@ export function useLocalDoc(): LocalDoc {
   const anon = useMemo(() => anonUserInfo(), []);
   const session = useSession();
 
-  // A signed-in viewer presents their real name and avatar; anonymous
-  // viewers keep the animal. Derived from the shared session so signing in
-  // mid-session updates presence and comment attribution without a reload.
+  // A signed-in viewer presents their real name and avatar under their
+  // public id, in the colour that id hashes to — the same colour in every
+  // document and on every device, and the one their agent draws in.
+  // Anonymous viewers keep the animal. Derived from the shared session so
+  // signing in mid-session updates presence and comment attribution
+  // without a reload.
   const user = useMemo<UserInfo>(() => {
     if (session?.signedIn && session.displayName) {
+      const palette = session.uid ? USER_COLOURS[colorIndexFor(session.uid, USER_COLOURS.length)] : null;
       return {
         ...anon,
         name: session.displayName,
-        id: session.principal ?? anon.id,
+        id: session.uid ?? anon.id,
+        ...(palette ? { color: palette.color, colorLight: palette.light } : {}),
         animal: undefined,
         avatar: session.avatar ?? undefined,
       };

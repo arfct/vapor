@@ -177,6 +177,7 @@ function HistoryBody() {
                   avatar={v.author.avatar}
                   animal={v.author.animal}
                   color={v.author.color}
+                  shape={v.author.kind === "agent" ? "hexagon" : "circle"}
                   className="mt-0.5 h-6 w-6"
                 />
                 <span className="min-w-0 flex-1">

@@ -18,6 +18,9 @@ import { AppLinks, APP_LINK_PROTOCOL } from "~/lib/app-links";
 import { Attachment } from "~/lib/attachment";
 import { MentionSuggestion, type MentionSourceRef } from "~/lib/mention-suggestion";
 import { MentionHighlight, mentionHighlightKey, type MentionTargetsRef } from "~/lib/mention-highlight";
+import { Mention, paintMentionNodes } from "~/lib/mention";
+import { agentClientFor } from "~/shared/agent-clients";
+import { agentClientMarkSvg } from "~/components/AgentClientIcon";
 import { SlashCommands, type SlashActionsRef } from "~/lib/slash-commands";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
 import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
@@ -162,11 +165,15 @@ function renderCaret(user: Record<string, unknown>) {
   }
   label.insertBefore(document.createTextNode(user.name as string), null);
 
+  // An agent's flag is hexagonal and carries its client's mark, the same
+  // shape and mark as its avatar everywhere else.
   if (user.isAgent) {
+    label.classList.add("collaboration-cursor__label--agent");
     const badge = document.createElement("span");
     badge.classList.add("collaboration-cursor__badge");
-    badge.insertBefore(document.createTextNode("AI"), null);
-    label.insertBefore(badge, null);
+    badge.setAttribute("aria-hidden", "true");
+    badge.innerHTML = agentClientMarkSvg(agentClientFor(user.agentClient as string | undefined));
+    label.insertBefore(badge, label.firstChild);
   }
 
   cursor.insertBefore(label, null);
@@ -276,6 +283,7 @@ export default function Editor({
         CommentHighlight,
         ActiveCommentHighlight,
         CommentColors,
+        Mention.configure({ targets: mentionTargets }),
         MentionSuggestion.configure({ sources: mentions, docState, onQuery: onMentionQuery }),
         MentionHighlight.configure({ targets: mentionTargets }),
         SlashCommands.configure({ docState, actions: slashActions }),
@@ -354,10 +362,12 @@ export default function Editor({
   useEffect(() => {
     if (!editor) return;
     const frame = requestAnimationFrame(() => {
-      if (!editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(mentionHighlightKey, true));
+      if (editor.isDestroyed) return;
+      editor.view.dispatch(editor.state.tr.setMeta(mentionHighlightKey, true));
+      paintMentionNodes(editor.view.dom, mentionTargets?.current ?? new Map());
     });
     return () => cancelAnimationFrame(frame);
-  }, [editor, mentionTargetsKey]);
+  }, [editor, mentionTargets, mentionTargetsKey]);
 
   // Push per-thread colours into the editor whenever they change.
   const prevColorsRef = useRef("");

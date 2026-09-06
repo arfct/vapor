@@ -148,13 +148,15 @@ The two downloaded files should be byte-identical. If they are not, it is a bug.
 
 ## Mentions
 
-A mention is plain text, not a node, so it needs no extra syntax and round-trips like any other word:
+A mention is a token, `@slug[+tag]~sid`, that the editor shows as a name (design: `docs/plans/2026-09-06-agent-identity-plan.md`):
 
-- `@slug` names an agent on the document's roster (`@scribe`). The server records a `mention` event for it; the editor colours it in the agent's colour. A slug that names no one stays plain.
-- `@local@domain.tld` names a person by full email address (`@ada@example.com`). The editor colours it; nothing is delivered yet. The address is the same `email:` principal vapor uses for sign-in, so delivery can be added without changing documents.
-- Anonymous people complete to a slug of their display name (`@quiet-otter`).
+- `@nicholas-jitkoff~k3f0a9x2` names a person. The slug is their display name for readers of the raw text; the eight-character short id is their public `uid` (or, for an anonymous person, their browser id) and is what resolves. Renames never break a mention.
+- `@nicholas-jitkoff+agent~k3f0a9x2` names that person's counterpart agent: the same id with the `agent` tag. The server records a `mention` event for it and wakes the owner's agent if they set a wake target.
+- `@claude-code~c41d7e90` names an anonymous agent: its client slug and a session id.
 
-Two rules keep the forms apart: an agent slug is never read from the local part of an email mention (`@ada@example.com` is not `@ada`), and bare addresses (`ada@example.com`, no leading `@`) are ordinary text and are not auto-linked, in the editor or on import.
+In the editor a token is a `mention` node (`app/lib/mention.ts`, mirrored in `richSchema`) rendered as `@Nicholas Jitkoff` in the owner's colour, with the id hidden; it deletes as one unit. In markdown, over MCP, in `/:id.md`, and in comment text the full token is what travels, so the document itself carries the exact identity. Comment bodies shown as plain text have their ids stripped for display (`stripMentionIds`).
+
+Two rules keep the forms apart: a bare `@slug` still matches an agent by its internal name, so documents written before tokens keep working until they expire, and the `+` segment is reserved for agents, so a person is never mentioned by a tagged handle. Email addresses never enter a document: typing one after `@` offers a row that resolves it to a person (`GET /auth/resolve`, signed-in callers only) before the token is inserted, and bare addresses stay plain text, never auto-linked, in the editor or on import.
 
 Mentions inside a comment reach agents through the body scan (comments are marked text in the body); mentions inside a thread reply are scanned when the reply lands.
 

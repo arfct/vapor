@@ -2,7 +2,14 @@ import { Extension, type Editor, type Range } from "@tiptap/core";
 import { PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Suggestion } from "@tiptap/suggestion";
 import { isChangeOrigin } from "@tiptap/extension-collaboration";
-import { rankMentionItems, type MentionItem, type MentionSources } from "~/shared/agent-protocol";
+import {
+  parseMentionToken,
+  personMention,
+  rankMentionItems,
+  type MentionItem,
+  type MentionSources,
+  type MentionToken,
+} from "~/shared/agent-protocol";
 import { isSuggestMode, type ModeSource } from "~/lib/suggest-notice";
 import { suggestionRender } from "~/lib/suggestion-popup";
 import MentionList from "~/components/MentionList";
@@ -24,14 +31,20 @@ export function inCode(state: EditorState, pos: number): boolean {
   return $pos.marks().some((mark) => mark.type.name === "code");
 }
 
-/**
- * Inserts `@handle ` over the trigger-plus-query range. Mentions are plain
- * text, not a node: `@slug` is already what the server detects, agents read,
- * and the markdown export carries. In suggest mode the text is a tracked
- * addition, as typing it would have been (the suggest-mode plugin only sees
- * typed input, so the mark is applied here).
- */
-export function insertMention(editor: Editor, range: Range, handle: string, docState: ModeSource | null): void {
+function insertToken(editor: Editor, range: Range, token: MentionToken, docState: ModeSource | null): void {
+  const tracked = docState !== null && isSuggestMode(docState) && Boolean(editor.schema.marks.criticAddition);
+  const marks = tracked ? [{ type: "criticAddition" }] : [];
+  editor
+    .chain()
+    .focus()
+    .insertContentAt(range, [
+      { type: "mention", attrs: { slug: token.slug, tag: token.tag, sid: token.sid }, marks },
+      { type: "text", text: " ", marks },
+    ])
+    .run();
+}
+
+function insertLegacyHandle(editor: Editor, range: Range, handle: string, docState: ModeSource | null): void {
   const tracked = docState !== null && isSuggestMode(docState) && Boolean(editor.schema.marks.criticAddition);
   editor
     .chain()
@@ -42,6 +55,48 @@ export function insertMention(editor: Editor, range: Range, handle: string, docS
       marks: tracked ? [{ type: "criticAddition" }] : [],
     })
     .run();
+}
+
+/** How a typed address is looked up; injectable for tests. Resolves to the person or null. */
+export type ResolveEmail = (email: string) => Promise<{ uid: string; displayName: string } | null>;
+
+export const resolveEmailViaServer: ResolveEmail = async (email) => {
+  const res = await fetch(`/auth/resolve?email=${encodeURIComponent(email)}`);
+  if (!res.ok) return null;
+  const body = (await res.json()) as { person?: { uid: string; displayName: string } | null };
+  return body.person ?? null;
+};
+
+/**
+ * Inserts the chosen row over the trigger-plus-query range. Agents and
+ * people insert a `mention` node carrying their token; a slug with no id
+ * (a person the list couldn't identify) inserts plain `@slug` as before.
+ * A typed address is resolved first — name and public id come back, the
+ * address never enters the document — and nothing is inserted when no one
+ * has signed in with it. In suggest mode the insertion is a tracked
+ * addition, as typing it would have been.
+ */
+export function insertMention(
+  editor: Editor,
+  range: Range,
+  item: Pick<MentionItem, "kind" | "handle">,
+  docState: ModeSource | null,
+  resolve: ResolveEmail = resolveEmailViaServer,
+): void {
+  if (item.kind === "email") {
+    void resolve(item.handle)
+      .then((person) => {
+        if (!person || editor.isDestroyed) return;
+        const handle = personMention(person.displayName, person.uid);
+        const token = handle ? parseMentionToken(handle) : null;
+        if (token) insertToken(editor, range, token, docState);
+      })
+      .catch(() => {});
+    return;
+  }
+  const token = parseMentionToken(item.handle);
+  if (token) insertToken(editor, range, token, docState);
+  else insertLegacyHandle(editor, range, item.handle, docState);
 }
 
 export interface MentionSuggestionOptions {
@@ -81,7 +136,7 @@ export const MentionSuggestion = Extension.create<MentionSuggestionOptions>({
           options.onQuery?.();
           return rankMentionItems(query, options.sources?.current ?? EMPTY_MENTION_SOURCES);
         },
-        command: ({ editor, range, props }) => insertMention(editor, range, props.handle, options.docState),
+        command: ({ editor, range, props }) => insertMention(editor, range, props, options.docState),
         render: suggestionRender<MentionItem>(MentionList, mentionPluginKey),
       }),
     ];

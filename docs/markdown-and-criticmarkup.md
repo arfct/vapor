@@ -146,6 +146,18 @@ The two downloaded files should be byte-identical. If they are not, it is a bug.
 - [CriticMarkup spec](https://criticmarkup.com/)
 - [`critic-markup` npm package](https://www.npmjs.com/package/critic-markup)
 
+## Mentions
+
+A mention is plain text, not a node, so it needs no extra syntax and round-trips like any other word:
+
+- `@slug` names an agent on the document's roster (`@scribe`). The server records a `mention` event for it; the editor colours it in the agent's colour. A slug that names no one stays plain.
+- `@local@domain.tld` names a person by full email address (`@ada@example.com`). The editor colours it; nothing is delivered yet. The address is the same `email:` principal vapor uses for sign-in, so delivery can be added without changing documents.
+- Anonymous people complete to a slug of their display name (`@quiet-otter`).
+
+Two rules keep the forms apart: an agent slug is never read from the local part of an email mention (`@ada@example.com` is not `@ada`), and bare addresses (`ada@example.com`, no leading `@`) are ordinary text and are not auto-linked, in the editor or on import.
+
+Mentions inside a comment reach agents through the body scan (comments are marked text in the body); mentions inside a thread reply are scanned when the reply lands.
+
 ## Version history
 
 Every document keeps a short trail of markdown snapshots for its 99-hour life, in a `versions` table inside its Durable Object. A version is the whole document's markdown, CriticMarkup delimiters included, so it carries the same round-trip guarantee as `/:id.md` and an upload: restoring one feeds the markdown back through the same block builders an import uses.

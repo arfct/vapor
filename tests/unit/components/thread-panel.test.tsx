@@ -173,20 +173,27 @@ describe("ThreadPanel", () => {
     expect(queryByText("Reply")).toBeFalsy();
   });
 
-  it("reply input is hidden until the Reply link is clicked, then submits on Enter", () => {
+  it("reply editor is hidden until the Reply link is clicked, then submits on Enter", () => {
     const props = { ...defaultProps(), active: true };
-    const { getByText, queryByPlaceholderText, getByPlaceholderText } = render(
-      createElement(ThreadPanel, props),
-    );
+    const { getByText, queryByLabelText, getByLabelText } = render(createElement(ThreadPanel, props));
 
-    expect(queryByPlaceholderText("Reply...")).toBeFalsy();
+    expect(queryByLabelText("Reply...")).toBeFalsy();
 
     fireEvent.click(getByText("Reply"));
-    const input = getByPlaceholderText("Reply...");
-    expect(input.className).toContain("rounded-full");
+    const editor = getByLabelText("Reply...");
+    expect(editor.closest(".comment-editor-box")?.className).toContain("rounded-full");
 
-    fireEvent.change(input, { target: { value: "My reply" } });
-    fireEvent.keyDown(input, { key: "Enter" });
+    // Nothing typed: Enter sends nothing.
+    fireEvent.keyDown(editor, { key: "Enter" });
+    expect(props.onReply).not.toHaveBeenCalled();
+
+    // ProseMirror takes pasted plain text; that stands in for typing here.
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", {
+      value: { getData: (type: string) => (type === "text/plain" ? "My reply" : ""), types: ["text/plain"], files: [] },
+    });
+    editor.dispatchEvent(paste);
+    fireEvent.keyDown(editor, { key: "Enter" });
     expect(props.onReply).toHaveBeenCalledWith("t1", "My reply");
   });
 

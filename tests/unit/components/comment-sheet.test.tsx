@@ -60,7 +60,7 @@ describe("CommentSheet", () => {
   });
 
   it("shows the comment input instead of a thread while composing", () => {
-    const { getByText, getByPlaceholderText, queryByText } = renderWithDocument(
+    const { getByText, getByLabelText, queryByText } = renderWithDocument(
       createElement(CommentSheet, { open: true, onClose: vi.fn() }),
       {
         context: {
@@ -72,7 +72,7 @@ describe("CommentSheet", () => {
       },
     );
     expect(getByText("New comment")).toBeTruthy();
-    expect(getByPlaceholderText("Add a comment...")).toBeTruthy();
+    expect(getByLabelText("Add a comment...")).toBeTruthy();
     expect(getByText("mobile")).toBeTruthy();
     expect(queryByText("First")).toBeNull();
   });

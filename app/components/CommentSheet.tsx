@@ -29,6 +29,7 @@ export default function CommentSheet({
     activeThreadId,
     setActiveThreadId,
     addReply,
+    mentionSources,
     resolveThread,
     deleteThread,
     commentActive,
@@ -70,6 +71,7 @@ export default function CommentSheet({
             active
             onSelect={() => {}}
             onReply={addReply}
+            mentions={mentionSources}
             onResolve={resolveThread}
             onDelete={deleteThread}
           />

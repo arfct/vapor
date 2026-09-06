@@ -72,6 +72,13 @@ export function createMockDocumentContext(
     deleteThread: vi.fn(),
     handleEditorReady: vi.fn(),
     handleCommentClick: vi.fn(),
+    people: [],
+    roster: [],
+    mentionSources: { current: { agents: [], people: [] } },
+    mentionTargets: { current: new Map() },
+    mentionTargetsKey: "",
+    slashActions: { current: {} },
+    refreshRoster: vi.fn(),
     requestSnapshot: vi.fn(),
     ...overrides,
   };

@@ -16,6 +16,7 @@
 	},
 	"dependencies": {
 		"@base-ui/react": "^1.7.0",
+		"@floating-ui/dom": "^1.8.0",
 		"@modelcontextprotocol/sdk": "1.25.2",
 		"@tiptap/core": "3.30.5",
 		"@tiptap/extension-bubble-menu": "3.30.5",
@@ -27,6 +28,7 @@
 		"@tiptap/pm": "3.30.5",
 		"@tiptap/react": "3.30.5",
 		"@tiptap/starter-kit": "3.30.5",
+		"@tiptap/suggestion": "^3.30.5",
 		"@tiptap/y-tiptap": "^3.0.2",
 		"agents": "^0.3.6",
 		"clsx": "^2.1.1",

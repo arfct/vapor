@@ -16,6 +16,9 @@ import { AgentInstructions } from "~/lib/agent-instructions";
 import { CommentClickHandler } from "~/lib/comment-click";
 import { AppLinks, APP_LINK_PROTOCOL } from "~/lib/app-links";
 import { Attachment } from "~/lib/attachment";
+import { MentionSuggestion, type MentionSourceRef } from "~/lib/mention-suggestion";
+import { MentionHighlight, mentionHighlightKey, type MentionTargetsRef } from "~/lib/mention-highlight";
+import { SlashCommands, type SlashActionsRef } from "~/lib/slash-commands";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
 import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
 
@@ -182,6 +185,11 @@ export default function Editor({
   activeCommentRange,
   commentColors,
   onNewComment,
+  mentions = null,
+  mentionTargets = null,
+  mentionTargetsKey = "",
+  onMentionQuery,
+  slashActions = null,
 }: {
   yjs: YjsEditorState;
   hidden?: boolean;
@@ -197,6 +205,16 @@ export default function Editor({
   activeCommentRange?: { from: number; to: number } | null;
   commentColors?: CommentColorRange[];
   onNewComment?: () => void;
+  /** Who `@` completes to; read live through the ref. */
+  mentions?: MentionSourceRef | null;
+  /** Known mention handles and colours for the in-text highlight. */
+  mentionTargets?: MentionTargetsRef | null;
+  /** Changes when `mentionTargets` does; triggers a re-decoration. */
+  mentionTargetsKey?: string;
+  /** The `@` popup opened or its query changed: refresh the roster. */
+  onMentionQuery?: () => void;
+  /** What the `/` menu's non-editor rows do. */
+  slashActions?: SlashActionsRef | null;
 }) {
   const { doc, awareness, user, docState } = yjs;
   const prevHighlightRef = useRef<{ from: number; to: number } | null>(null);
@@ -219,6 +237,9 @@ export default function Editor({
             openOnClick: false,
             autolink: true,
             linkOnPaste: true,
+            // `@ada@example.com` is a mention; autolinking its tail to a
+            // mailto would break it. Bare emails stay text as a result.
+            shouldAutoLink: (url) => !url.startsWith("mailto:"),
             // `vapor:` links are actions inside the app (see app-links.ts).
             protocols: [APP_LINK_PROTOCOL],
           },
@@ -255,6 +276,9 @@ export default function Editor({
         CommentHighlight,
         ActiveCommentHighlight,
         CommentColors,
+        MentionSuggestion.configure({ sources: mentions, docState, onQuery: onMentionQuery }),
+        MentionHighlight.configure({ targets: mentionTargets }),
+        SlashCommands.configure({ docState, actions: slashActions }),
       ],
       editorProps: {
         attributes: {
@@ -323,6 +347,17 @@ export default function Editor({
       if (el && !isComfortablyInView(el)) el.scrollIntoView({ block: "center", behavior: "smooth" });
     }
   }, [editor, activeCommentRange]);
+
+  // Re-colour mentions when the set of known handles changes. The provider
+  // updates the targets ref in its own effect, which runs after this one, so
+  // the dispatch waits a frame.
+  useEffect(() => {
+    if (!editor) return;
+    const frame = requestAnimationFrame(() => {
+      if (!editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(mentionHighlightKey, true));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [editor, mentionTargetsKey]);
 
   // Push per-thread colours into the editor whenever they change.
   const prevColorsRef = useRef("");

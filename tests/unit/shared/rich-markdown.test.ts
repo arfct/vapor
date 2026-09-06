@@ -59,6 +59,12 @@ describe("markdown round-trips", () => {
     expect(roundTrip(once)).toBe(once);
   });
 
+  it("email mentions stay text, never a mailto link", () => {
+    const md = "Ask @ada@example.com and @scribe about this.";
+    expect(roundTrip(md)).toBe(md);
+    expect(roundTrip("Write to ada@example.com")).toBe("Write to ada@example.com");
+  });
+
   it("critic marks survive", () => {
     const md = "This {++was added++} and {--was removed--} here.";
     expect(roundTrip(md)).toBe(md);

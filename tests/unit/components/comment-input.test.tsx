@@ -14,11 +14,12 @@ describe("CommentInput", () => {
   });
 
   it("shows input and buttons when active", () => {
-    const { getByText, getByPlaceholderText } = renderWithDocument(
+    const { getByText, getByLabelText } = renderWithDocument(
       createElement(CommentInput),
       { context: { commentActive: true } },
     );
-    expect(getByPlaceholderText("Add a comment...")).toBeTruthy();
+    expect(getByLabelText("Add a comment...")).toBeTruthy();
+    expect(getByText("Add a comment...")).toBeTruthy();
     expect(getByText("Add")).toBeTruthy();
     expect(getByText("Cancel")).toBeTruthy();
   });

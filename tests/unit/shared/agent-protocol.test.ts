@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  blockHash, formatAnchor, parseAnchor, findMentions, AGENT_NAME_RE,
+  blockHash, formatAnchor, parseAnchor, findMentions, findEmailMentions, isEmailQuery, slugifyName, rankMentionItems, AGENT_NAME_RE,
   RESERVED_SLUGS, isReservedSlug, slugifyAgentName,
   type AgentIdentity,
 } from "~/shared/agent-protocol";
@@ -125,5 +125,78 @@ describe("slugifyAgentName", () => {
     for (const input of ["Claude Code", "", "a", "!!!", "A".repeat(50), "  --  "]) {
       expect(AGENT_NAME_RE.test(slugifyAgentName(input))).toBe(true);
     }
+  });
+});
+
+describe("findMentions and email mentions", () => {
+  it("does not read the local part of an email mention as an agent", () => {
+    expect(findMentions("ping @ada@example.com", ["ada"])).toEqual([]);
+    expect(findMentions("ping @ada@example.com and @ada", ["ada"])).toEqual(["ada"]);
+  });
+  it("allows a sentence-ending period but not a domain", () => {
+    expect(findMentions("thanks @scribe.", ["scribe"])).toEqual(["scribe"]);
+    expect(findMentions("see @scribe.com", ["scribe"])).toEqual([]);
+    expect(findMentions("@scribe-x is not @scribe", ["scribe"])).toEqual(["scribe"]);
+  });
+  it("finds email mentions, lowercased and once each", () => {
+    expect(findEmailMentions("cc @Ada@Example.com, @ada@example.com; not ada@example.com"))
+      .toEqual(["ada@example.com"]);
+    expect(findEmailMentions("@a.b+c@sub.example.co.uk done")).toEqual(["a.b+c@sub.example.co.uk"]);
+    expect(findEmailMentions("@scribe only")).toEqual([]);
+  });
+  it("isEmailQuery recognises a complete address only", () => {
+    expect(isEmailQuery("ada@example.com")).toBe(true);
+    expect(isEmailQuery("ada@example")).toBe(false);
+    expect(isEmailQuery("ada")).toBe(false);
+  });
+});
+
+describe("slugifyName", () => {
+  it("slugs display names and rejects the unsluggable", () => {
+    expect(slugifyName("Quiet Otter")).toBe("quiet-otter");
+    expect(slugifyName("Ada Lovelace")).toBe("ada-lovelace");
+    expect(slugifyName("!!!")).toBeNull();
+  });
+});
+
+describe("rankMentionItems", () => {
+  const sources = {
+    agents: [{ name: "scribe", label: "Ada's Agent", color: "#111" }],
+    people: [
+      { name: "Ada Lovelace", color: "#222", id: "email:Ada@Example.com", avatar: "a.png" },
+      { name: "Quiet Otter", color: "#333", id: "anon-1", animal: "🦦" },
+      { name: "Scribe", color: "#444" },
+      { name: "Bot", color: "#555", isAgent: true },
+    ],
+  };
+
+  it("lists agents first, signed-in people by email, anonymous people by slug", () => {
+    const items = rankMentionItems("", sources);
+    expect(items.map((i) => [i.kind, i.handle])).toEqual([
+      ["agent", "scribe"],
+      ["person", "ada@example.com"],
+      ["person", "quiet-otter"],
+      ["person", "scribe-2"],
+    ]);
+    expect(items[0].label).toBe("Ada's Agent");
+    expect(items[1].detail).toBe("ada@example.com");
+  });
+
+  it("filters by handle, label, and any word of the name", () => {
+    expect(rankMentionItems("love", sources).map((i) => i.handle)).toEqual(["ada@example.com"]);
+    expect(rankMentionItems("ott", sources).map((i) => i.handle)).toEqual(["quiet-otter"]);
+    expect(rankMentionItems("scr", sources).map((i) => i.handle)).toEqual(["scribe", "scribe-2"]);
+  });
+
+  it("adds a typed email as its own row unless it is already listed", () => {
+    const typed = rankMentionItems("bob@example.org", sources);
+    expect(typed).toEqual([{ kind: "email", handle: "bob@example.org", label: "Mention bob@example.org" }]);
+    const known = rankMentionItems("ada@example.com", sources);
+    expect(known.map((i) => i.kind)).toEqual(["person"]);
+  });
+
+  it("caps the list", () => {
+    const many = { agents: [], people: Array.from({ length: 20 }, (_, i) => ({ name: `Person ${i}`, color: "#000" })) };
+    expect(rankMentionItems("", many, 5)).toHaveLength(5);
   });
 });

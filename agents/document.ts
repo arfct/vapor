@@ -498,8 +498,6 @@ class DocumentAgent extends Agent {
         } catch {
           continue;
         }
-        if (!rosterNames.includes(thread.author?.name)) continue;
-
         const change = event.changes.keys.get(key);
         if (!change || change.action !== "update") continue; // "add" = brand-new thread, not a reply
         let previousReplyCount = 0;
@@ -512,7 +510,18 @@ class DocumentAgent extends Agent {
         if (thread.replies.length <= previousReplyCount) continue;
 
         const lastReply = thread.replies[thread.replies.length - 1];
-        if (!lastReply || lastReply.author?.name === thread.author.name) continue;
+        if (!lastReply) continue;
+
+        // A reply lives only in the threads map, so the body scan never
+        // sees it: `@agent` inside a reply is notified from here. The
+        // thread's own author is covered by thread_reply below.
+        for (const name of findMentions(lastReply.text ?? "", rosterNames)) {
+          if (name === lastReply.author?.name || name === thread.author?.name) continue;
+          this.recordEvent("mention", { agent: name, text: lastReply.text, threadId: thread.id });
+        }
+
+        if (!rosterNames.includes(thread.author?.name)) continue;
+        if (lastReply.author?.name === thread.author.name) continue;
         this.recordEvent("thread_reply", { agent: thread.author.name, threadId: thread.id });
       }
     });

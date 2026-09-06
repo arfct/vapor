@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useCallback, useRef } from "react";
 import { useDocument } from "~/lib/DocumentContext";
+import CommentEditor, { type CommentEditorHandle } from "~/components/CommentEditor";
 
 export default function CommentInput() {
   const {
@@ -8,21 +9,11 @@ export default function CommentInput() {
     handleCommentActiveChange: onActiveChange,
     commentSelection: selection,
     activateComment: onCommentInserted,
+    mentionSources,
   } = useDocument();
+  const editorRef = useRef<CommentEditorHandle>(null);
 
-  const [comment, setComment] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Focus synchronously: iOS only raises the keyboard for a focus() that
-  // runs inside the tap's own task, so a deferred focus lands silently.
-  useEffect(() => {
-    if (!active) return;
-    // No scroll on focus: the box is placed beside its selection already.
-    if (inputRef.current) inputRef.current.focus({ preventScroll: true });
-    else requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
-  }, [active]);
-
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback((comment: string) => {
     if (!editor || !comment.trim()) return;
 
     const from = selection ? selection.from : editor.state.selection.from;
@@ -58,26 +49,12 @@ export default function CommentInput() {
       .run();
 
     onCommentInserted(comment);
-    setComment("");
     onActiveChange(false);
-  }, [editor, comment, selection, onCommentInserted, onActiveChange]);
+  }, [editor, selection, onCommentInserted, onActiveChange]);
 
   const handleCancel = useCallback(() => {
-    setComment("");
     onActiveChange(false);
   }, [onActiveChange]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        handleSubmit();
-      } else if (e.key === "Escape") {
-        handleCancel();
-      }
-    },
-    [handleSubmit, handleCancel],
-  );
 
   if (!active) return null;
 
@@ -93,19 +70,18 @@ export default function CommentInput() {
             : selection.text}
         </div>
       )}
-      <input
-        ref={inputRef}
-        type="text"
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        onKeyDown={handleKeyDown}
-        enterKeyHint="send"
+      <CommentEditor
+        ref={editorRef}
         placeholder="Add a comment..."
-        className="w-full border border-border bg-paper px-2 py-1.5 outline-none focus:border-coral"
+        onSubmit={handleSubmit}
+        onCancel={handleCancel}
+        autoFocus
+        mentions={mentionSources}
+        className="comment-editor-box w-full border border-border bg-paper px-2 py-1.5 focus-within:border-coral"
       />
       <div className="mt-1.5 flex gap-1">
         <button
-          onClick={handleSubmit}
+          onClick={() => editorRef.current?.submit()}
           className="min-h-[44px] flex-1 cursor-pointer border border-border px-2 py-1 text-sm uppercase tracking-wider text-muted transition-colors hover:bg-border"
         >
           Add

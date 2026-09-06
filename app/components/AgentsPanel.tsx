@@ -7,24 +7,25 @@ function relativeTime(ts: number | null): string {
   return ts == null ? "never" : timeAgo(ts);
 }
 
-type Client = "claude" | "chatgpt" | "codex" | "cursor" | "other";
+type Client = "claude" | "chatgpt" | "codex" | "cursor" | "gemini" | "vscode";
 
 const CLIENTS: { id: Client; label: string }[] = [
   { id: "claude", label: "Claude" },
   { id: "chatgpt", label: "ChatGPT" },
   { id: "codex", label: "Codex" },
   { id: "cursor", label: "Cursor" },
-  { id: "other", label: "Other" },
+  { id: "gemini", label: "Gemini" },
+  { id: "vscode", label: "VS Code" },
 ];
+
+function Nav({ children }: { children: React.ReactNode }) {
+  return <strong className="font-semibold text-ink">{children}</strong>;
+}
 
 const tabClass = (active: boolean) =>
   `cursor-pointer border-b-2 px-3 py-2 text-sm transition-colors ${
     active ? "border-ink text-ink" : "border-transparent text-muted hover:text-ink"
   }`;
-
-function Steps({ children }: { children: React.ReactNode }) {
-  return <ol className="list-decimal space-y-1.5 pl-5 text-sm text-ink">{children}</ol>;
-}
 
 /**
  * The Agents panel: how to connect an agent over MCP, one tab per client,
@@ -105,8 +106,8 @@ export default function AgentsPanel({
                   <SnippetRow label="Claude Code — sign in" text={claudeCodeCommand} />
                   <SnippetRow label="Claude Code — anonymous" text={anonCommand} />
                   <p className="text-sm text-muted">
-                    For claude.ai and Claude Desktop, add <code className="font-mono">{mcpUrl}</code> as
-                    a custom connector (Settings → Connectors).
+                    claude.ai and Claude Desktop: <Nav>Settings → Connectors → Add custom connector</Nav>{" "}
+                    with the same URL.
                   </p>
                 </div>
               )}
@@ -114,8 +115,7 @@ export default function AgentsPanel({
                 <div className="space-y-4" role="tabpanel">
                   <SnippetRow label="Codex CLI" text={codexCommand} />
                   <p className="text-sm text-muted">
-                    Then <code className="font-mono">codex mcp login vapor</code> to sign in, or use
-                    the anonymous URL with no login.
+                    Then <code className="font-mono">codex mcp login vapor</code> to sign in.
                   </p>
                 </div>
               )}
@@ -126,22 +126,24 @@ export default function AgentsPanel({
                   </a>
                   <SnippetRow label="Or .cursor/mcp.json" text={cursorJson} />
                   <p className="text-sm text-muted">
-                    In the project, or <code className="font-mono">~/.cursor/mcp.json</code> for every
-                    project. Sign in from Settings → MCP.
+                    Sign in from <Nav>Settings → MCP</Nav>.
                   </p>
                 </div>
               )}
-              {client === "other" && (
+              {client === "gemini" && (
                 <div className="space-y-4" role="tabpanel">
-                  <SnippetRow label="Gemini CLI — extension with the skill" text={geminiExtension} />
-                  <SnippetRow label="Gemini CLI — server only" text={geminiCommand} />
+                  <SnippetRow label="Extension, with the vapor skill" text={geminiExtension} />
+                  <SnippetRow label="Server only" text={geminiCommand} />
+                </div>
+              )}
+              {client === "vscode" && (
+                <div className="space-y-4" role="tabpanel">
                   <a href={vscodeLink} className="inline-block text-sm underline">
                     Add to VS Code
                   </a>
                   <SnippetRow label="Or .vscode/mcp.json" text={vscodeJson} />
                   <p className="text-sm text-muted">
-                    Any MCP client that speaks HTTP takes the same URL. Full guide, with the skill
-                    for each client, what agents can do, and how they watch a document:{" "}
+                    Any other MCP client takes the same URL. Full guide:{" "}
                     <a href="/mcp" className="underline" target="_blank" rel="noreferrer">
                       {origin.replace(/^https?:\/\//, "")}/mcp
                     </a>
@@ -151,21 +153,11 @@ export default function AgentsPanel({
               )}
               {client === "chatgpt" && (
                 <div className="space-y-4" role="tabpanel">
-                  <Steps>
-                    <li>
-                      In ChatGPT, open Settings → Connectors → Advanced and turn on Developer
-                      mode. Custom connectors need a paid plan.
-                    </li>
-                    <li>
-                      Choose Create, name it <span className="font-mono">vapor</span>, and paste the
-                      server URL below. Pick OAuth to sign in, or use the anonymous URL with no
-                      authentication.
-                    </li>
-                    <li>
-                      In a chat, open the tools menu, enable the vapor connector, and paste a
-                      document link.
-                    </li>
-                  </Steps>
+                  <p className="text-sm text-muted">
+                    <Nav>Settings → Connectors → Advanced → Developer mode</Nav>, then{" "}
+                    <Nav>Create</Nav> a connector with one of these URLs. OAuth signs in; the
+                    anonymous URL needs no authentication. Paid plans only.
+                  </p>
                   <SnippetRow label="MCP server URL — sign in" text={mcpUrl} />
                   <SnippetRow label="MCP server URL — anonymous" text={anonUrl} />
                 </div>

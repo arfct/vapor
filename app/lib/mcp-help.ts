@@ -143,18 +143,18 @@ export function mcpHelpHtml(origin: string): string {
 
 <h3>ChatGPT</h3>
 <p>
-  <strong>Settings → Connectors → Advanced</strong>, turn on Developer mode
-  (custom connectors need a paid plan). Choose Create, name it <code>vapor</code>,
-  paste the URL, and pick OAuth to sign in or No authentication for the anonymous
-  door. In a chat, enable the connector from the tools menu and paste a document link.
+  <strong>Settings → Connectors → Advanced → Developer mode</strong>, then
+  <strong>Create</strong> a connector with the URL. OAuth signs in; the anonymous
+  door needs no authentication. Paid plans only.
 </p>
+<pre>${mcpUrl}</pre>
 
 <h3>Codex CLI</h3>
 <pre>codex mcp add vapor --url ${mcpUrl}
 codex mcp login vapor</pre>
 
 <h3>Cursor</h3>
-<p><a href="${cursorLink}">Add to Cursor</a>, or put this in <code>.cursor/mcp.json</code> in the project (<code>~/.cursor/mcp.json</code> for every project), then sign in from Settings → MCP:</p>
+<p><a href="${cursorLink}">Add to Cursor</a>, or put this in <code>.cursor/mcp.json</code>, then sign in from <strong>Settings → MCP</strong>:</p>
 <pre>${cursorJson}</pre>
 
 <h3>Gemini CLI</h3>

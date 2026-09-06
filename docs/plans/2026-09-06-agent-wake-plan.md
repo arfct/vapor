@@ -2,7 +2,7 @@
 
 **Goal:** a signed-in person sets up, once, how vapor should wake their agent. From then on, a mention of their agent in any document where it's enrolled, or a reply in one of its threads, fires that target. No relay to deploy, no per-document subscription, no secret to generate.
 
-**Relationship to other plans:** builds on the events polyfill ([2026-08-31](2026-08-31-mcp-events-polyfill-plan.md)), which keeps per-document `events_subscribe` webhooks unchanged. Replaces the hand-deployed relay described there for the common case; the relay stays in the repo as an example of a custom receiver.
+**Relationship to other plans:** builds on the events polyfill ([2026-08-31](2026-08-31-mcp-events-polyfill-plan.md)), which keeps per-document `events_subscribe` webhooks unchanged. Replaces the hand-deployed relay described there; the relay Worker and its source were deleted once this shipped.
 
 ## What exists already
 

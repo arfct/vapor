@@ -32,7 +32,8 @@
 	],
 	// Every var is optional; app/shared/site.ts documents them. Set them here,
 	// or in the dashboard — `keep_vars` keeps dashboard values across deploys.
-	//   GOOGLE_CLIENT_ID  enables Google sign-in (leave unset to run anonymous-only)
+	//   GOOGLE_CLIENT_ID  enables Google sign-in
+	//   APPLE_CLIENT_ID   enables Sign in with Apple (Services ID); neither set = anonymous-only
 	//   PUBLIC_ORIGIN     canonical origin, e.g. "https://vapor.example"
 	//   REDIRECT_HOSTS    comma-separated aliases to 301 to PUBLIC_ORIGIN
 	//   OPERATOR_NAME     shown on /privacy and /terms

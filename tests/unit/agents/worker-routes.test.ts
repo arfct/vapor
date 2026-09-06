@@ -285,9 +285,11 @@ describe("handleAuth", () => {
     expect(await handleAuth(new Request("https://vapor.fyi/other"), deps())).toBeNull();
   });
 
-  it("config returns the public client id", async () => {
+  it("config returns the public client ids, empty for a provider that is off", async () => {
     const res = await handleAuth(new Request("https://vapor.fyi/auth/config"), deps());
-    expect(await res?.json()).toEqual({ googleClientId: "client-123" });
+    expect(await res?.json()).toEqual({ googleClientId: "client-123", appleClientId: "" });
+    const both = await handleAuth(new Request("https://vapor.fyi/auth/config"), deps({ appleClientId: "example.vapor.web" }));
+    expect(await both?.json()).toEqual({ googleClientId: "client-123", appleClientId: "example.vapor.web" });
   });
 
   it("google happy path sets a secure session cookie and keys the profile on the Google sub", async () => {
@@ -311,6 +313,71 @@ describe("handleAuth", () => {
   it("rejects cross-origin sign-in", async () => {
     const res = await handleAuth(googlePost("https://evil.example"), deps());
     expect(res?.status).toBe(403);
+  });
+
+  describe("apple", () => {
+    const appleIdentity = { sub: "001234.abcd.5678", email: "Ada@Example.com", name: "ada@example.com" };
+    function appleDeps(overrides: Partial<Parameters<typeof handleAuth>[1]> = {}) {
+      return deps({
+        appleClientId: "example.vapor.web",
+        verifyApple: vi.fn(async () => appleIdentity),
+        getProfile: vi.fn(async () => ({ profile: null })),
+        ...overrides,
+      });
+    }
+    function applePost(body: unknown, origin = "https://vapor.fyi") {
+      return new Request("https://vapor.fyi/auth/apple", {
+        method: "POST",
+        headers: { Origin: origin, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    }
+
+    it("first authorization: keys the profile on the Apple sub and takes the name from the response", async () => {
+      const d = appleDeps();
+      const res = await handleAuth(
+        applePost({ id_token: "tok", user: { name: { firstName: " Ada ", lastName: "Lovelace" }, email: "ada@example.com" } }),
+        d,
+      );
+      expect(res?.status).toBe(200);
+      expect(res?.headers.get("Set-Cookie")).toContain("vp_session=");
+      expect(d.verifyApple).toHaveBeenCalledWith("tok", "example.vapor.web");
+      expect(d.upsertProfile).toHaveBeenCalledWith("apple:001234.abcd.5678", {
+        displayName: "Ada Lovelace",
+        email: "ada@example.com",
+      });
+      // No legacy email principal: Apple accounts never existed under one.
+      const info = (d.upsertProfile as ReturnType<typeof vi.fn>).mock.calls[0][1] as Record<string, unknown>;
+      expect(info.legacyPrincipal).toBeUndefined();
+      expect(info.avatar).toBeUndefined();
+    });
+
+    it("later sign-ins carry no name: the stored profile name is kept", async () => {
+      const d = appleDeps({
+        getProfile: vi.fn(async () => ({ profile: { uid: "k3f0a9x2", displayName: "Ada Lovelace", avatar: null } })),
+      });
+      await handleAuth(applePost({ id_token: "tok" }), d);
+      expect(d.upsertProfile).toHaveBeenCalledWith(
+        "apple:001234.abcd.5678",
+        expect.objectContaining({ displayName: "Ada Lovelace" }),
+      );
+    });
+
+    it("a brand-new account with no name falls back to the address", async () => {
+      const d = appleDeps();
+      await handleAuth(applePost({ id_token: "tok", user: { name: {} } }), d);
+      expect(d.upsertProfile).toHaveBeenCalledWith(
+        "apple:001234.abcd.5678",
+        expect.objectContaining({ displayName: "ada@example.com" }),
+      );
+    });
+
+    it("rejects cross-origin, missing token, bad token, and an instance without Apple configured", async () => {
+      expect((await handleAuth(applePost({ id_token: "tok" }, "https://evil.example"), appleDeps()))?.status).toBe(403);
+      expect((await handleAuth(applePost({}), appleDeps()))?.status).toBe(400);
+      expect((await handleAuth(applePost({ id_token: "tok" }), appleDeps({ verifyApple: vi.fn(async () => null) })))?.status).toBe(401);
+      expect((await handleAuth(applePost({ id_token: "tok" }), deps()))?.status).toBe(404);
+    });
   });
 
   it("rejects a bad credential", async () => {

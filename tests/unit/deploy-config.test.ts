@@ -50,7 +50,7 @@ describe.each(instances)("deploy/%s", (file) => {
   });
 
   it("only sets vars the app knows about", () => {
-    const known = ["GOOGLE_CLIENT_ID", "PUBLIC_ORIGIN", "REDIRECT_HOSTS", "OPERATOR_NAME", "SOURCE_URL"];
+    const known = ["GOOGLE_CLIENT_ID", "APPLE_CLIENT_ID", "PUBLIC_ORIGIN", "REDIRECT_HOSTS", "OPERATOR_NAME", "SOURCE_URL"];
     for (const key of Object.keys((instance.vars as Record<string, string>) ?? {})) {
       expect(known, key).toContain(key);
     }

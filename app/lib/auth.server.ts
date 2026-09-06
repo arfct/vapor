@@ -1,5 +1,6 @@
 /**
- * Session and Google identity verification: dependency-free, WebCrypto-only.
+ * Session and identity-provider token verification (Google, Apple):
+ * dependency-free, WebCrypto-only.
  *
  * Ported from subpixel server/auth.ts. Adapted for vapor:
  * - Session cookie renamed sp_session -> vp_session.
@@ -25,7 +26,23 @@ export interface SessionClaims {
 
 export const SESSION_COOKIE = "vp_session";
 
-const GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs";
+/**
+ * The identity providers vapor accepts. Each hands the browser an RS256 ID
+ * token; the server checks it against the provider's JWKS and issuer and
+ * keys the principal on the provider's stable `sub`.
+ */
+export type IdentityProvider = "google" | "apple";
+
+const PROVIDERS: Record<IdentityProvider, { jwksUrl: string; issuers: readonly string[] }> = {
+  google: {
+    jwksUrl: "https://www.googleapis.com/oauth2/v3/certs",
+    issuers: ["accounts.google.com", "https://accounts.google.com"],
+  },
+  apple: {
+    jwksUrl: "https://appleid.apple.com/auth/keys",
+    issuers: ["https://appleid.apple.com"],
+  },
+};
 const DEFAULT_SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 const encoder = new TextEncoder();
@@ -83,7 +100,12 @@ async function signSession(data: string, secretValue: string): Promise<string> {
  * (docs/plans/2026-09-06-agent-identity-plan.md).
  */
 export function principalFromSub(sub: string): string {
-  return `google:${sub}`;
+  return principalFor("google", sub);
+}
+
+/** `<provider>:<sub>` — the principal for an account at an identity provider. */
+export function principalFor(provider: IdentityProvider, sub: string): string {
+  return `${provider}:${sub}`;
 }
 
 /**
@@ -95,13 +117,17 @@ export function principalFromEmail(email: string): string {
   return `email:${email.toLowerCase()}`;
 }
 
-export interface GoogleIdentity {
-  /** Google's stable account id. */
+export interface VerifiedIdentity {
+  /** The provider's stable account id. */
   sub: string;
   email: string;
+  /** Display name when the token carries one (Google does; Apple never does), else the email. */
   name: string;
   picture?: string;
 }
+
+/** @deprecated Use VerifiedIdentity. */
+export type GoogleIdentity = VerifiedIdentity;
 
 export async function mintSessionToken(
   claims: Omit<SessionClaims, "iat" | "exp">,
@@ -196,25 +222,25 @@ export function sameOrigin(request: Request): boolean {
   }
 }
 
-type GoogleJwk = JsonWebKey & { kid?: string };
-type FetchJwks = (url: string) => Promise<GoogleJwk[]>;
+type ProviderJwk = JsonWebKey & { kid?: string };
+type FetchJwks = (url: string) => Promise<ProviderJwk[]>;
 
-async function defaultFetchJwks(url: string): Promise<GoogleJwk[]> {
+async function defaultFetchJwks(url: string): Promise<ProviderJwk[]> {
   const cache = typeof caches !== "undefined" ? (caches as CacheStorage & { default: Cache }).default : undefined;
   const request = new Request(url);
   const cached = await cache?.match(request);
   if (cached) {
-    const data = (await cached.json()) as { keys?: GoogleJwk[] };
+    const data = (await cached.json()) as { keys?: ProviderJwk[] };
     return data.keys ?? [];
   }
   const response = await fetch(request);
-  if (!response.ok) throw new Error("google jwks fetch failed");
+  if (!response.ok) throw new Error(`jwks fetch failed: ${url}`);
   await cache?.put(request, response.clone());
-  const data = (await response.json()) as { keys?: GoogleJwk[] };
+  const data = (await response.json()) as { keys?: ProviderJwk[] };
   return data.keys ?? [];
 }
 
-async function verifyRs256(data: string, signature: Uint8Array<ArrayBuffer>, jwk: GoogleJwk): Promise<boolean> {
+async function verifyRs256(data: string, signature: Uint8Array<ArrayBuffer>, jwk: ProviderJwk): Promise<boolean> {
   const key = await crypto.subtle.importKey(
     "jwk",
     jwk,
@@ -235,7 +261,36 @@ export async function verifyGoogleIdToken(
   credential: string,
   clientId: string,
   fetchJwks: FetchJwks = defaultFetchJwks,
-): Promise<GoogleIdentity | null> {
+): Promise<VerifiedIdentity | null> {
+  return verifyIdToken("google", credential, clientId, fetchJwks);
+}
+
+/**
+ * Verifies a Sign in with Apple ID token the same way. `clientId` is the
+ * Services ID (the web client). Apple sends `email_verified` as a boolean or
+ * the string "true", and no name or picture: the name arrives once, in the
+ * authorization response, and the caller keeps it.
+ */
+export async function verifyAppleIdToken(
+  credential: string,
+  clientId: string,
+  fetchJwks: FetchJwks = defaultFetchJwks,
+): Promise<VerifiedIdentity | null> {
+  return verifyIdToken("apple", credential, clientId, fetchJwks);
+}
+
+/**
+ * Provider-agnostic ID token check: RS256 against the provider's JWKS
+ * (looked up by `kid`), then issuer, audience, expiry, a verified email,
+ * and a `sub`. Any failure is null; callers never learn why.
+ */
+export async function verifyIdToken(
+  provider: IdentityProvider,
+  credential: string,
+  clientId: string,
+  fetchJwks: FetchJwks = defaultFetchJwks,
+): Promise<VerifiedIdentity | null> {
+  if (!clientId) return null;
   if (credential.length === 0 || credential.length > 8192) return null;
   const parts = credential.split(".");
   if (parts.length !== 3) return null;
@@ -250,9 +305,9 @@ export async function verifyGoogleIdToken(
   }
   if (!isRecord(header) || header.alg !== "RS256" || typeof header.kid !== "string") return null;
 
-  let keys: GoogleJwk[];
+  let keys: ProviderJwk[];
   try {
-    keys = await fetchJwks(GOOGLE_JWKS_URL);
+    keys = await fetchJwks(PROVIDERS[provider].jwksUrl);
   } catch {
     return null;
   }
@@ -270,13 +325,14 @@ export async function verifyGoogleIdToken(
 
   if (!isRecord(payload)) return null;
   const { iss, aud, exp, sub, email, email_verified: emailVerified, name, picture } = payload;
-  if (iss !== "accounts.google.com" && iss !== "https://accounts.google.com") return null;
+  if (typeof iss !== "string" || !PROVIDERS[provider].issuers.includes(iss)) return null;
   if (aud !== clientId) return null;
   if (!Number.isInteger(exp)) return null;
 
   const now = Math.floor(Date.now() / 1000);
   if ((exp as number) <= now) return null;
-  if (emailVerified !== true || typeof email !== "string") return null;
+  // Apple encodes the flag as the string "true" in some tokens.
+  if ((emailVerified !== true && emailVerified !== "true") || typeof email !== "string") return null;
   if (typeof sub !== "string" || sub.length === 0 || sub.length > 255) return null;
 
   const normalizedEmail = email.toLowerCase();

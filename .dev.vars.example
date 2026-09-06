@@ -1,12 +1,18 @@
 # Local development variables. Copy to .dev.vars (git-ignored); everything
 # is optional and the app runs anonymous-only with none of them set.
 
-# Identity. GOOGLE_CLIENT_ID is the public OAuth client id of a Google
-# "Web application" credential whose authorized JavaScript origins include
-# http://localhost:5173 (see docs/self-hosting.md). SESSION_SECRET signs
-# session JWTs; any long random string works locally:
+# Identity (docs/self-hosting.md, "Sign-in providers"). Set either, both,
+# or neither; with neither the instance is anonymous-only.
+# GOOGLE_CLIENT_ID is the public OAuth client id of a Google "Web
+# application" credential whose authorized JavaScript origins include
+# http://localhost:5173. APPLE_CLIENT_ID is a Sign in with Apple Services ID
+# whose return URLs include http://localhost:5173/auth/apple — note Apple
+# only allows https return URLs, so Apple sign-in is usually tested on a
+# deployed preview rather than on localhost. SESSION_SECRET signs session
+# JWTs; any long random string works locally:
 #   openssl rand -base64 32
 GOOGLE_CLIENT_ID=
+APPLE_CLIENT_ID=
 SESSION_SECRET=
 
 # Instance identity (app/shared/site.ts). Normally left unset locally: the

@@ -85,6 +85,51 @@ describe("HeaderMenu", () => {
     ).toBeTruthy();
   });
 
+  it("offers Sign in with Apple only when the instance has an Apple client id, and posts the popup result", async () => {
+    const fetchMock = mockFetch({
+      "/auth/me": { signedIn: false },
+      "/auth/config": { googleClientId: "", appleClientId: "example.vapor.web" },
+      "POST /auth/apple": { signedIn: true },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const init = vi.fn();
+    const signIn = vi.fn(async () => ({
+      authorization: { id_token: "apple-tok", code: "c" },
+      user: { name: { firstName: "Ada", lastName: "Lovelace" } },
+    }));
+    window.AppleID = { auth: { init, signIn } };
+
+    renderWithDocument(createElement(HeaderMenu));
+    fireEvent.click(screen.getByLabelText("Menu"));
+    const button = await screen.findByRole("button", { name: /Sign in with Apple/ });
+    fireEvent.click(button);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/auth/apple",
+        expect.objectContaining({ method: "POST", body: expect.stringContaining('"id_token":"apple-tok"') }),
+      ),
+    );
+    expect(init).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: "example.vapor.web", usePopup: true, redirectURI: `${window.location.origin}/auth/apple` }),
+    );
+    const posted = JSON.parse((fetchMock.mock.calls.find((c) => c[0] === "/auth/apple")?.[1] as RequestInit).body as string);
+    expect(posted.user.name.firstName).toBe("Ada");
+    delete window.AppleID;
+  });
+
+  it("shows no Apple button when only Google is configured", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({ "/auth/me": { signedIn: false }, "/auth/config": { googleClientId: "client-id", appleClientId: "" } }),
+    );
+    renderWithDocument(createElement(HeaderMenu));
+    fireEvent.click(screen.getByLabelText("Menu"));
+    await waitFor(() => expect(screen.getByRole("group", { name: "Editing mode" })).toBeTruthy());
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: /Sign in with Apple/ })).toBeNull();
+  });
+
   it("trigger shows the mode when it isn't plain Edit", () => {
     renderWithDocument(createElement(HeaderMenu), { context: { mode: "suggest" } });
     expect(screen.getByLabelText("Menu").getAttribute("title")).toBe("Suggest");

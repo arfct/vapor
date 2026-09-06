@@ -19,7 +19,8 @@ import {
   clearSessionCookieHeader,
   sameOrigin,
   principalFromEmail,
-  principalFromSub,
+  principalFor,
+  type VerifiedIdentity,
 } from "../app/lib/auth.server";
 
 /** The subset of the DocumentAgent RPC surface handleRawMarkdown calls. */
@@ -164,12 +165,14 @@ const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 /** Dependencies handleAuth needs, injected from workers/app.ts. */
 export interface AuthDeps {
   secret: string;
+  /** Google OAuth client id; empty disables Google sign-in. */
   googleClientId: string;
+  /** Sign in with Apple Services ID; empty (or absent) disables Apple sign-in. */
+  appleClientId?: string;
   /** Injectable for tests; production passes verifyGoogleIdToken. */
-  verifyGoogle: (
-    credential: string,
-    clientId: string,
-  ) => Promise<{ sub: string; email: string; name: string; picture?: string } | null>;
+  verifyGoogle: (credential: string, clientId: string) => Promise<VerifiedIdentity | null>;
+  /** Injectable for tests; production passes verifyAppleIdToken. */
+  verifyApple?: (credential: string, clientId: string) => Promise<VerifiedIdentity | null>;
   upsertProfile: (
     principal: string,
     info: { displayName: string; avatar?: string; email?: string; legacyPrincipal?: string },
@@ -200,17 +203,37 @@ function json(body: unknown, status = 200, headers: Record<string, string> = {})
 }
 
 /**
- * `/auth/*` — Google sign-in sessions. Returns null for non-auth paths so
- * the worker falls through. Sign-in is optional everywhere; these routes
- * only mint and read the `vp_session` cookie.
+ * Apple's authorization response carries the person's name exactly once, on
+ * first consent, outside the ID token. The browser forwards it here; after
+ * that the stored profile name is what we have.
+ */
+function appleUserName(user: unknown): string | null {
+  if (typeof user !== "object" || user === null) return null;
+  const name = (user as { name?: unknown }).name;
+  if (typeof name !== "object" || name === null) return null;
+  const { firstName, lastName } = name as { firstName?: unknown; lastName?: unknown };
+  const full = [firstName, lastName]
+    .filter((part): part is string => typeof part === "string")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" ");
+  return full.length > 0 && full.length <= 200 ? full : null;
+}
+
+/**
+ * `/auth/*` — sign-in sessions (Google, Apple). Returns null for non-auth
+ * paths so the worker falls through. Sign-in is optional everywhere; these
+ * routes only mint and read the `vp_session` cookie.
  */
 export async function handleAuth(request: Request, deps: AuthDeps): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/auth/")) return null;
   const secure = url.protocol === "https:";
 
+  // Which providers this instance offers. The client renders a button per
+  // non-empty id; an instance with neither is anonymous-only.
   if (request.method === "GET" && url.pathname === "/auth/config") {
-    return json({ googleClientId: deps.googleClientId });
+    return json({ googleClientId: deps.googleClientId, appleClientId: deps.appleClientId ?? "" });
   }
 
   // The signed-in person's own view of themselves. `uid` is the public id
@@ -249,6 +272,22 @@ export async function handleAuth(request: Request, deps: AuthDeps): Promise<Resp
     return json({ ok: true }, 200, { "Set-Cookie": clearSessionCookieHeader(secure) });
   }
 
+  /** Mints the session for a verified identity and answers the sign-in POST. */
+  async function completeSignIn(
+    principal: string,
+    verified: VerifiedIdentity,
+    info: { displayName: string; avatar?: string; legacyPrincipal?: string },
+  ): Promise<Response> {
+    const email = verified.email.toLowerCase();
+    const { profile } = await deps.upsertProfile(principal, { ...info, email });
+    const token = await mintSessionToken({ principal, email }, deps.secret, SESSION_TTL_SECONDS);
+    return json(
+      { signedIn: true, uid: profile.uid, displayName: profile.displayName },
+      200,
+      { "Set-Cookie": sessionCookieHeader(token, SESSION_TTL_SECONDS, secure) },
+    );
+  }
+
   if (request.method === "POST" && url.pathname === "/auth/google") {
     if (!sameOrigin(request)) {
       return json({ error: "cross-origin sign-in rejected" }, 403);
@@ -265,23 +304,43 @@ export async function handleAuth(request: Request, deps: AuthDeps): Promise<Resp
     const verified = await deps.verifyGoogle(credential, deps.googleClientId);
     if (!verified) return json({ error: "invalid credential" }, 401);
 
-    const principal = principalFromSub(verified.sub);
-    const { profile } = await deps.upsertProfile(principal, {
+    return completeSignIn(principalFor("google", verified.sub), verified, {
       displayName: verified.name || verified.email,
       avatar: verified.picture,
-      email: verified.email.toLowerCase(),
+      // Profiles created before the principal was keyed on `sub`.
       legacyPrincipal: principalFromEmail(verified.email),
     });
-    const token = await mintSessionToken(
-      { principal, email: verified.email.toLowerCase() },
-      deps.secret,
-      SESSION_TTL_SECONDS,
-    );
-    return json(
-      { signedIn: true, uid: profile.uid, displayName: profile.displayName },
-      200,
-      { "Set-Cookie": sessionCookieHeader(token, SESSION_TTL_SECONDS, secure) },
-    );
+  }
+
+  // Sign in with Apple (JS popup flow). Body: the authorization response's
+  // `id_token`, plus `user` (name) on the first authorization only.
+  if (request.method === "POST" && url.pathname === "/auth/apple") {
+    if (!sameOrigin(request)) {
+      return json({ error: "cross-origin sign-in rejected" }, 403);
+    }
+    if (!deps.appleClientId || !deps.verifyApple) return json({ error: "apple sign-in not configured" }, 404);
+    let idToken: string | undefined;
+    let user: unknown;
+    try {
+      const body = (await request.json()) as { id_token?: string; user?: unknown };
+      idToken = body.id_token;
+      user = body.user;
+    } catch {
+      return json({ error: "invalid body" }, 400);
+    }
+    if (!idToken) return json({ error: "missing id_token" }, 400);
+
+    const verified = await deps.verifyApple(idToken, deps.appleClientId);
+    if (!verified) return json({ error: "invalid credential" }, 401);
+
+    // Apple gives the name once; keep whatever the profile already has on
+    // later sign-ins, and fall back to the address only for a brand-new one.
+    const principal = principalFor("apple", verified.sub);
+    const fromResponse = appleUserName(user);
+    const existing = fromResponse ? null : (await deps.getProfile(principal)).profile;
+    return completeSignIn(principal, verified, {
+      displayName: fromResponse ?? existing?.displayName ?? verified.email.toLowerCase(),
+    });
   }
 
   return null;

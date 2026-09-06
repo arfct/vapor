@@ -3,21 +3,103 @@ import type { AgentRosterEntry } from "~/shared/agent-protocol";
 import { AGENT_CLIENTS, type AgentClientId } from "~/shared/agent-clients";
 import Dialog, { SnippetRow } from "~/components/ui/dialog";
 import AgentClientIcon from "~/components/AgentClientIcon";
+import Icon from "~/components/Icon";
 import WakeSection from "~/components/WakeSection";
 
 /** Whether the agent connects as the signed-in person or as an anonymous animal. */
 type Mode = "you" | "anonymous";
 
-export const CLAUDE_CONNECTORS_URL = "https://claude.ai/customize/connectors";
+/** Clients that come in several forms: the pulldown under the tabs picks one. */
+interface VariantSet {
+  options: { id: string; label: string }[];
+  initial: string;
+}
+const VARIANTS: Partial<Record<AgentClientId, VariantSet>> = {
+  claude: {
+    options: [
+      { id: "claude", label: "Claude" },
+      { id: "code-app", label: "Claude Code app" },
+      { id: "code-cli", label: "Claude Code CLI" },
+    ],
+    initial: "code-app",
+  },
+  chatgpt: {
+    options: [
+      { id: "app", label: "ChatGPT app" },
+      { id: "cli", label: "Codex CLI" },
+    ],
+    initial: "app",
+  },
+};
+
+/**
+ * A native select that is exactly as wide as its current label, with the
+ * chevron right after it: an invisible copy of the label sets the width
+ * and the select sits on top of it. Font comes from the wrapper's class.
+ */
+function Pulldown({
+  value,
+  options,
+  onChange,
+  label,
+  className = "",
+}: {
+  value: string;
+  options: { id: string; label: string }[];
+  onChange: (value: string) => void;
+  label: string;
+  className?: string;
+}) {
+  const current = options.find((o) => o.id === value)?.label ?? "";
+  // The visible label and chevron are plain text sized by their content; the
+  // real select lies transparent over them, so a native control's habit of
+  // sizing to its longest option never widens the row.
+  return (
+    <span className={`relative inline-flex items-center focus-within:underline ${className}`}>
+      <span aria-hidden="true" className="whitespace-nowrap">
+        {current}
+      </span>
+      <Icon name="expand_more" className="ml-0.5 text-[18px]" />
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="absolute inset-0 m-0 h-full w-full cursor-pointer appearance-none p-0 opacity-0"
+      >
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </span>
+  );
+}
+
+const MODES = [
+  { id: "you", label: "personally" },
+  { id: "anonymous", label: "anonymously" },
+];
+
+/** Opens claude.ai's add-connector dialog with the name and URL filled in; the person reviews and confirms. */
+export function claudeConnectorLink(mcpUrl: string): string {
+  return `https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=vapor&connectorUrl=${encodeURIComponent(mcpUrl)}`;
+}
 export const CHATGPT_CONNECTORS_URL = "https://chatgpt.com/#settings/Connectors";
 
-/** A UI path, linked straight to that screen when the product has a URL for it. */
+/** A UI path, linked straight to that screen when the product has a URL for it, with a pop-out mark. */
 function Nav({ href, children }: { href?: string; children: React.ReactNode }) {
   const inner = <strong className="font-semibold text-ink">{children}</strong>;
   if (!href) return inner;
   return (
-    <a href={href} target="_blank" rel="noreferrer" className="underline decoration-border underline-offset-2 hover:decoration-ink">
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="underline decoration-border underline-offset-2 hover:decoration-ink"
+    >
       {inner}
+      <Icon name="open_in_new" className="ml-0.5 text-[14px] text-muted" />
     </a>
   );
 }
@@ -48,6 +130,12 @@ export default function AgentsPanel({
   const [roster, setRoster] = useState<AgentRosterEntry[]>([]);
   const [client, setClient] = useState<AgentClientId>("claude");
   const [mode, setMode] = useState<Mode>("you");
+  const [variant, setVariant] = useState<string>(VARIANTS.claude!.initial);
+  const variants = VARIANTS[client];
+  const pickClient = (id: AgentClientId) => {
+    setClient(id);
+    setVariant(VARIANTS[id]?.initial ?? "");
+  };
   const origin = typeof window !== "undefined" ? window.location.origin : "https://vapor.fyi";
 
   const loadRoster = useCallback(() => {
@@ -78,15 +166,13 @@ export default function AgentsPanel({
   const asYou = mode === "you";
 
   const modePicker = (
-    <select
-      aria-label="Connect as"
+    <Pulldown
+      label="Connect as"
       value={mode}
-      onChange={(e) => setMode(e.target.value as Mode)}
-      className="cursor-pointer bg-transparent text-sm text-muted hover:text-ink focus:outline-none"
-    >
-      <option value="you">as you</option>
-      <option value="anonymous">anonymously</option>
-    </select>
+      options={MODES}
+      onChange={(v) => setMode(v as Mode)}
+      className="text-lg font-medium text-muted hover:text-ink"
+    />
   );
 
   return (
@@ -103,7 +189,7 @@ export default function AgentsPanel({
               key={c.id}
               role="tab"
               aria-selected={client === c.id}
-              onClick={() => setClient(c.id)}
+              onClick={() => pickClient(c.id)}
               className={tabClass(client === c.id)}
             >
               <AgentClientIcon client={c.id} size={20} />
@@ -111,31 +197,55 @@ export default function AgentsPanel({
             </button>
           ))}
         </div>
+        {variants && (
+          <div className="pb-1">
+            <Pulldown
+              label="App or command line"
+              value={variant}
+              options={variants.options}
+              onChange={setVariant}
+              className="text-lg font-medium text-ink"
+            />
+          </div>
+        )}
 
         {client === "claude" && (
           <div className="space-y-4" role="tabpanel">
-            <p className="text-sm text-muted">
-              Claude desktop and web:{" "}
-              <Nav href={CLAUDE_CONNECTORS_URL}>Settings → Connectors → Add custom connector</Nav>, with this URL.
-            </p>
-            <SnippetRow label="MCP server URL" text={url} />
-            <SnippetRow label="Claude Code" text={claudeCodeCommand} />
+            {/* Claude and the Claude Code app share claude.ai's connectors. */}
+            {(variant === "claude" || variant === "code-app") && (
+              <>
+                <p className="text-sm text-muted">
+                  <Nav href={claudeConnectorLink(url)}>Settings → Connectors → Add custom connector</Nav>.
+                </p>
+                <SnippetRow label="MCP server URL" text={url} showLabel={false} />
+              </>
+            )}
+            {variant === "code-cli" && <SnippetRow label="Claude Code" text={claudeCodeCommand} showLabel={false} />}
+            {/* An anonymous agent has no owner, so nothing could be woken for it. */}
             {asYou && <WakeSection kind="claude-routine" docId={docId} roster={roster} onRoster={setRoster} />}
           </div>
         )}
         {client === "chatgpt" && (
           <div className="space-y-4" role="tabpanel">
-            <p className="text-sm text-muted">
-              <Nav href={CHATGPT_CONNECTORS_URL}>Settings → Connectors → Advanced → Developer mode</Nav>, then{" "}
-              <strong className="font-semibold text-ink">Create</strong> a connector with this URL
-              {asYou ? " and OAuth" : " and no authentication"}. Paid plans only.
-            </p>
-            <SnippetRow label="MCP server URL" text={url} />
-            <SnippetRow label="Codex CLI" text={codexCommand} />
-            {asYou && (
-              <p className="text-sm text-muted">
-                Then <code className="font-mono">codex mcp login vapor</code> to sign in.
-              </p>
+            {variant === "app" && (
+              <>
+                <p className="text-sm text-muted">
+                  <Nav href={CHATGPT_CONNECTORS_URL}>Settings → Connectors → Advanced → Developer mode</Nav>, then{" "}
+                  <strong className="font-semibold text-ink">Create</strong> a connector with this URL
+                  {asYou ? " and OAuth" : " and no authentication"}. Paid plans only.
+                </p>
+                <SnippetRow label="MCP server URL" text={url} showLabel={false} />
+              </>
+            )}
+            {variant === "cli" && (
+              <>
+                <SnippetRow label="Codex CLI" text={codexCommand} showLabel={false} />
+                {asYou && (
+                  <p className="text-sm text-muted">
+                    Then <code className="font-mono">codex mcp login vapor</code> to sign in.
+                  </p>
+                )}
+              </>
             )}
           </div>
         )}

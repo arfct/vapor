@@ -44,7 +44,7 @@ export default function Dialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="squircle-[24px] max-h-[85vh] w-full max-w-lg overflow-y-auto bg-paper p-6 shadow-[0_8px_10px_1px_rgba(0,0,0,0.14),0_3px_14px_2px_rgba(0,0,0,0.12),0_5px_5px_-3px_rgba(0,0,0,0.2)]"
+        className="squircle-[24px] max-h-[85vh] min-h-[420px] w-full max-w-[420px] overflow-y-auto bg-paper p-6 shadow-[0_8px_10px_1px_rgba(0,0,0,0.14),0_3px_14px_2px_rgba(0,0,0,0.12),0_5px_5px_-3px_rgba(0,0,0,0.2)]"
       >
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-baseline gap-2">
@@ -64,8 +64,12 @@ export default function Dialog({
   );
 }
 
-/** A labelled one-line snippet with a Copy action. */
-export function SnippetRow({ label, text }: { label: string; text: string }) {
+/**
+ * A labelled one-line snippet with a copy icon in the box's corner, the
+ * same control code blocks carry (code-block-copy.ts): content_copy, then a
+ * check for a moment once copied.
+ */
+export function SnippetRow({ label, text, showLabel = true }: { label: string; text: string; showLabel?: boolean }) {
   const [copied, setCopied] = useState(false);
   const copy = useCallback(() => {
     navigator.clipboard?.writeText(text).then(
@@ -78,13 +82,19 @@ export function SnippetRow({ label, text }: { label: string; text: string }) {
   }, [text]);
   return (
     <div>
-      <div className="mb-1 flex items-center justify-between">
-        <span className="text-sm text-muted">{label}</span>
-        <button onClick={copy} className="cursor-pointer text-sm text-muted hover:text-ink">
-          {copied ? "Copied" : "Copy"}
+      {showLabel && <span className="mb-1 block text-sm text-muted">{label}</span>}
+      <div className="relative">
+        <code className="block break-all border border-border bg-border/20 py-2 pl-3 pr-10 text-sm">{text}</code>
+        <button
+          type="button"
+          onClick={copy}
+          aria-label={copied ? "Copied" : `Copy ${label}`}
+          title="Copy"
+          className="absolute right-1.5 top-1.5 flex h-7 w-7 cursor-pointer items-center justify-center rounded text-muted transition-colors hover:bg-ink/8 hover:text-ink"
+        >
+          <Icon name={copied ? "check" : "content_copy"} className="text-[18px]" />
         </button>
       </div>
-      <code className="block break-all border border-border bg-border/20 px-3 py-2 text-sm">{text}</code>
     </div>
   );
 }

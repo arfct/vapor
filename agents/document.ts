@@ -1717,6 +1717,9 @@ class DocumentAgent extends Agent {
   }
 
   private versionStub(): VersionStub {
+    // A Durable Object that has never been initialised has no tables yet;
+    // docExists() would throw before anything else ran.
+    this.ensureInitialised();
     return {
       listVersions: () => (this.docExists() ? this.listVersions() : []),
       getVersionMarkdown: (id) => this.getVersionMarkdown(id),

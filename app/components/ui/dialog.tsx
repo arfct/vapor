@@ -64,7 +64,11 @@ export default function Dialog({
   );
 }
 
-/** A labelled one-line snippet with a Copy action. */
+/**
+ * A labelled one-line snippet with a copy icon in the box's corner, the
+ * same control code blocks carry (code-block-copy.ts): content_copy, then a
+ * check for a moment once copied.
+ */
 export function SnippetRow({ label, text }: { label: string; text: string }) {
   const [copied, setCopied] = useState(false);
   const copy = useCallback(() => {
@@ -78,13 +82,19 @@ export function SnippetRow({ label, text }: { label: string; text: string }) {
   }, [text]);
   return (
     <div>
-      <div className="mb-1 flex items-center justify-between">
-        <span className="text-sm text-muted">{label}</span>
-        <button onClick={copy} className="cursor-pointer text-sm text-muted hover:text-ink">
-          {copied ? "Copied" : "Copy"}
+      <span className="mb-1 block text-sm text-muted">{label}</span>
+      <div className="relative">
+        <code className="block break-all border border-border bg-border/20 py-2 pl-3 pr-10 text-sm">{text}</code>
+        <button
+          type="button"
+          onClick={copy}
+          aria-label={copied ? "Copied" : `Copy ${label}`}
+          title="Copy"
+          className="absolute right-1.5 top-1.5 flex h-7 w-7 cursor-pointer items-center justify-center rounded text-muted transition-colors hover:bg-ink/8 hover:text-ink"
+        >
+          <Icon name={copied ? "check" : "content_copy"} className="text-[18px]" />
         </button>
       </div>
-      <code className="block break-all border border-border bg-border/20 px-3 py-2 text-sm">{text}</code>
     </div>
   );
 }

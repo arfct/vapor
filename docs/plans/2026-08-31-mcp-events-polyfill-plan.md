@@ -55,6 +55,8 @@ The core (event log + cursor + subscription store + dispatcher) is protocol-agno
 
 ## The routine relay
 
+Superseded for the common case by identity-wide wake targets ([2026-09-06 plan](2026-09-06-agent-wake-plan.md)): a signed-in person stores their routine's fire URL and token once and vapor fires it directly. The relay remains as an example of a custom receiver for per-document `events_subscribe`.
+
 Implemented 2026-09-01 and running. The "scenario 2" consumer: a mention in a document wakes a hosted Claude Code routine with no session open anywhere.
 
 - **Routine:** `Vapor mention handler` (`trig_01SV2swZ5wW32LRWAfF1zpC9`) on the owner's claude.ai account, with the Vapor connector attached. Its prompt reads the event JSON from the `routine-fire-payload` block: for `mention` it calls `read_document` and posts one `comment`; for `thread.reply` it calls `reply` in that thread; a fire whose text begins `SETUP:` is a one-time instruction from the owner, typically an `events_subscribe`. Fired by API trigger with a per-routine bearer token.

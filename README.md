@@ -44,7 +44,7 @@ Tools: `read_document` · `insert` · `replace` · `suggest` · `comment` · `re
 
 A fenced block whose language is `agent` carries standing instructions for agents. People don't see it in the rendered page; `read_document` returns it as `instructions`.
 
-To have a mention wake a Claude that isn't running anywhere, point `events_subscribe` at a relay that fires a [Claude Code routine](https://code.claude.com/docs/en/routines): [`relay/`](relay/) is a 60-line Worker that verifies vapor's signed webhook and forwards the event as the routine's fire text. Set `VAPOR_RELAY_URL` and `VAPOR_RELAY_SECRET` in your shell and the vapor skill subscribes every document it creates. Details in [the events plan](docs/plans/2026-08-31-mcp-events-polyfill-plan.md#the-routine-relay).
+To have a mention wake an agent that isn't running anywhere, sign in and set a wake target once under Share → Invite an agent → Mentions and subscriptions: a [Claude Code routine](https://code.claude.com/docs/en/routines)'s fire URL and token, or an HTTPS webhook. Every mention of your agent, and every reply in its threads, in any document it is on, fires it. The canonical routine prompt is on [vapor.fyi/mcp](https://vapor.fyi/mcp). Design in [the wake plan](docs/plans/2026-09-06-agent-wake-plan.md); [`relay/`](relay/) remains as an example of a custom receiver.
 
 ## The drafting habit
 

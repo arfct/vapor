@@ -2,6 +2,17 @@ import { Agent } from "agents";
 import { slugifyAgentName } from "../app/shared/agent-protocol";
 import type { AgentCapability } from "../app/shared/agent-protocol";
 import { ledgerAllows, pruneLedger, type AttachmentError, type LedgerRow } from "../app/shared/attachment-policy";
+import {
+  buildWakeRequest,
+  secretHint,
+  validateWakeTarget,
+  wakeBudget,
+  type WakeBudgetState,
+  type WakeEvent,
+  type WakeKind,
+  type WakeTargetView,
+} from "../app/shared/wake-policy";
+import { deriveWakeKey, openSecret, sealSecret } from "../app/shared/wake-crypto";
 
 // Global identity registry, one instance ("global") per deployment.
 // Modeled on subpixel's server/registry.ts, adapted to the Agents SDK and
@@ -37,6 +48,24 @@ export interface AuthCode {
   redirectUri: string;
   exp: number;
 }
+
+/** A stored wake target (docs/plans/2026-09-06-agent-wake-plan.md). The secret is sealed; see wake-crypto. */
+interface WakeRecord {
+  kind: WakeKind;
+  url: string;
+  sealedSecret: string;
+  secretHint: string;
+  createdAt: number;
+  updatedAt: number;
+  lastFiredAt: number | null;
+  lastStatus: number | null;
+  lastError: string | null;
+  budget: WakeBudgetState;
+}
+
+export type WakeOutcome =
+  | { fired: true; status: number }
+  | { fired: false; reason: "no_target" | "throttled" | "daily_cap" | "unsealable" | "delivery"; status?: number; error?: string };
 
 export interface RefreshGrant {
   clientId: string;
@@ -192,6 +221,114 @@ class Registry extends Agent {
     this.kvPut(`p:${principal}`, profile);
     this.kvPut(`a:${candidate}`, principal);
     return { slug: candidate };
+  }
+
+  /* ---------------- wake targets ---------------- */
+
+  private wakeKeyPromise: Promise<CryptoKey> | null = null;
+
+  private wakeKey(): Promise<CryptoKey> {
+    this.wakeKeyPromise ??= deriveWakeKey((this.env as { SESSION_SECRET?: string }).SESSION_SECRET ?? "");
+    return this.wakeKeyPromise;
+  }
+
+  private wakeView(rec: WakeRecord, now = Date.now()): WakeTargetView {
+    return {
+      kind: rec.kind,
+      url: rec.url,
+      secretHint: rec.secretHint,
+      createdAt: rec.createdAt,
+      updatedAt: rec.updatedAt,
+      lastFiredAt: rec.lastFiredAt,
+      lastStatus: rec.lastStatus,
+      lastError: rec.lastError,
+      firesToday: rec.budget.fires.filter((t) => now - t < 24 * 60 * 60 * 1000).length,
+    };
+  }
+
+  async getWakeTarget(principal: string): Promise<{ target: WakeTargetView | null }> {
+    const rec = this.kvGet<WakeRecord>(`w:${principal}`);
+    return { target: rec ? this.wakeView(rec) : null };
+  }
+
+  /** Set or replace. Validation is the shared policy's; the secret is sealed before it is stored. */
+  async setWakeTarget(
+    principal: string,
+    input: unknown,
+  ): Promise<{ target: WakeTargetView } | { error: { code: "invalid_params"; message: string } }> {
+    const checked = validateWakeTarget(input);
+    if ("error" in checked) return { error: { code: "invalid_params", message: checked.error } };
+    const { target } = checked;
+    const now = Date.now();
+    const existing = this.kvGet<WakeRecord>(`w:${principal}`);
+    const rec: WakeRecord = {
+      kind: target.kind,
+      url: target.url,
+      sealedSecret: await sealSecret(target.secret, await this.wakeKey()),
+      secretHint: secretHint(target.secret),
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      lastFiredAt: null,
+      lastStatus: null,
+      lastError: null,
+      // Replacing the target does not reset the day's spend.
+      budget: existing?.budget ?? { fires: [], lastFiredByDoc: {} },
+    };
+    this.kvPut(`w:${principal}`, rec);
+    return { target: this.wakeView(rec, now) };
+  }
+
+  async deleteWakeTarget(principal: string): Promise<{ ok: true }> {
+    this.kvDelete(`w:${principal}`);
+    return { ok: true };
+  }
+
+  /**
+   * Sends one wake for an addressed event, within the owner's budget. The
+   * secret is opened only here. No retries: a routine fire is a new session,
+   * so a retry after a lost response would double it. The outcome and the
+   * receiver's status are kept for the owner to see.
+   */
+  async wake(args: { principal: string; event: WakeEvent; origin?: string }): Promise<WakeOutcome> {
+    const key = `w:${args.principal}`;
+    const rec = this.kvGet<WakeRecord>(key);
+    if (!rec) return { fired: false, reason: "no_target" };
+
+    const now = Date.now();
+    const isTest = args.event.name === "test";
+    const budget = wakeBudget(rec.budget ?? { fires: [], lastFiredByDoc: {} }, args.event.docId, now, isTest);
+    rec.budget = budget.next;
+    if (!budget.allowed) {
+      this.kvPut(key, rec);
+      return { fired: false, reason: budget.reason };
+    }
+
+    const secret = await openSecret(rec.sealedSecret, await this.wakeKey());
+    if (secret === null) {
+      rec.lastError = "Stored secret could not be opened; save the target again.";
+      this.kvPut(key, rec);
+      return { fired: false, reason: "unsealable" };
+    }
+
+    const request = await buildWakeRequest({ kind: rec.kind, url: rec.url, secret }, args.event, args.origin, now);
+    let status = 0;
+    let error: string | null = null;
+    try {
+      const res = await fetch(request.url, { method: "POST", headers: request.headers, body: request.body });
+      status = res.status;
+      if (!res.ok) {
+        const text = (await res.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 200);
+        error = `HTTP ${res.status}${text ? `: ${text}` : ""}`;
+      }
+    } catch (e) {
+      error = `Could not reach the target: ${e instanceof Error ? e.message : String(e)}`;
+    }
+
+    rec.lastFiredAt = now;
+    rec.lastStatus = status || null;
+    rec.lastError = error;
+    this.kvPut(key, rec);
+    return error === null ? { fired: true, status } : { fired: false, reason: "delivery", status: status || undefined, error };
   }
 
   /* ---------------- oauth state ---------------- */

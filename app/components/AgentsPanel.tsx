@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { AgentRosterEntry } from "~/shared/agent-protocol";
 import Dialog, { SnippetRow } from "~/components/ui/dialog";
 import { timeAgo } from "~/lib/time-ago";
+import WakeSection from "~/components/WakeSection";
 
 function relativeTime(ts: number | null): string {
   return ts == null ? "never" : timeAgo(ts);
@@ -83,6 +84,7 @@ export default function AgentsPanel({
   return (
     <Dialog open={open} onClose={onClose} title="Invite an agent">
             <div className="space-y-4">
+              <WakeSection docId={docId} roster={roster} onRoster={setRoster} />
               <p className="text-sm text-muted">
                 Connect an AI agent over MCP. Signing in gives it a stable identity and,
                 if you grant it, write access; the anonymous URL needs no account and can

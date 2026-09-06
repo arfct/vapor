@@ -15,6 +15,8 @@ import { verifyGoogleIdToken, verifySessionToken } from "../app/lib/auth.server"
 import { handleOAuth, OAUTH_CORS } from "./oauth";
 import { handleAttachmentUpload, handleAttachmentServe } from "./attachments";
 import { buildAttachmentDeps } from "./attachment-deps";
+import { handleWakeRoutes } from "./wake-routes";
+import { slugifyAgentName } from "../app/shared/agent-protocol";
 import type Registry from "../agents/registry";
 
 export { default as DocumentAgent } from "../agents/document";
@@ -81,6 +83,24 @@ export default {
       if (authResponse) {
         return authResponse;
       }
+    }
+
+    // /me/wake — the signed-in person's wake target (how vapor wakes their
+    // agent on a mention). Same-origin cookie routes over Registry RPCs.
+    if (url.pathname === "/me/wake" || url.pathname === "/me/wake/test") {
+      const registry = (await getAgentByName(env.Registry, "global")) as unknown as Registry;
+      const wakeResponse = await handleWakeRoutes(request, {
+        secret: env.SESSION_SECRET ?? "",
+        agentNameFor: async (principal) => {
+          const ensured = await registry.ensureAgentSlug(principal);
+          return "slug" in ensured ? ensured.slug : slugifyAgentName(principal.replace(/^email:/, "").split("@")[0] ?? "agent");
+        },
+        getTarget: (principal) => registry.getWakeTarget(principal),
+        setTarget: (principal, input) => registry.setWakeTarget(principal, input),
+        deleteTarget: (principal) => registry.deleteWakeTarget(principal),
+        wake: (args) => registry.wake(args),
+      });
+      if (wakeResponse) return wakeResponse;
     }
 
     // Anyone landing on /mcp with a GET gets the how-to-connect guide (HTML

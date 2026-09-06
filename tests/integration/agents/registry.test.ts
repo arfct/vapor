@@ -2,7 +2,7 @@
  * Registry integration tests: real Registry code over a mocked Agent base
  * with an in-memory kv table fake (same philosophy as document-agent.test.ts).
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 let kvStore: Map<string, string>;
 
@@ -126,5 +126,105 @@ describe("Registry", () => {
     const fetched = await reg.getClient(client.clientId);
     expect(fetched.client?.name).toBe("Claude Code");
     expect((await reg.getClient("nope")).client).toBeNull();
+  });
+});
+
+describe("Registry wake targets", () => {
+  const PRINCIPAL = "email:ada@example.com";
+  const FIRE_URL = "https://api.anthropic.com/v1/claude_code/routines/trig_abc123/fire";
+  const TOKEN = "sk-ant-oat01-abcdefghijklmnop";
+  const event = {
+    name: "mention" as const,
+    docId: "27c90a3o",
+    agent: "ada-l",
+    text: "@ada-l hello",
+    timestamp: "2026-09-06T05:50:00.000Z",
+    eventId: "27c90a3o:3",
+  };
+
+  function makeWakeRegistry() {
+    const reg = makeRegistry();
+    (reg as unknown as { env: Record<string, string> }).env = { SESSION_SECRET: "registry-test-secret" };
+    return reg;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("stores a sealed secret and shows only a hint", async () => {
+    const reg = makeWakeRegistry();
+    expect(await reg.getWakeTarget(PRINCIPAL)).toEqual({ target: null });
+    const set = await reg.setWakeTarget(PRINCIPAL, { kind: "claude-routine", url: FIRE_URL, secret: TOKEN });
+    expect(set).toMatchObject({ target: { kind: "claude-routine", url: FIRE_URL, secretHint: "…mnop", firesToday: 0 } });
+    const stored = JSON.parse(kvStore.get(`w:${PRINCIPAL}`)!);
+    expect(stored.sealedSecret).toBeTruthy();
+    expect(JSON.stringify(stored)).not.toContain(TOKEN);
+    expect(await reg.deleteWakeTarget(PRINCIPAL)).toEqual({ ok: true });
+    expect(await reg.getWakeTarget(PRINCIPAL)).toEqual({ target: null });
+  });
+
+  it("refuses an invalid target with the policy's message", async () => {
+    const reg = makeWakeRegistry();
+    const res = await reg.setWakeTarget(PRINCIPAL, { kind: "claude-routine", url: FIRE_URL, secret: "nope" });
+    expect(res).toMatchObject({ error: { code: "invalid_params", message: expect.stringContaining("sk-ant-oat01-") } });
+  });
+
+  it("fires the routine with its headers and text, and records the outcome", async () => {
+    const reg = makeWakeRegistry();
+    await reg.setWakeTarget(PRINCIPAL, { kind: "claude-routine", url: FIRE_URL, secret: TOKEN });
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const outcome = await reg.wake({ principal: PRINCIPAL, event });
+    expect(outcome).toEqual({ fired: true, status: 200 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(FIRE_URL);
+    expect(init.headers).toMatchObject({ Authorization: `Bearer ${TOKEN}`, "anthropic-beta": expect.stringContaining("routine") });
+    expect(JSON.parse(init.body as string).text).toContain("mentioned @ada-l");
+    const { target } = await reg.getWakeTarget(PRINCIPAL);
+    expect(target).toMatchObject({ lastStatus: 200, lastError: null, firesToday: 1 });
+    expect(target!.lastFiredAt).toBeTypeOf("number");
+  });
+
+  it("throttles a second fire for the same document and reports a failed delivery without retrying", async () => {
+    const reg = makeWakeRegistry();
+    await reg.setWakeTarget(PRINCIPAL, { kind: "webhook", url: "https://relay.example.com/hook", secret: "tok" });
+    const fetchMock = vi.fn(async () => new Response("routine paused", { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const first = await reg.wake({ principal: PRINCIPAL, event });
+    expect(first).toMatchObject({ fired: false, reason: "delivery", status: 400, error: expect.stringContaining("HTTP 400") });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const second = await reg.wake({ principal: PRINCIPAL, event: { ...event, eventId: "27c90a3o:4" } });
+    expect(second).toEqual({ fired: false, reason: "throttled" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((await reg.getWakeTarget(PRINCIPAL)).target).toMatchObject({ lastStatus: 400, lastError: expect.stringContaining("routine paused") });
+  });
+
+  it("does nothing for a principal with no target, and a test fire bypasses the per-document throttle", async () => {
+    const reg = makeWakeRegistry();
+    const fetchMock = vi.fn(async () => new Response("", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await reg.wake({ principal: PRINCIPAL, event })).toEqual({ fired: false, reason: "no_target" });
+    await reg.setWakeTarget(PRINCIPAL, { kind: "webhook", url: "https://relay.example.com/hook", secret: "" });
+    await reg.wake({ principal: PRINCIPAL, event });
+    const test = await reg.wake({ principal: PRINCIPAL, event: { ...event, name: "test", eventId: "test:1" } });
+    expect(test).toEqual({ fired: true, status: 200 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("cannot open a secret sealed under another deployment's session secret", async () => {
+    const reg = makeWakeRegistry();
+    await reg.setWakeTarget(PRINCIPAL, { kind: "webhook", url: "https://relay.example.com/hook", secret: "tok" });
+    // Same storage, different deployment secret: construct directly so the kv store is shared.
+    const other = new Registry({} as never, {} as never);
+    (other as unknown as { env: Record<string, string> }).env = { SESSION_SECRET: "a-different-secret" };
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await other.wake({ principal: PRINCIPAL, event })).toEqual({ fired: false, reason: "unsealable" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((await other.getWakeTarget(PRINCIPAL)).target?.lastError).toMatch(/save the target again/);
   });
 });

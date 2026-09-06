@@ -1,4 +1,4 @@
-import { Agent } from "agents";
+import { Agent, getAgentByName } from "agents";
 import type { Connection, ConnectionContext, WSMessage } from "agents";
 import * as Y from "yjs";
 import * as syncProtocol from "y-protocols/sync";
@@ -44,6 +44,7 @@ import {
   SUSPEND_AFTER_FAILING_MS,
   POLL_RETRY_AFTER_MS,
   type EventOccurrence,
+  eventId,
 } from "./events";
 import { encodeAgentAwareness, agentClientId, type AgentPresenceState } from "../app/lib/agent-awareness";
 import {
@@ -68,6 +69,8 @@ import {
   type AttachmentError,
 } from "../app/shared/attachment-policy";
 import type { ThreadData, ThreadReply } from "../app/shared/types";
+import type { WakeEvent } from "../app/shared/wake-policy";
+import type Registry from "./registry";
 
 /** A recorded document event's public shape, as returned by agentAwaitEvents. */
 type DocEventType = "mention" | "thread_reply" | "doc_changed";
@@ -971,7 +974,9 @@ class DocumentAgent extends Agent {
     const seqRows = this.sql<{ seq: number }>`
       SELECT seq FROM events ORDER BY seq ASC
     `;
-    this.dispatchWebhooks(seqRows.length ? seqRows[seqRows.length - 1].seq : 0, type, payload);
+    const seq = seqRows.length ? seqRows[seqRows.length - 1].seq : 0;
+    this.dispatchWebhooks(seq, type, payload);
+    this.dispatchWake(seq, type, payload);
     const waiters = this.eventWaiters;
     this.eventWaiters = [];
     for (const resolve of waiters) resolve();
@@ -1242,6 +1247,41 @@ class DocumentAgent extends Agent {
     }
     this.sql`DELETE FROM subscriptions WHERE id = ${id}`;
     return { ok: true };
+  }
+
+  /**
+   * Wakes the owner of an addressed agent through their identity-wide wake
+   * target (docs/plans/2026-09-06-agent-wake-plan.md): mentions and thread
+   * replies only, never digests, and only for signed-in agents (a roster row
+   * with an owner). The Registry holds the target and does the sending, so
+   * this just names the event; without a Registry binding (the test harness)
+   * it is a no-op.
+   */
+  private dispatchWake(seq: number, internalType: string, payload: unknown): void {
+    if (internalType !== "mention" && internalType !== "thread_reply") return;
+    const registryBinding = (this as unknown as { env?: Env }).env?.Registry;
+    if (!registryBinding) return;
+    const data = (payload ?? {}) as { agent?: string; text?: string; threadId?: string };
+    if (!data.agent) return;
+    const rows = this.sql<{ owner: string | null }>`SELECT owner FROM roster WHERE name = ${data.agent}`;
+    const owner = rows[0]?.owner;
+    if (!owner) return;
+
+    const event: WakeEvent = {
+      name: internalType === "mention" ? "mention" : "thread.reply",
+      docId: this.name,
+      agent: data.agent,
+      ...(data.text !== undefined ? { text: data.text } : {}),
+      ...(data.threadId !== undefined ? { threadId: data.threadId } : {}),
+      timestamp: new Date().toISOString(),
+      eventId: eventId(this.name, seq),
+    };
+    const delivery = (async () => {
+      const registry = (await getAgentByName(registryBinding, "global")) as unknown as Registry;
+      await registry.wake({ principal: owner, event });
+    })().catch((err: unknown) => console.error("wake dispatch failed:", err));
+    const ctx = (this as unknown as { ctx?: { waitUntil?: (p: Promise<unknown>) => void } }).ctx;
+    if (ctx?.waitUntil) ctx.waitUntil(delivery);
   }
 
   /**

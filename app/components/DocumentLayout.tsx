@@ -55,6 +55,11 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     commentColors,
     openCommentInput,
     commentActive,
+    mentionSources,
+    mentionTargets,
+    mentionTargetsKey,
+    slashActions,
+    refreshRoster,
   } = useDocument();
   const navigate = useNavigate();
   // A document the visitor just created gets focus so they can type at once.
@@ -256,6 +261,11 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
             {isHome && !editorInstance && <pre className="sr-only">{surface.fallbackMarkdown}</pre>}
             <Editor
               yjs={yjs}
+              mentions={mentionSources}
+              mentionTargets={mentionTargets}
+              mentionTargetsKey={mentionTargetsKey}
+              onMentionQuery={refreshRoster}
+              slashActions={slashActions}
               autofocus={surface.kind === "doc" && fresh}
               placeholders={surface.kind === "doc" ? placeholderPreset(surface.id) : undefined}
               hidden={showPreview}

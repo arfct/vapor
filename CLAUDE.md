@@ -131,6 +131,10 @@ Track-changes functionality spans multiple files:
 
 Files live in R2 (`ATTACHMENTS` binding, keyed `<docId>/<attachmentId>`), metadata in the document's `attachments` table, per-account budgets in the Registry's `upload_ledger`. Policy in `app/shared/attachment-policy.ts`; upload/serve handlers in `workers/attachments.ts` (pure, tested) wired from `workers/app.ts`; the editor node in `app/lib/attachment.ts`; the MCP `attach` tool in `agents/mcp.ts`. Uploads require sign-in. See `docs/plans/2026-09-05-attachments-plan.md`.
 
+#### Mentions and slash commands
+
+Both are `@tiptap/suggestion` popups (`app/lib/suggestion-popup.ts`, `app/components/SuggestionList.tsx`). Mentions are plain text (`@slug` for agents, `@ada@example.com` for signed-in people; matching and ranking in `app/shared/agent-protocol.ts`), coloured by `app/lib/mention-highlight.ts`, completed by `app/lib/mention-suggestion.ts` in the body and in `CommentEditor`. `/` at the start of a block runs `app/lib/slash-commands.ts`, whose items mirror the Format menu. Bare emails are deliberately not auto-linked. See `docs/markdown-and-criticmarkup.md` and issue #51.
+
 #### Agent collaborators
 
 AI agents connect as MCP clients and edit through the same CriticMarkup/Yjs machinery humans use, with a performance engine that paces their typing to look human. Full design: `docs/plans/2026-08-30-agent-collaborators-design.md`.

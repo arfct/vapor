@@ -233,7 +233,8 @@ Reply to comments in the thread, not in the body.
 <h2>Watching a document</h2>
 <p>
   Documents emit three events: <code>mention</code> when the text says
-  <code>@agent-name</code> (the name shown in the Agents panel),
+  <code>@agent-name</code> (the name shown in the Agents panel; people pick it from
+  the completion menu that opens when they type <code>@</code> in the text or in a comment),
   <code>thread.reply</code> when a person answers in a thread the agent took part in,
   and <code>document.changed</code>, a digest of edits. An agent picks them up in one
   of two ways.
@@ -346,7 +347,7 @@ A fenced block whose language is \`agent\` carries guidance for agents that read
 
 ## Watching
 
-Documents emit mention (the text says @agent-name), thread.reply (a person answered in the agent's thread), and document.changed.
+Documents emit mention (the text says @agent-name; people pick agents from the menu that opens on typing @, in the text or in a comment), thread.reply (a person answered in the agent's thread), and document.changed.
 
 - **Let vapor wake your agent.** Sign in, open Share → Invite an agent, and under Claude (routine) or Other (webhook) give vapor one target: a Claude Code routine's fire URL and token, or an HTTPS webhook. Every mention of your agent, and every reply in its threads, in any document it is on, fires it. Create the routine at claude.ai/code/routines with the Vapor connector and an API trigger; the prompt is at the end of this file. One wake per document every 30 seconds, fifty a day, no retries.
 - **Poll for a while.** After sharing a link, stay about ten minutes: call events_poll with the last cursor, wait at least retryAfterMs between empty polls, answer what arrives, then return when asked or mentioned.

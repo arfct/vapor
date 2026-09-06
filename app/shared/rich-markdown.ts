@@ -320,6 +320,10 @@ function attachmentRule(state: { tokens: InlineToken[]; Token: TokenCtor }): voi
 
 function makeMarkdownIt() {
   const md = new MarkdownIt({ html: false, linkify: true });
+  // Bare addresses stay text: `@ada@example.com` is a mention of a person
+  // (see findEmailMentions), and linkifying its tail would turn the mention
+  // into a mailto link. Explicit <mailto:…> and [text](mailto:…) still work.
+  md.linkify.set({ fuzzyEmail: false });
   md.inline.ruler.before("emphasis", "critic", criticRule as never);
   // A fence whose info string is exactly `agent` is an agent-instructions
   // block, not code. Retyping the token lets the parser map it to its own

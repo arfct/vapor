@@ -162,15 +162,155 @@ export function slugifyAgentName(raw: string): string {
   return AGENT_NAME_RE.test(slug) ? slug : "agent";
 }
 
+/**
+ * `@slug` tokens that name roster agents. A slug must be whole (not
+ * followed by more slug characters) and must not be the local part of an
+ * email mention: `@ada@example.com` names the person ada@example.com, never
+ * an agent called `ada`. A sentence-ending period after a slug is fine; a
+ * period followed by a letter reads as a domain and is not.
+ */
 export function findMentions(
   text: string,
   rosterNames: string[]
 ): string[] {
   const found = new Set<string>();
-  for (const m of text.matchAll(
-    /(?:^|[^a-z0-9@.])@([a-z0-9][a-z0-9-]{0,30}[a-z0-9])/g
-  )) {
+  for (const m of text.matchAll(SLUG_MENTION_RE)) {
     if (rosterNames.includes(m[1])) found.add(m[1]);
   }
   return [...found];
+}
+
+/** Group 1 is the slug; the match may start one character early (the boundary). */
+export const SLUG_MENTION_RE =
+  /(?:^|[^a-z0-9@.])@([a-z0-9][a-z0-9-]{0,30}[a-z0-9])(?![a-z0-9@-])(?!\.[a-z0-9])/g;
+
+/**
+ * `@local@domain.tld` tokens: a person mentioned by full email address.
+ * Case-insensitive, returned lowercased and deduplicated. A bare address
+ * without the leading `@` is ordinary text, as it always was.
+ */
+export function findEmailMentions(text: string): string[] {
+  const found = new Set<string>();
+  for (const m of text.matchAll(EMAIL_MENTION_RE)) {
+    found.add(m[1].toLowerCase());
+  }
+  return [...found];
+}
+
+export const EMAIL_MENTION_RE =
+  /(?:^|[^a-z0-9@.])@([a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+)(?![a-z0-9@.-])/gi;
+
+/** True when a completion query has the shape of an email address. */
+export function isEmailQuery(query: string): boolean {
+  return /^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i.test(query);
+}
+
+/**
+ * A display name as a mention handle: `Quiet Otter` → `quiet-otter`. Null
+ * when nothing slug-like survives. Same shape as an agent slug, so
+ * findMentions and the highlight decoration treat both alike.
+ */
+export function slugifyName(raw: string): string | null {
+  const slug = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32)
+    .replace(/-+$/g, "");
+  return AGENT_NAME_RE.test(slug) ? slug : null;
+}
+
+/** One row in the `@` completion popup. `handle` is the text inserted after `@`. */
+export interface MentionItem {
+  kind: "agent" | "person" | "email";
+  handle: string;
+  /** Primary text: an agent's label or a person's display name. */
+  label: string;
+  /** Secondary text: the handle for agents, the email for signed-in people. */
+  detail?: string;
+  color?: string;
+  avatar?: string;
+  animal?: string;
+}
+
+export interface MentionSources {
+  agents: Pick<AgentRosterEntry, "name" | "label" | "color">[];
+  people: {
+    name: string;
+    color: string;
+    /** `email:<addr>` for signed-in people, an anonymous id otherwise. */
+    id?: string;
+    avatar?: string;
+    animal?: string;
+    isAgent?: boolean;
+  }[];
+}
+
+const EMAIL_PRINCIPAL = /^email:(.+)$/i;
+
+/**
+ * Builds the `@` completion list: agents first (mentioning one wakes it),
+ * then people. Signed-in people complete to their email; anonymous people
+ * to a slug of their name, with `-2`, `-3`… when it collides with an agent
+ * or an earlier person. A query shaped like an email adds a final row that
+ * inserts the address as typed, so anyone can be addressed.
+ */
+export function rankMentionItems(query: string, sources: MentionSources, max = 8): MentionItem[] {
+  const q = query.trim().toLowerCase();
+  const taken = new Set<string>();
+  const items: MentionItem[] = [];
+
+  for (const agent of sources.agents) {
+    taken.add(agent.name);
+    items.push({
+      kind: "agent",
+      handle: agent.name,
+      label: agent.label ?? agent.name,
+      detail: `@${agent.name}`,
+      color: agent.color,
+    });
+  }
+
+  for (const person of sources.people) {
+    if (person.isAgent) continue;
+    const email = person.id ? EMAIL_PRINCIPAL.exec(person.id)?.[1]?.toLowerCase() : undefined;
+    let handle: string;
+    if (email) {
+      handle = email;
+    } else {
+      const base = slugifyName(person.name);
+      if (!base) continue;
+      handle = base;
+      for (let n = 2; taken.has(handle); n++) handle = `${base}-${n}`;
+    }
+    if (taken.has(handle)) continue;
+    taken.add(handle);
+    items.push({
+      kind: "person",
+      handle,
+      label: person.name,
+      detail: email ?? `@${handle}`,
+      color: person.color,
+      avatar: person.avatar,
+      animal: person.animal,
+    });
+  }
+
+  const matches = q
+    ? items.filter((item) => mentionMatches(item, q))
+    : items;
+  const ranked = matches.slice(0, max);
+
+  if (isEmailQuery(q) && !ranked.some((item) => item.handle === q)) {
+    ranked.push({ kind: "email", handle: q, label: `Mention ${q}` });
+  }
+  return ranked;
+}
+
+function mentionMatches(item: MentionItem, q: string): boolean {
+  if (item.handle.toLowerCase().startsWith(q)) return true;
+  const label = item.label.toLowerCase();
+  if (label.startsWith(q)) return true;
+  return label.split(/\s+/).some((word) => word.startsWith(q));
 }

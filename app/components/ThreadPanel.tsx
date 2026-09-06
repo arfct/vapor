@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { ThreadData } from "~/shared/types";
+import CommentEditor from "~/components/CommentEditor";
+import type { MentionSourceRef } from "~/lib/mention-suggestion";
 import Icon from "~/components/Icon";
 import Avatar from "~/components/Avatar";
 import { timeAgo } from "~/lib/time-ago";
@@ -80,6 +82,8 @@ interface ThreadPanelProps {
   onReply: (threadId: string, text: string) => void;
   onResolve: (threadId: string) => void;
   onDelete: (threadId: string) => void;
+  /** Who `@` completes to in a reply. */
+  mentions?: MentionSourceRef | null;
 }
 
 export default function ThreadPanel({
@@ -89,16 +93,11 @@ export default function ThreadPanel({
   onReply,
   onResolve,
   onDelete,
+  mentions = null,
 }: ThreadPanelProps) {
-  const [replyText, setReplyText] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [showReplyInput, setShowReplyInput] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const replyInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (showReplyInput) replyInputRef.current?.focus();
-  }, [showReplyInput]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -114,29 +113,21 @@ export default function ThreadPanel({
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [menuOpen]);
 
-  const handleReplySubmit = useCallback(() => {
-    if (!replyText.trim()) return;
-    onReply(thread.id, replyText.trim());
-    setReplyText("");
-    setShowReplyInput(false);
-  }, [thread.id, replyText, onReply]);
-
-  const handleReplyKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        handleReplySubmit();
-      } else if (e.key === "Escape") {
-        setReplyText("");
-        setShowReplyInput(false);
-      }
+  const handleReplySubmit = useCallback(
+    (text: string) => {
+      if (!text.trim()) return;
+      onReply(thread.id, text.trim());
+      setShowReplyInput(false);
     },
-    [handleReplySubmit],
+    [thread.id, onReply],
   );
 
-  const handleReplyBlur = useCallback(() => {
-    if (!replyText.trim()) setShowReplyInput(false);
-  }, [replyText]);
+  const handleReplyCancel = useCallback(() => setShowReplyInput(false), []);
+
+  // Leaving an empty box closes it; typed text keeps it open.
+  const handleReplyBlur = useCallback((text: string) => {
+    if (!text) setShowReplyInput(false);
+  }, []);
 
   return (
     <div
@@ -209,16 +200,14 @@ export default function ThreadPanel({
       {active && (
       <div className="mt-3 pl-[33px]" onClick={(e) => e.stopPropagation()}>
         {showReplyInput ? (
-          <input
-            ref={replyInputRef}
-            type="text"
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            onKeyDown={handleReplyKeyDown}
-            onBlur={handleReplyBlur}
-            enterKeyHint="send"
+          <CommentEditor
             placeholder="Reply..."
-            className="w-full rounded-full border border-border bg-paper px-3 py-1.5 text-base outline-none focus:border-coral"
+            onSubmit={handleReplySubmit}
+            onCancel={handleReplyCancel}
+            onBlur={handleReplyBlur}
+            autoFocus
+            mentions={mentions}
+            className="comment-editor-box w-full rounded-full border border-border bg-paper px-3 py-1.5 text-base focus-within:border-coral"
           />
         ) : (
           <button

@@ -33,6 +33,7 @@ export default function CommentRail({ originRef }: { originRef: RefObject<HTMLEl
     activeThreadId,
     setActiveThreadId,
     addReply,
+    mentionSources,
     resolveThread,
     deleteThread,
     editorInstance: editor,
@@ -209,6 +210,7 @@ export default function CommentRail({ originRef }: { originRef: RefObject<HTMLEl
             active={activeThreadId === thread.id}
             onSelect={setActiveThreadId}
             onReply={addReply}
+            mentions={mentionSources}
             onResolve={resolveThread}
             onDelete={deleteThread}
           />

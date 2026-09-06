@@ -1,10 +1,17 @@
-import { createContext, useContext, useState, useCallback, useMemo } from "react";
+import { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { getMarkRange, type Editor as TiptapEditor } from "@tiptap/core";
 import type { CapturedSelection, CommentColorRange, DocMode } from "~/shared/types";
 import type { MatchedThread } from "~/lib/comment-threads";
 import type { YjsEditorState } from "~/lib/useYjsEditor";
 import { useThreads } from "~/lib/useThreads";
+import { usePeople } from "~/lib/usePeople";
+import type { Person } from "~/lib/people";
 import { serializePmDoc } from "~/shared/rich-markdown";
+import { isValidDocumentId } from "~/shared/constants";
+import { rankMentionItems, type AgentRosterEntry, type MentionSources } from "~/shared/agent-protocol";
+import type { MentionSourceRef } from "~/lib/mention-suggestion";
+import type { MentionTargetsRef } from "~/lib/mention-highlight";
+import type { SlashActionsRef } from "~/lib/slash-commands";
 
 export interface DocumentContextValue {
   docId: string;
@@ -46,6 +53,22 @@ export interface DocumentContextValue {
   handleEditorReady: (editor: TiptapEditor) => void;
   handleCommentClick: (commentText: string) => void;
 
+  // Mentions and slash commands
+  /** Everyone else on the document (connected, commented, viewed). */
+  people: Person[];
+  /** Agents enrolled on the document; refreshed on demand. */
+  roster: AgentRosterEntry[];
+  /** What the `@` popup completes against; a ref so the editor reads it live. */
+  mentionSources: MentionSourceRef;
+  /** Known handles and their colours, for the in-text mention highlight. */
+  mentionTargets: MentionTargetsRef;
+  /** Changes whenever `mentionTargets` does, so the editor can re-decorate. */
+  mentionTargetsKey: string;
+  /** Actions the `/` menu delegates to the layout. */
+  slashActions: SlashActionsRef;
+  /** Re-fetch the roster (rate-limited); the `@` popup calls it when it opens. */
+  refreshRoster: () => void;
+
   // Version history
   /**
    * Ask the server for a version before a client-side bulk action it could
@@ -53,6 +76,17 @@ export interface DocumentContextValue {
    * document socket ahead of the action's own sync update.
    */
   requestSnapshot: (reason: "pre_accept_all") => void;
+}
+
+const ROSTER_TTL_MS = 30_000;
+
+/** Every handle the popup would insert, with the colour its owner draws in. */
+export function mentionTargetsFor(sources: MentionSources): Map<string, string> {
+  const targets = new Map<string, string>();
+  for (const item of rankMentionItems("", sources, Number.POSITIVE_INFINITY)) {
+    if (item.color) targets.set(item.handle, item.color);
+  }
+  return targets;
 }
 
 // Named _DocumentContext so test helpers can provide mock values directly
@@ -190,6 +224,59 @@ export function DocumentProvider({
     return ranges;
   }, [threads, editorInstance]);
 
+  // Who can be mentioned: the roster (fetched, cached briefly) plus the
+  // people already tracked for the face pile. Refs feed the editor
+  // extensions, whose options are fixed at creation.
+  const people = usePeople(yjs, threads);
+  const [roster, setRoster] = useState<AgentRosterEntry[]>([]);
+  const rosterFetchedAt = useRef(0);
+  const refreshRoster = useCallback(() => {
+    if (!isValidDocumentId(docId)) return;
+    const now = Date.now();
+    if (now - rosterFetchedAt.current < ROSTER_TTL_MS) return;
+    rosterFetchedAt.current = now;
+    fetch(`/${docId}/agents`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setRoster(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, [docId]);
+  useEffect(() => {
+    refreshRoster();
+  }, [refreshRoster]);
+
+  const sources = useMemo<MentionSources>(
+    () => ({
+      agents: roster.map((a) => ({ name: a.name, label: a.label, color: a.color })),
+      people: people.map((p) => ({
+        name: p.user.name,
+        color: p.user.color,
+        id: p.user.id,
+        avatar: p.user.avatar,
+        animal: p.user.animal,
+        isAgent: p.isAgent,
+      })),
+    }),
+    [roster, people],
+  );
+  // Stable boxes the editor extensions hold; their contents follow state
+  // from effects, which is soon enough (the popup reads them when it opens).
+  const mentionSourcesRef = useRef<MentionSources>(sources);
+  useEffect(() => {
+    mentionSourcesRef.current = sources;
+  }, [sources]);
+
+  const targets = useMemo(() => mentionTargetsFor(sources), [sources]);
+  const mentionTargetsRef = useRef(targets);
+  useEffect(() => {
+    mentionTargetsRef.current = targets;
+  }, [targets]);
+  const mentionTargetsKey = useMemo(() => [...targets.entries()].map(([h, c]) => `${h}:${c}`).join("|"), [targets]);
+
+  const slashActionsRef = useRef<SlashActionsRef["current"]>({});
+  useEffect(() => {
+    slashActionsRef.current = { comment: openCommentInput };
+  }, [openCommentInput]);
+
   const requestSnapshot = useCallback(
     (reason: "pre_accept_all") => {
       const socket = yjs.socket as unknown as { readyState: number; send?: (data: string) => void } | null;
@@ -226,6 +313,13 @@ export function DocumentProvider({
     deleteThread,
     handleEditorReady,
     handleCommentClick,
+    people,
+    roster,
+    mentionSources: mentionSourcesRef,
+    mentionTargets: mentionTargetsRef,
+    mentionTargetsKey,
+    slashActions: slashActionsRef,
+    refreshRoster,
     requestSnapshot,
   };
 

@@ -5,7 +5,7 @@
  * carries an inline copy of the same steps, since it is a string template.
  */
 
-const APPLE_JS_URL = "https://appleid.cdn-apple.com/appleauth/static/jstoolkit/v1/en_US/appleid.auth.js";
+const APPLE_JS_URL = "https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js";
 
 export interface AppleAuthorization {
   authorization: { id_token: string; code: string; state?: string };

@@ -6,7 +6,7 @@
  * page. Ported from subpixel server/oauth.ts's consentPage.
  */
 
-const APPLE_JS_URL = "https://appleid.cdn-apple.com/appleauth/static/jstoolkit/v1/en_US/appleid.auth.js";
+const APPLE_JS_URL = "https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js";
 
 // The Apple mark, from Simple Icons (CC0). Duplicated from HeaderMenu on
 // purpose: this file is a string template with no React.

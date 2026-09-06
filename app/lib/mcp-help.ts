@@ -25,6 +25,9 @@ export function mcpHelpHtml(origin: string): string {
   const mcpServersJson = JSON.stringify({ mcpServers: { vapor: { url: mcpUrl } } }, null, 2);
   const cursorJson = mcpServersJson;
   const vscodeJson = JSON.stringify({ servers: { vapor: { type: "http", url: mcpUrl } } }, null, 2);
+  const cursorLink = `cursor://anysphere.cursor-deeplink/mcp/install?name=vapor&config=${btoa(JSON.stringify({ url: mcpUrl }))}`;
+  const vscodeLink = `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name: "vapor", type: "http", url: mcpUrl }))}`;
+  const skillUrl = `${safeOrigin}/skill.md`;
 
   return `<!doctype html>
 <html lang="en">
@@ -151,14 +154,17 @@ export function mcpHelpHtml(origin: string): string {
 codex mcp login vapor</pre>
 
 <h3>Cursor</h3>
-<p>Add to <code>.cursor/mcp.json</code> in the project, or <code>~/.cursor/mcp.json</code> for every project, then sign in from Settings → MCP:</p>
+<p><a href="${cursorLink}">Add to Cursor</a>, or put this in <code>.cursor/mcp.json</code> in the project (<code>~/.cursor/mcp.json</code> for every project), then sign in from Settings → MCP:</p>
 <pre>${cursorJson}</pre>
 
 <h3>Gemini CLI</h3>
+<p>The extension bundles the connection and the skill below in one install:</p>
+<pre>gemini extensions install https://github.com/arfct/vapor</pre>
+<p class="muted">Or add the server alone:</p>
 <pre>gemini mcp add --transport http vapor ${mcpUrl}</pre>
 
 <h3>VS Code and GitHub Copilot</h3>
-<p>Add to <code>.vscode/mcp.json</code>:</p>
+<p><a href="${vscodeLink}">Add to VS Code</a>, or put this in <code>.vscode/mcp.json</code>:</p>
 <pre>${vscodeJson}</pre>
 
 <h3>Anything else</h3>
@@ -168,6 +174,25 @@ codex mcp login vapor</pre>
   Building your own agent? The Anthropic and OpenAI APIs both take a remote MCP
   server URL directly; point them at the anonymous door, or at the main door with
   an access token from the OAuth flow.
+</p>
+
+<h2>Teach the agent the workflow</h2>
+<p>
+  The connection gives an agent the tools. A small skill teaches it the habit: draft
+  on vapor instead of pasting into chat, share the link, watch for comments, and
+  export back to the repo before the document expires. It's one file in the
+  <a href="https://agentskills.io">Agent Skills</a> format, served at
+  <code>${skillUrl}</code>, and the same file works in every client that reads skills.
+</p>
+<p>Claude Code (the plugin above installs it too):</p>
+<pre>curl -s ${skillUrl} --create-dirs -o ~/.claude/skills/vapor/SKILL.md</pre>
+<p>Codex CLI, Cursor, and GitHub Copilot share one folder:</p>
+<pre>curl -s ${skillUrl} --create-dirs -o ~/.agents/skills/vapor/SKILL.md</pre>
+<p class="muted">
+  Gemini CLI gets it with the extension. In a repository, the same file under
+  <code>.agents/skills/vapor/</code> reaches every contributor's agent at once.
+  ChatGPT has no equivalent; the connector gives it the tools, and the workflow lives
+  in the conversation.
 </p>
 
 <h2>What an agent can do</h2>

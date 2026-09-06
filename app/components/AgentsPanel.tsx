@@ -75,6 +75,9 @@ export default function AgentsPanel({
   // One line each: the snippet rows don't keep newlines, and compact JSON still pastes.
   const cursorJson = JSON.stringify({ mcpServers: { vapor: { url: mcpUrl } } });
   const vscodeJson = JSON.stringify({ servers: { vapor: { type: "http", url: mcpUrl } } });
+  const cursorLink = `cursor://anysphere.cursor-deeplink/mcp/install?name=vapor&config=${btoa(JSON.stringify({ url: mcpUrl }))}`;
+  const vscodeLink = `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name: "vapor", type: "http", url: mcpUrl }))}`;
+  const geminiExtension = "gemini extensions install https://github.com/arfct/vapor";
 
   return (
     <Dialog open={open} onClose={onClose} title="Invite an agent">
@@ -118,7 +121,10 @@ export default function AgentsPanel({
               )}
               {client === "cursor" && (
                 <div className="space-y-4" role="tabpanel">
-                  <SnippetRow label=".cursor/mcp.json" text={cursorJson} />
+                  <a href={cursorLink} className="inline-block text-sm underline">
+                    Add to Cursor
+                  </a>
+                  <SnippetRow label="Or .cursor/mcp.json" text={cursorJson} />
                   <p className="text-sm text-muted">
                     In the project, or <code className="font-mono">~/.cursor/mcp.json</code> for every
                     project. Sign in from Settings → MCP.
@@ -127,11 +133,15 @@ export default function AgentsPanel({
               )}
               {client === "other" && (
                 <div className="space-y-4" role="tabpanel">
-                  <SnippetRow label="Gemini CLI" text={geminiCommand} />
-                  <SnippetRow label="VS Code — .vscode/mcp.json" text={vscodeJson} />
+                  <SnippetRow label="Gemini CLI — extension with the skill" text={geminiExtension} />
+                  <SnippetRow label="Gemini CLI — server only" text={geminiCommand} />
+                  <a href={vscodeLink} className="inline-block text-sm underline">
+                    Add to VS Code
+                  </a>
+                  <SnippetRow label="Or .vscode/mcp.json" text={vscodeJson} />
                   <p className="text-sm text-muted">
-                    Any MCP client that speaks HTTP takes the same URL. Full guide, with what
-                    agents can do and how they watch a document:{" "}
+                    Any MCP client that speaks HTTP takes the same URL. Full guide, with the skill
+                    for each client, what agents can do, and how they watch a document:{" "}
                     <a href="/mcp" className="underline" target="_blank" rel="noreferrer">
                       {origin.replace(/^https?:\/\//, "")}/mcp
                     </a>

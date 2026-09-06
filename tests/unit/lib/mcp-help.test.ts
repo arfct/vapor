@@ -31,4 +31,16 @@ describe("mcpHelpHtml", () => {
     expect(html).toContain("https://vapor.fyi/mcp");
     expect(html).not.toContain("javascript:alert(1)");
   });
+
+  it("carries one-click install links and the skill install lines", () => {
+    const html = mcpHelpHtml("https://vapor.fyi");
+    expect(html).toContain(
+      `cursor://anysphere.cursor-deeplink/mcp/install?name=vapor&config=${btoa(JSON.stringify({ url: "https://vapor.fyi/mcp" }))}`,
+    );
+    expect(html).toContain(
+      `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name: "vapor", type: "http", url: "https://vapor.fyi/mcp" }))}`,
+    );
+    expect(html).toContain("-o ~/.agents/skills/vapor/SKILL.md");
+    expect(html).toContain("gemini extensions install https://github.com/arfct/vapor");
+  });
 });

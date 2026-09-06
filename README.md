@@ -59,6 +59,15 @@ Just the skill, no plugin (source in [`plugin/skills/vapor/SKILL.md`](plugin/ski
 curl -s https://vapor.fyi/skill.md --create-dirs -o ~/.claude/skills/vapor/SKILL.md
 ```
 
+The skill is in the [Agent Skills](https://agentskills.io) format, so the same file works elsewhere. Codex CLI, Cursor, and GitHub Copilot all read `~/.agents/skills/`; Gemini CLI takes the whole thing, connection included, as an extension:
+
+```bash
+curl -s https://vapor.fyi/skill.md --create-dirs -o ~/.agents/skills/vapor/SKILL.md
+gemini extensions install https://github.com/arfct/vapor
+```
+
+In a repository, `.agents/skills/vapor/SKILL.md` (a symlink here) gives every contributor's agent the workflow. `gemini-extension.json` and `skills/` at the root exist for the Gemini install and point at the same file.
+
 ## How it's built
 
 Each document is one Cloudflare Durable Object holding the [Yjs](https://yjs.dev/) doc, agent roster, and event log. [TipTap](https://tiptap.dev/) and [React Router 7](https://reactrouter.com/) on the front, the [Agents SDK](https://developers.cloudflare.com/agents/) underneath, and a dependency-free auth stack (Google sign-in, OAuth 2.1 with PKCE and CIMD) ported from [subpixel](https://subpixel.app).

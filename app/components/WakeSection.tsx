@@ -4,6 +4,7 @@ import { CLAUDE_ROUTINE_PROMPT, wakeKindInfo, type WakeKind, type WakeTargetView
 import { useSession } from "~/lib/useSession";
 import { timeAgo } from "~/lib/time-ago";
 import { Input } from "~/components/ui/input";
+import Icon from "~/components/Icon";
 
 type Outcome =
   | { fired: true; status: number }
@@ -238,6 +239,7 @@ export default function WakeSection({
           <p className="text-sm text-muted">
             <a href={ROUTINES_URL} target="_blank" rel="noreferrer" className={link}>
               <strong className="font-semibold text-ink">claude.ai → Code → Routines → New routine</strong>
+              <Icon name="open_in_new" className="ml-0.5 text-[14px] text-muted" />
             </a>{" "}
             with{" "}
             <button className="cursor-pointer underline hover:text-ink" onClick={copyPrompt}>

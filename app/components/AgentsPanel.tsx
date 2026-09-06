@@ -3,6 +3,7 @@ import type { AgentRosterEntry } from "~/shared/agent-protocol";
 import { AGENT_CLIENTS, type AgentClientId } from "~/shared/agent-clients";
 import Dialog, { SnippetRow } from "~/components/ui/dialog";
 import AgentClientIcon from "~/components/AgentClientIcon";
+import Icon from "~/components/Icon";
 import WakeSection from "~/components/WakeSection";
 
 /** Whether the agent connects as the signed-in person or as an anonymous animal. */
@@ -39,13 +40,19 @@ export function claudeConnectorLink(mcpUrl: string): string {
 }
 export const CHATGPT_CONNECTORS_URL = "https://chatgpt.com/#settings/Connectors";
 
-/** A UI path, linked straight to that screen when the product has a URL for it. */
+/** A UI path, linked straight to that screen when the product has a URL for it, with a pop-out mark. */
 function Nav({ href, children }: { href?: string; children: React.ReactNode }) {
   const inner = <strong className="font-semibold text-ink">{children}</strong>;
   if (!href) return inner;
   return (
-    <a href={href} target="_blank" rel="noreferrer" className="underline decoration-border underline-offset-2 hover:decoration-ink">
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="underline decoration-border underline-offset-2 hover:decoration-ink"
+    >
       {inner}
+      <Icon name="open_in_new" className="ml-0.5 text-[14px] text-muted" />
     </a>
   );
 }

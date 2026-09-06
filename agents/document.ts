@@ -1,4 +1,4 @@
-import { Agent } from "agents";
+import { Agent, getAgentByName } from "agents";
 import type { Connection, ConnectionContext, WSMessage } from "agents";
 import * as Y from "yjs";
 import * as syncProtocol from "y-protocols/sync";
@@ -44,6 +44,7 @@ import {
   SUSPEND_AFTER_FAILING_MS,
   POLL_RETRY_AFTER_MS,
   type EventOccurrence,
+  eventId,
 } from "./events";
 import { encodeAgentAwareness, agentClientId, type AgentPresenceState } from "../app/lib/agent-awareness";
 import {
@@ -68,6 +69,8 @@ import {
   type AttachmentError,
 } from "../app/shared/attachment-policy";
 import type { ThreadData, ThreadReply } from "../app/shared/types";
+import type { WakeEvent } from "../app/shared/wake-policy";
+import type Registry from "./registry";
 
 /** A recorded document event's public shape, as returned by agentAwaitEvents. */
 type DocEventType = "mention" | "thread_reply" | "doc_changed";
@@ -223,8 +226,8 @@ class DocumentAgent extends Agent {
   private eventWaiters: (() => void)[] = [];
   /** Timestamp of the last "doc_changed" digest event, to cap it at one per 30s. */
   private lastDigestAt = 0;
-  /** Agent names already notified for a block's text node — see notifyMentions. */
-  private notifiedMentions = new WeakMap<Y.XmlText, Set<string>>();
+  /** Agent names already notified for a top-level block — see notifyMentions. */
+  private notifiedMentions = new WeakMap<Y.AbstractType<unknown>, Set<string>>();
 
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -447,15 +450,30 @@ class DocumentAgent extends Agent {
       // Scan each touched block's *full* text, not the individual delta ops:
       // a human typing "@scribe" delivers one op per keystroke, and no single
       // character ever matches the mention pattern. Only pasting did.
-      const scanned = new Set<Y.XmlText>();
+      //
+      // Which block was touched depends on how the edit arrived. Typing into
+      // an existing text node is a text event on that node. A batch of
+      // keystrokes into a fresh paragraph reaches the server as one update
+      // whose net effect is "text node inserted into the paragraph": an
+      // element event, with no text event at all. A paste or an upload is a
+      // fragment event listing the inserted blocks. All three must scan.
+      const blocks = new Set<Y.AbstractType<unknown>>();
       for (const event of events) {
         const target = event.target;
-        if (!(target instanceof Y.XmlText)) continue;
-        if (scanned.has(target)) continue;
-        scanned.add(target);
-        const text = this.findBlockTextForXmlText(target);
+        if (target === frag) {
+          for (const item of event.changes.added) {
+            const content = item.content;
+            if (content instanceof Y.ContentType) blocks.add(content.type);
+          }
+          continue;
+        }
+        const block = this.topLevelBlockOf(target);
+        if (block) blocks.add(block);
+      }
+      for (const block of blocks) {
+        const text = this.blockText(block);
         if (text === null) continue; // block already gone from the fragment
-        this.notifyMentions(target, text, rosterNames);
+        this.notifyMentions(block, text, rosterNames);
       }
     });
 
@@ -883,17 +901,26 @@ class DocumentAgent extends Agent {
    * if the node isn't a direct child of a top-level block element (e.g. it
    * was already removed from the fragment by a later concurrent edit).
    */
-  private findBlockTextForXmlText(ytext: Y.XmlText): string | null {
+  /**
+   * The top-level block (direct child of the fragment) containing a Yjs
+   * node. Rich blocks (lists, quotes) nest text several elements deep, so
+   * climb; null when the node is no longer attached.
+   */
+  private topLevelBlockOf(node: Y.AbstractType<unknown>): Y.AbstractType<unknown> | null {
     if (!this.doc) return null;
     const frag = this.doc.getXmlFragment("default");
-    // Climb to the top-level block containing this text node — rich blocks
-    // (lists, quotes) nest text several elements deep.
-    let node: unknown = ytext;
-    while (node && (node as { parent: unknown }).parent !== frag) {
-      node = (node as { parent: unknown }).parent;
+    let current: Y.AbstractType<unknown> | null = node;
+    while (current && current.parent !== frag) {
+      current = current.parent;
     }
-    if (!(node instanceof Y.XmlElement)) return null;
-    const index = frag.toArray().indexOf(node);
+    return current;
+  }
+
+  /** The plain text of a top-level block, or null if it left the fragment. */
+  private blockText(block: Y.AbstractType<unknown>): string | null {
+    if (!this.doc) return null;
+    const frag = this.doc.getXmlFragment("default");
+    const index = frag.toArray().indexOf(block as Y.XmlElement | Y.XmlText);
     if (index === -1) return null;
     return getBlocks(this.doc)[index]?.text ?? null;
   }
@@ -902,22 +929,22 @@ class DocumentAgent extends Agent {
    * Records a "mention" event for every roster agent named in a block's text
    * that hasn't already been notified about this block.
    *
-   * De-duplication is per (block text node, agent name), because the scan
+   * De-duplication is per (top-level block, agent name), because the scan
    * runs over the block's whole text on every keystroke in it — without this,
    * "@scribe, could you..." would fire a fresh mention for every character
    * typed after the name. A name is forgotten again as soon as it is no
    * longer present in the block, so deleting the mention and retyping it
    * notifies properly rather than being swallowed. The map is keyed weakly by
-   * the live Y.XmlText node, so it needs no explicit clearing: entries go
-   * away with the blocks (and with the whole document on expiry).
+   * the live Yjs block, so it needs no explicit clearing: entries go away
+   * with the blocks (and with the whole document on expiry).
    */
-  private notifyMentions(ytext: Y.XmlText, text: string, rosterNames: string[]): void {
+  private notifyMentions(block: Y.AbstractType<unknown>, text: string, rosterNames: string[]): void {
     const mentioned = new Set(findMentions(text, rosterNames));
 
-    let notified = this.notifiedMentions.get(ytext);
+    let notified = this.notifiedMentions.get(block);
     if (!notified) {
       notified = new Set<string>();
-      this.notifiedMentions.set(ytext, notified);
+      this.notifiedMentions.set(block, notified);
     }
 
     for (const name of notified) {
@@ -947,7 +974,9 @@ class DocumentAgent extends Agent {
     const seqRows = this.sql<{ seq: number }>`
       SELECT seq FROM events ORDER BY seq ASC
     `;
-    this.dispatchWebhooks(seqRows.length ? seqRows[seqRows.length - 1].seq : 0, type, payload);
+    const seq = seqRows.length ? seqRows[seqRows.length - 1].seq : 0;
+    this.dispatchWebhooks(seq, type, payload);
+    this.dispatchWake(seq, type, payload);
     const waiters = this.eventWaiters;
     this.eventWaiters = [];
     for (const resolve of waiters) resolve();
@@ -1218,6 +1247,41 @@ class DocumentAgent extends Agent {
     }
     this.sql`DELETE FROM subscriptions WHERE id = ${id}`;
     return { ok: true };
+  }
+
+  /**
+   * Wakes the owner of an addressed agent through their identity-wide wake
+   * target (docs/plans/2026-09-06-agent-wake-plan.md): mentions and thread
+   * replies only, never digests, and only for signed-in agents (a roster row
+   * with an owner). The Registry holds the target and does the sending, so
+   * this just names the event; without a Registry binding (the test harness)
+   * it is a no-op.
+   */
+  private dispatchWake(seq: number, internalType: string, payload: unknown): void {
+    if (internalType !== "mention" && internalType !== "thread_reply") return;
+    const registryBinding = (this as unknown as { env?: Env }).env?.Registry;
+    if (!registryBinding) return;
+    const data = (payload ?? {}) as { agent?: string; text?: string; threadId?: string };
+    if (!data.agent) return;
+    const rows = this.sql<{ owner: string | null }>`SELECT owner FROM roster WHERE name = ${data.agent}`;
+    const owner = rows[0]?.owner;
+    if (!owner) return;
+
+    const event: WakeEvent = {
+      name: internalType === "mention" ? "mention" : "thread.reply",
+      docId: this.name,
+      agent: data.agent,
+      ...(data.text !== undefined ? { text: data.text } : {}),
+      ...(data.threadId !== undefined ? { threadId: data.threadId } : {}),
+      timestamp: new Date().toISOString(),
+      eventId: eventId(this.name, seq),
+    };
+    const delivery = (async () => {
+      const registry = (await getAgentByName(registryBinding, "global")) as unknown as Registry;
+      await registry.wake({ principal: owner, event });
+    })().catch((err: unknown) => console.error("wake dispatch failed:", err));
+    const ctx = (this as unknown as { ctx?: { waitUntil?: (p: Promise<unknown>) => void } }).ctx;
+    if (ctx?.waitUntil) ctx.waitUntil(delivery);
   }
 
   /**

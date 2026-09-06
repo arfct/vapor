@@ -53,6 +53,19 @@ The core (event log + cursor + subscription store + dispatcher) is protocol-agno
 5. **Tests**: signing vectors against the Standard Webhooks spec examples; subscribe/refresh/expire lifecycle; dispatch retry/suspend; poll parity with `await_events`; anonymous-door refusal; SSRF guard.
 6. **Docs & discovery**: `/mcp` help page gains an events section; the MCP server's `instructions` string gains an events paragraph (prefer `events_subscribe` over polling; respect `retryAfterMs`); a short note filed to the WG repo as field-report feedback once it's running (they're soliciting exactly this).
 
+## The routine relay
+
+Superseded for the common case by identity-wide wake targets ([2026-09-06 plan](2026-09-06-agent-wake-plan.md)): a signed-in person stores their routine's fire URL and token once and vapor fires it directly. The relay remains as an example of a custom receiver for per-document `events_subscribe`.
+
+Implemented 2026-09-01 and running. The "scenario 2" consumer: a mention in a document wakes a hosted Claude Code routine with no session open anywhere.
+
+- **Routine:** `Vapor mention handler` (`trig_01SV2swZ5wW32LRWAfF1zpC9`) on the owner's claude.ai account, with the Vapor connector attached. Its prompt reads the event JSON from the `routine-fire-payload` block: for `mention` it calls `read_document` and posts one `comment`; for `thread.reply` it calls `reply` in that thread; a fire whose text begins `SETUP:` is a one-time instruction from the owner, typically an `events_subscribe`. Fired by API trigger with a per-routine bearer token.
+- **Relay:** [`relay/index.ts`](../../relay/index.ts), deployed as the `vapor-mention-relay` Worker at `https://vapor-mention-relay.arfct.workers.dev` (`npx wrangler deploy -c relay/wrangler.jsonc`). It verifies the Standard Webhooks signature (`webhook-id`, `webhook-timestamp` within 5 minutes, `webhook-signature` v1) and POSTs the event body as `text` to the routine's `/fire` endpoint with the required `anthropic-beta` and `anthropic-version` headers. Secrets on the Worker: `WEBHOOK_SECRET` (the `whsec_` every subscription uses) and `FIRE_TOKEN` (the routine's token, scoped to firing that one routine). The routine id is a plain var in `relay/wrangler.jsonc`. The relay is needed because the fire endpoint wants a bearer token and a `{text}` body, and vapor's dispatcher speaks Standard Webhooks; nothing in vapor knows about routines.
+- **Subscriptions are per document** and die with it, so each new document needs `events_subscribe` for `mention` and `thread.reply` with the relay URL and the shared `whsec_`. The vapor skill does this when `VAPOR_RELAY_URL` and `VAPOR_RELAY_SECRET` are set in the shell. Any signed-in agent can also do it, and the routine can subscribe itself through a `SETUP:` fire.
+- **Identity:** events are addressed to the subscribing agent's roster name. The terminal's `/mcp` sign-in and the routine's claude.ai connector are the same Google account, so both are the same slug, and that slug is what people mention.
+- **Budget:** every fire is a new cloud session against the daily routine allowance, and the endpoint has no idempotency key, so the relay does not retry. `document.changed` is deliberately never subscribed to the relay.
+- **Rotating the secret:** generate a new `whsec_`, `npx wrangler secret put WEBHOOK_SECRET -c relay/wrangler.jsonc`, update `VAPOR_RELAY_SECRET`; existing subscriptions keep signing with the old secret until re-subscribed, so rotate when no live documents depend on it, or re-subscribe them.
+
 ## Drift management (this is a draft, and it will move)
 
 - The WG is actively debating whether webhooks belong at the protocol layer at all vs. a transport-level redelivery mechanism. If delivery moves to the transport, **layers 1–2 shrink but the core and dispatcher survive unchanged** — every variant still needs a cursored log, signed delivery, and subscription lifecycle.

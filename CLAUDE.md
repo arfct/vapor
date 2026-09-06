@@ -138,6 +138,7 @@ AI agents connect as MCP clients and edit through the same CriticMarkup/Yjs mach
 - **`VaporMcp`** (`agents/mcp.ts`) — an `McpAgent` (Cloudflare Agents SDK) served at `/mcp`. Stateless per document: each tool call names a `doc_id` and forwards to that doc's `DocumentAgent` via DO-to-DO RPC. Tool schemas and definitions live in `agents/mcp-tools.ts`.
 - **`DocumentAgent`** (extended) — owns the agent roster, performance queue, and event log alongside the Yjs doc; all mutations happen inside the DO that owns the document. Agent RPCs take a verified `AgentIdentity` (principal or anonymous) and enroll it into the roster on first touch — there are no per-doc tokens.
 - **`workers/routes.ts`** — pure (no `cloudflare:` imports) handlers for `GET /:id.md`, the MCP help page, and `/auth/*` sign-in, wired into `workers/app.ts`.
+- **Wake targets** — a signed-in person's identity-wide "how to wake my agent" (a Claude Code routine or a webhook), stored sealed in the Registry and fired from `DocumentAgent.recordEvent` for mentions and thread replies. Policy in `app/shared/wake-policy.ts`, sealing in `app/shared/wake-crypto.ts`, routes in `workers/wake-routes.ts` (`/me/wake`), UI in `app/components/WakeSection.tsx`. See `docs/plans/2026-09-06-agent-wake-plan.md`.
 
 #### Identity (Google sign-in + MCP OAuth)
 

@@ -119,4 +119,25 @@ describe("HeaderMenu", () => {
     expect(screen.queryByText("Show comments")).toBeNull();
     expect(screen.queryByText("Invite an agent")).toBeNull();
   });
+
+  it("asks for a version before Accept all, and offers History only on documents", async () => {
+    const editor = {
+      on() {},
+      off() {},
+      schema: { marks: {} },
+      state: { selection: { empty: true } },
+      chain: () => ({ focus: () => ({ command: () => ({ run() {} }) }) }),
+    };
+    const onHistory = vi.fn();
+    const { contextValue } = renderWithDocument(createElement(HeaderMenu, { onHistory }), {
+      context: { editorInstance: editor as never },
+    });
+    fireEvent.click(screen.getByLabelText("Menu"));
+    fireEvent.click(await screen.findByText("History"));
+    expect(onHistory).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByLabelText("Menu"));
+    const accept = await screen.findByText("Accept all");
+    expect(accept.closest("button")?.hasAttribute("disabled")).toBe(true);
+    expect(contextValue.requestSnapshot).not.toHaveBeenCalled();
+  });
 });

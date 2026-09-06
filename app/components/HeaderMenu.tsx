@@ -1,33 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Popover } from "@base-ui/react/popover";
 import { useSession, notifyAuthChanged } from "~/lib/useSession";
-import { SIGN_IN_EVENT } from "~/lib/useAttachments";
 import { useTheme, type Theme } from "~/lib/useTheme";
 import { useDocument } from "~/lib/DocumentContext";
 import { hasSuggestionMarkup, processAllRanges } from "~/lib/suggestion-actions";
 import Icon from "~/components/Icon";
 
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize: (opts: { client_id: string; callback: (r: { credential: string }) => void }) => void;
-          renderButton: (el: HTMLElement, opts: Record<string, unknown>) => void;
-        };
-      };
-    };
-  }
-}
-
-// In-app webviews block Google Identity Services (disallowed_useragent): the
-// script never loads or renderButton leaves the host empty. Past this delay
-// with nothing rendered, show a note instead of an empty slot.
-const GSI_FALLBACK_DELAY_MS = 2500;
-
-// Popover width and side padding; the Google button fills the space between.
+// Popover width.
 const MENU_WIDTH_PX = 252;
-const MENU_PADDING_PX = 16;
 
 const themeOptions: { value: Theme; icon: string; label: string }[] = [
   { value: "light", icon: "light_mode", label: "Light" },
@@ -77,12 +57,15 @@ export default function HeaderMenu({
   comments,
   onNewDocument,
   onHistory,
+  onSignIn,
 }: {
   /** Phones only: the comment sheet's open state and toggle. */
   comments?: { open: boolean; onToggle: () => void };
   onNewDocument?: () => void;
   /** Documents only: open the version history. */
   onHistory?: () => void;
+  /** Opens the sign-in dialog; the row shows only while signed out. */
+  onSignIn?: () => void;
 } = {}) {
   const session = useSession();
   const { theme, setTheme } = useTheme();
@@ -134,91 +117,9 @@ export default function HeaderMenu({
     setOpen(false);
     action();
   };
-  const [signInUnavailable, setSignInUnavailable] = useState(false);
-  // State, not a ref: the popover portal mounts a render after `open`
-  // flips, so the effect must re-run once the host element exists.
-  const [buttonHost, setButtonHost] = useState<HTMLDivElement | null>(null);
-
-  // Something elsewhere (a dropped file while signed out) asks for sign-in.
-  useEffect(() => {
-    const open = () => setOpen(true);
-    window.addEventListener(SIGN_IN_EVENT, open);
-    return () => window.removeEventListener(SIGN_IN_EVENT, open);
-  }, []);
-
   function handleOpenChange(next: boolean) {
-    if (next) setSignInUnavailable(false);
     setOpen(next);
   }
-
-  // Load Google Identity Services and render its button only while the menu
-  // is open with no active session.
-  useEffect(() => {
-    if (!open || session?.signedIn || !buttonHost) return;
-    let cancelled = false;
-    const host = buttonHost;
-
-    const markUnavailable = () => {
-      if (!cancelled) setSignInUnavailable(true);
-    };
-    const fallbackTimer = window.setTimeout(() => {
-      if (host.childElementCount === 0) markUnavailable();
-    }, GSI_FALLBACK_DELAY_MS);
-
-    async function mount() {
-      let config: { googleClientId?: string };
-      try {
-        config = (await fetch("/auth/config").then((r) => r.json())) as typeof config;
-      } catch {
-        markUnavailable();
-        return;
-      }
-      if (cancelled) return;
-      if (!config.googleClientId) {
-        // Not configured is a server-side gap, not a webview limitation.
-        clearTimeout(fallbackTimer);
-        return;
-      }
-
-      const render = () => {
-        if (cancelled || !window.google) return;
-        window.google.accounts.id.initialize({
-          client_id: config.googleClientId as string,
-          callback: async (r) => {
-            const res = await fetch("/auth/google", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ credential: r.credential }),
-            });
-            if (res.ok) notifyAuthChanged();
-          },
-        });
-        const dark =
-          theme === "dark" ||
-          (theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-        window.google.accounts.id.renderButton(host, {
-          theme: dark ? "filled_black" : "outline",
-          width: MENU_WIDTH_PX - 2 * MENU_PADDING_PX,
-        });
-      };
-
-      if (window.google) {
-        render();
-      } else {
-        const s = document.createElement("script");
-        s.src = "https://accounts.google.com/gsi/client";
-        s.async = true;
-        s.onload = render;
-        s.onerror = markUnavailable;
-        document.head.appendChild(s);
-      }
-    }
-    mount();
-    return () => {
-      cancelled = true;
-      clearTimeout(fallbackTimer);
-    };
-  }, [open, session?.signedIn, theme, buttonHost]);
 
   async function signOut() {
     await fetch("/auth/logout", { method: "POST" });
@@ -337,15 +238,11 @@ export default function HeaderMenu({
                 </div>
                 <Row icon="logout" label="Sign out" onClick={run(signOut)} />
               </div>
-            ) : signInUnavailable ? (
-              <p className="border-t border-border px-4 py-3 text-sm text-muted">
-                Sign-in needs a full browser — open this page in Safari or Chrome.
-              </p>
-            ) : (
-              <div className="flex h-[64px] items-center border-t border-border px-4">
-                <div ref={setButtonHost} />
+            ) : onSignIn ? (
+              <div className="border-t border-border py-1">
+                <Row icon="login" label="Sign in" onClick={run(onSignIn)} />
               </div>
-            )}
+            ) : null}
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>

@@ -36,11 +36,13 @@ export default function Privacy() {
 
       <h2>If you sign in</h2>
       <p>
-        Sign-in is optional and uses Google. When you sign in we receive and store your email
-        address, display name, and avatar image URL from Google, and we set a session cookie
-        (<code>vp_session</code>) so you stay signed in. We use these only to attribute your
-        presence, comments, and agents to you. We never see or store your Google password, and
-        we don't post anything to your Google account.
+        Sign-in is optional, through Google or Apple, whichever this instance offers. When you
+        sign in we receive and store your email address and display name, plus an avatar image URL
+        from Google, and we set a session cookie (<code>vp_session</code>) so you stay signed in.
+        We use these only to attribute your presence, comments, and agents to you. We never see or
+        store your password with either provider, and we don't post anything to your account
+        there. If you use Apple's Hide My Email, the relay address is what we store, and it is the
+        address other people would need to mention you by.
       </p>
 
       <h2>AI agents</h2>

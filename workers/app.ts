@@ -12,7 +12,7 @@ import {
   redirectLegacyDocPath,
   type MarkdownStub,
 } from "./routes";
-import { verifyGoogleIdToken, verifySessionToken } from "../app/lib/auth.server";
+import { verifyAppleIdToken, verifyGoogleIdToken, verifySessionToken } from "../app/lib/auth.server";
 import { handleOAuth, OAUTH_CORS } from "./oauth";
 import { handleAttachmentUpload, handleAttachmentServe } from "./attachments";
 import { buildAttachmentDeps } from "./attachment-deps";
@@ -68,7 +68,7 @@ export default {
       }
     }
 
-    // /auth/* — Google sign-in sessions. Optional everywhere; only mints and
+    // /auth/* — sign-in sessions (Google, Apple). Optional everywhere; only mints and
     // reads the vp_session cookie.
     if (url.pathname.startsWith("/auth/")) {
       const registry = (await getAgentByName(
@@ -78,7 +78,9 @@ export default {
       const authResponse = await handleAuth(request, {
         secret: env.SESSION_SECRET ?? "",
         googleClientId: env.GOOGLE_CLIENT_ID ?? "",
+        appleClientId: env.APPLE_CLIENT_ID ?? "",
         verifyGoogle: verifyGoogleIdToken,
+        verifyApple: verifyAppleIdToken,
         upsertProfile: (principal, info) => registry.upsertProfile(principal, info),
         getProfile: (principal) => registry.getProfile(principal),
         resolveEmail: (requester, email) => registry.resolveEmail(requester, email),

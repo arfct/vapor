@@ -46,7 +46,7 @@ Switch to **Suggest** and edits become tracked changes, like {--this--}{++these+
 
 ## Names are optional
 
-You arrive as an animal with a color. Sign in with Google if you'd like your own name and face on your edits. Agents get a name and a color too, so you can always tell who did what.
+You arrive as an animal with a color. [Sign in](vapor://signin) if you'd like your own name and face on your edits. Agents get a name and a color too, so you can always tell who did what.
 
 ## Keep what matters
 

@@ -10,8 +10,9 @@ import Editor from "~/components/Editor";
 import Preview from "~/components/Preview";
 import ShareButton from "~/components/ShareButton";
 import NewDocumentDialog from "~/components/NewDocumentDialog";
+import SignInDialog from "~/components/SignInDialog";
 import HistoryDialog from "~/components/HistoryDialog";
-import { useAttachments } from "~/lib/useAttachments";
+import { useAttachments, SIGN_IN_EVENT } from "~/lib/useAttachments";
 import Icon from "~/components/Icon";
 import AgentsPanel from "~/components/AgentsPanel";
 import FormatToolbar from "~/components/FormatToolbar";
@@ -119,6 +120,14 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   }, [isHome, threads]);
 
   const toggleComments = useCallback(() => setCommentsOpen((v) => !v), []);
+  const [signInOpen, setSignInOpen] = useState(false);
+  const closeSignIn = useCallback(() => setSignInOpen(false), []);
+  // Something elsewhere (a dropped file while signed out) asks for sign-in.
+  useEffect(() => {
+    const open = () => setSignInOpen(true);
+    window.addEventListener(SIGN_IN_EVENT, open);
+    return () => window.removeEventListener(SIGN_IN_EVENT, open);
+  }, []);
   const inviteAgent = () => setAgentsOpen(true);
   const [newOpen, setNewOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -142,10 +151,12 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     return () => dom.removeEventListener("paste", onPaste);
   }, [editorInstance, attach]);
   // `vapor:` links in the text are actions: the Agents panel (which on the
-  // tour shows how to connect without a roster) and the New document dialog.
+  // tour shows how to connect without a roster), the New document dialog,
+  // and the Sign in dialog.
   const handleAppLink = useCallback((url: string) => {
     if (url === "vapor://invite") setAgentsOpen(true);
     if (url === "vapor://new") setNewOpen(true);
+    if (url === "vapor://signin") setSignInOpen(true);
   }, []);
 
   // A new document starts empty; the tour stays on the homepage. (A document
@@ -221,6 +232,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           comments={wide ? undefined : { open: commentsOpen, onToggle: toggleComments }}
           onNewDocument={isHome ? undefined : () => setNewOpen(true)}
           onHistory={isHome ? undefined : () => setHistoryOpen(true)}
+          onSignIn={() => setSignInOpen(true)}
         />
       </header>
       {/* The comment sheet rides a fixed layer pinned to the visual viewport,
@@ -248,6 +260,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
         onFile={uploadFile}
       />
       {surface.kind === "doc" && <HistoryDialog open={historyOpen} onClose={() => setHistoryOpen(false)} />}
+      <SignInDialog open={signInOpen} onClose={closeSignIn} />
       {/* The page itself scrolls, so mobile browsers collapse their toolbar
           and let the text run under it. Half a screen at the foot so the end
           of the document can scroll clear of the keyboard. */}

@@ -21,14 +21,15 @@ Everything works anonymously out of the box:
 - `curl http://localhost:5173/new -T notes.md` creates a document from a file; `curl http://localhost:5173/<id>.md` reads it back.
 - Connect an agent with `claude mcp add --transport http vapor http://localhost:5173/mcp/anonymous`. The guide at <http://localhost:5173/mcp> lists the snippet for every client, and <http://localhost:5173/skill.md> is the drafting skill, both addressed to your local instance.
 
-Sign-in, and with it the signed-in MCP endpoint, attachments, and wake targets, needs two values in `.dev.vars` (git-ignored; copy `.dev.vars.example`):
+Sign-in, and with it the signed-in MCP endpoint, attachments, and wake targets, needs a session secret and at least one provider in `.dev.vars` (git-ignored; copy `.dev.vars.example`):
 
 ```bash
 cp .dev.vars.example .dev.vars
 ```
 
 - `SESSION_SECRET` — any long random string. `openssl rand -base64 32` works.
-- `GOOGLE_CLIENT_ID` — a Google OAuth client id whose authorized JavaScript origins include `http://localhost:5173`. Creating one is described under [Google sign-in](#google-sign-in) below; the same client can list both your local and production origins.
+- `GOOGLE_CLIENT_ID` — a Google OAuth client id whose authorized JavaScript origins include `http://localhost:5173`. Creating one is described under [Sign-in providers](#7-sign-in-providers-optional) below; the same client can list both your local and production origins.
+- `APPLE_CLIENT_ID` — optional. Apple only accepts `https` return URLs, so Sign in with Apple is normally exercised on a deployed preview rather than on localhost.
 
 Restart `npm run dev` after editing `.dev.vars`.
 
@@ -101,7 +102,8 @@ All of these are plain vars, set under `"vars"` in `wrangler.jsonc` or in the da
 
 | Var | What it does | Default |
 |---|---|---|
-| `GOOGLE_CLIENT_ID` | Enables Google sign-in; see below. | unset: anonymous-only |
+| `GOOGLE_CLIENT_ID` | Enables Google sign-in; see below. | unset: no Google button |
+| `APPLE_CLIENT_ID` | Enables Sign in with Apple (the Services ID); see below. With neither provider set the instance is anonymous-only. | unset: no Apple button |
 | `PUBLIC_ORIGIN` | The canonical origin, e.g. `https://vapor.example`. Used where no request is in hand: the links in wake-up messages sent to agents, and the icon on the MCP server card. Also the target for `REDIRECT_HOSTS`. | unset: each request's own origin |
 | `REDIRECT_HOSTS` | Comma-separated hostnames to 301 to `PUBLIC_ORIGIN`, e.g. `www.vapor.example,vpr.example`. | unset: no redirects |
 | `OPERATOR_NAME` | Who runs the instance, named on `/privacy` and `/terms`. | unset: the pages stay generic |
@@ -109,14 +111,27 @@ All of these are plain vars, set under `"vars"` in `wrangler.jsonc` or in the da
 
 Analytics are separate: `VITE_FATHOM_SITE_ID` (and optionally `VITE_FATHOM_DOMAINS`) in the build environment enable [Fathom](https://usefathom.com). Unset, no analytics script is served.
 
-### 7. Google sign-in (optional)
+### 7. Sign-in providers (optional)
 
-Sign-in is what gives people a name instead of an animal, and what agents authenticate against on the `/mcp` endpoint. It uses Google Identity Services with only a public client id; there is no client secret.
+Sign-in is what gives people a name instead of an animal, and what agents authenticate against on the `/mcp` endpoint. Configure Google, Apple, or both; the header menu and the MCP consent page show one button per configured provider. Each uses only a public client id; there is no client secret to keep. Whichever provider someone uses, their identity is that provider's stable account id, so the same person signing in with Google one day and Apple the next gets two separate profiles.
+
+**Google**
 
 1. In [Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials), create an **OAuth client ID** of type **Web application**. You may be asked to configure the consent screen first (External, with the app name and your email is enough).
 2. Under **Authorized JavaScript origins**, add every origin the instance is served from: `https://vapor.example`, your `workers.dev` URL if you use it, and `http://localhost:5173` for development. No redirect URIs are needed.
 3. Copy the client id (it ends in `.apps.googleusercontent.com`) into `GOOGLE_CLIENT_ID`: under `vars` in `wrangler.jsonc` for production, in `.dev.vars` locally.
-4. Make sure `SESSION_SECRET` is set (step 3), then deploy.
+
+**Apple**
+
+Needs a paid Apple Developer Program membership.
+
+1. In [Certificates, Identifiers & Profiles → Identifiers](https://developer.apple.com/account/resources/identifiers/list), create an **App ID** (any bundle id, e.g. `example.vapor`) with the **Sign in with Apple** capability enabled. It exists only to own the Services ID.
+2. Create a **Services ID** (e.g. `example.vapor.web`), enable **Sign in with Apple** on it, and click **Configure**: choose the App ID as the primary, then register your **domain** (`vapor.example`) and the **return URL** `https://vapor.example/auth/apple`. Add one return URL per origin you serve from; Apple requires `https`, so localhost cannot be listed.
+3. The Services ID string is your `APPLE_CLIENT_ID`; put it under `vars` in `wrangler.jsonc`.
+
+Two Apple particulars: it sends the person's name only on their first authorization, which vapor stores then and keeps afterwards, and people who choose **Hide My Email** appear under a private relay address, which is the address others would need to mention them by.
+
+Whichever you set up, make sure `SESSION_SECRET` is set (step 3), then deploy.
 
 ### 8. Deploying from GitHub (optional)
 

@@ -3,6 +3,9 @@ import {
   mintSessionToken,
   verifySessionToken,
   verifyGoogleIdToken,
+  verifyAppleIdToken,
+  verifyIdToken,
+  principalFor,
   sessionFromRequest,
   sessionCookieHeader,
   principalFromEmail,
@@ -70,6 +73,13 @@ function validGooglePayload(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+describe("principalFor", () => {
+  it("prefixes the provider", () => {
+    expect(principalFor("google", "123")).toBe("google:123");
+    expect(principalFor("apple", "001234.abc")).toBe("apple:001234.abc");
+  });
+});
 
 describe("principalFromSub", () => {
   it("prefixes Google's account id", () => {
@@ -253,5 +263,68 @@ describe("sessionFromRequest", () => {
   it("returns null with no credential", async () => {
     const request = new Request("https://vapor.fyi/");
     expect(await sessionFromRequest(request, SECRET)).toBeNull();
+  });
+});
+
+const APPLE_CLIENT_ID = "example.vapor.web";
+
+function validApplePayload(overrides: Record<string, unknown> = {}) {
+  return {
+    iss: "https://appleid.apple.com",
+    aud: APPLE_CLIENT_ID,
+    exp: now() + 3600,
+    sub: "001234.5678abcd9012ef34.5678",
+    email: "Relay@privaterelay.appleid.com",
+    email_verified: "true",
+    is_private_email: "true",
+    ...overrides,
+  };
+}
+
+describe("verifyAppleIdToken", () => {
+  it("accepts a fixture-signed token, takes the string email_verified, and names by email (Apple sends no name)", async () => {
+    const { privateKey, jwk } = await generateFixtureKeys();
+    const token = await signIdToken(privateKey, jwk.kid, validApplePayload());
+    const result = await verifyAppleIdToken(token, APPLE_CLIENT_ID, async () => [jwk]);
+    expect(result).toEqual({
+      sub: "001234.5678abcd9012ef34.5678",
+      email: "relay@privaterelay.appleid.com",
+      name: "relay@privaterelay.appleid.com",
+    });
+  });
+
+  it("accepts a boolean email_verified too", async () => {
+    const { privateKey, jwk } = await generateFixtureKeys();
+    const token = await signIdToken(privateKey, jwk.kid, validApplePayload({ email_verified: true }));
+    expect(await verifyAppleIdToken(token, APPLE_CLIENT_ID, async () => [jwk])).not.toBeNull();
+  });
+
+  it("rejects Google's issuer on the Apple path, and Apple's on Google's", async () => {
+    const { privateKey, jwk } = await generateFixtureKeys();
+    const googleIss = await signIdToken(privateKey, jwk.kid, validApplePayload({ iss: "https://accounts.google.com" }));
+    expect(await verifyAppleIdToken(googleIss, APPLE_CLIENT_ID, async () => [jwk])).toBeNull();
+    const appleIss = await signIdToken(privateKey, jwk.kid, validGooglePayload({ iss: "https://appleid.apple.com" }));
+    expect(await verifyGoogleIdToken(appleIss, CLIENT_ID, async () => [jwk])).toBeNull();
+  });
+
+  it("rejects the wrong audience, an expired token, an unverified email, and an empty client id", async () => {
+    const { privateKey, jwk } = await generateFixtureKeys();
+    const keys = async () => [jwk];
+    expect(await verifyAppleIdToken(await signIdToken(privateKey, jwk.kid, validApplePayload({ aud: "other.app" })), APPLE_CLIENT_ID, keys)).toBeNull();
+    expect(await verifyAppleIdToken(await signIdToken(privateKey, jwk.kid, validApplePayload({ exp: now() - 5 })), APPLE_CLIENT_ID, keys)).toBeNull();
+    expect(await verifyAppleIdToken(await signIdToken(privateKey, jwk.kid, validApplePayload({ email_verified: "false" })), APPLE_CLIENT_ID, keys)).toBeNull();
+    expect(await verifyAppleIdToken(await signIdToken(privateKey, jwk.kid, validApplePayload()), "", keys)).toBeNull();
+  });
+
+  it("fetches the provider's own JWKS URL", async () => {
+    const { privateKey, jwk } = await generateFixtureKeys();
+    const urls: string[] = [];
+    const keys = async (url: string) => {
+      urls.push(url);
+      return [jwk];
+    };
+    await verifyIdToken("apple", await signIdToken(privateKey, jwk.kid, validApplePayload()), APPLE_CLIENT_ID, keys);
+    await verifyIdToken("google", await signIdToken(privateKey, jwk.kid, validGooglePayload()), CLIENT_ID, keys);
+    expect(urls).toEqual(["https://appleid.apple.com/auth/keys", "https://www.googleapis.com/oauth2/v3/certs"]);
   });
 });

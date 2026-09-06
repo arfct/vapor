@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { screen, waitFor, fireEvent } from "@testing-library/react";
 import { createElement } from "react";
 import { renderWithDocument } from "../../helpers/document-context";
 import HeaderMenu from "~/components/HeaderMenu";
@@ -54,35 +54,19 @@ describe("HeaderMenu", () => {
     );
   });
 
-  it("falls back to a note when Google Identity Services never loads", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "fetch",
-      mockFetch({
-        "/auth/me": { signedIn: false },
-        "/auth/config": { googleClientId: "client-id" },
-      }),
-    );
-    delete window.google;
+  it("offers a Sign in row while signed out that opens the dialog, and none without a handler", async () => {
+    const onSignIn = vi.fn();
+    renderWithDocument(createElement(HeaderMenu, { onSignIn }));
+    fireEvent.click(screen.getByLabelText("Menu"));
+    fireEvent.click(await screen.findByText("Sign in"));
+    expect(onSignIn).toHaveBeenCalledTimes(1);
+    // Rows close the menu when chosen.
+    await waitFor(() => expect(screen.queryByText("Sign in")).toBeNull());
 
     renderWithDocument(createElement(HeaderMenu));
-    // Let /auth/me settle first; a session change re-runs the mount effect
-    // and would restart the fallback timer mid-test.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    fireEvent.click(screen.getByLabelText("Menu"));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2400);
-    });
-    expect(screen.queryByText(/Sign-in needs a full browser/)).toBeNull();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(200);
-    });
-    expect(
-      screen.getByText("Sign-in needs a full browser — open this page in Safari or Chrome."),
-    ).toBeTruthy();
+    fireEvent.click(screen.getAllByLabelText("Menu").at(-1)!);
+    await waitFor(() => expect(screen.getAllByRole("group", { name: "Editing mode" }).length).toBeGreaterThan(0));
+    expect(screen.queryByText("Sign in")).toBeNull();
   });
 
   it("trigger shows the mode when it isn't plain Edit", () => {

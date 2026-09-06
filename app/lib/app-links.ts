@@ -36,7 +36,8 @@ function appLinkAt(target: EventTarget | null): string | null {
 
 /**
  * `vapor:` links act instead of navigating: `vapor://invite` opens the
- * Agents panel. The editor's Link mark must list the protocol
+ * Agents panel, `vapor://new` the New document dialog, `vapor://signin`
+ * the Sign in dialog. The editor's Link mark must list the protocol
  * (`protocols: [APP_LINK_PROTOCOL]`) or it drops the address on render.
  *
  * Mouse clicks are handled on `click`. On touch the tap is cancelled at

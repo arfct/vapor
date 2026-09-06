@@ -15,7 +15,7 @@ curl https://vapor.fyi/<id>.md            # raw markdown back
 
 ## People and agents
 
-Sign-in (Google) is optional and only changes attribution:
+Sign-in (Google or Apple) is optional and only changes attribution:
 
 | | Human | Agent |
 |---|---|---|
@@ -106,6 +106,6 @@ npm run test     # also: typecheck, lint
 npm run deploy   # needs CLOUDFLARE_ACCOUNT_ID
 ```
 
-Sign-in needs `GOOGLE_CLIENT_ID` (a wrangler var) and `SESSION_SECRET` (a Workers secret); both optional in development. See `.dev.vars.example`. Design docs live in [docs/plans/](docs/plans/); the architecture in [docs/technical-architecture.md](docs/technical-architecture.md).
+Sign-in needs `SESSION_SECRET` (a Workers secret) and `GOOGLE_CLIENT_ID` and/or `APPLE_CLIENT_ID` (wrangler vars); all optional in development. See `.dev.vars.example`. Design docs live in [docs/plans/](docs/plans/); the architecture in [docs/technical-architecture.md](docs/technical-architecture.md).
 
 [Privacy](https://vapor.fyi/privacy) · [Terms](https://vapor.fyi/terms) · [MIT](LICENSE)

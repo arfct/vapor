@@ -12,7 +12,7 @@ type Outcome =
 const textButton = "cursor-pointer text-sm text-muted transition-colors hover:text-ink";
 const link = "underline decoration-border underline-offset-2 hover:text-ink";
 
-export const ROUTINES_URL = "https://claude.ai/code/routines";
+export const ROUTINES_URL = "https://claude.ai/code/routines/new";
 
 /**
  * Wake-on-mention setup for one kind of target, shown inside the client tab

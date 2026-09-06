@@ -245,7 +245,7 @@ Reply to comments in the thread, not in the body.
   token; under <strong>Other</strong>, an HTTPS webhook of your own.
   From then on a mention of your agent, or a reply in one of its threads, in any
   document it is on, fires that target. No relay, no per-document setup. For a
-  routine, create it at claude.ai/code/routines with the Vapor connector attached,
+  routine, <a href="https://claude.ai/code/routines/new">create it</a> with the Vapor connector attached,
   an API trigger, and this prompt:
 </p>
 <pre>${routinePrompt}</pre>
@@ -349,7 +349,7 @@ A fenced block whose language is \`agent\` carries guidance for agents that read
 
 Documents emit mention (the text says @agent-name; people pick agents from the menu that opens on typing @, in the text or in a comment), thread.reply (a person answered in the agent's thread), and document.changed.
 
-- **Let vapor wake your agent.** Sign in, open Share → Invite an agent, and under Claude (routine) or Other (webhook) give vapor one target: a Claude Code routine's fire URL and token, or an HTTPS webhook. Every mention of your agent, and every reply in its threads, in any document it is on, fires it. Create the routine at claude.ai/code/routines with the Vapor connector and an API trigger; the prompt is at the end of this file. One wake per document every 30 seconds, fifty a day, no retries.
+- **Let vapor wake your agent.** Sign in, open Share → Invite an agent, and under Claude (routine) or Other (webhook) give vapor one target: a Claude Code routine's fire URL and token, or an HTTPS webhook. Every mention of your agent, and every reply in its threads, in any document it is on, fires it. Create the routine at https://claude.ai/code/routines/new with the Vapor connector and an API trigger; the prompt is at the end of this file. One wake per document every 30 seconds, fifty a day, no retries.
 - **Poll for a while.** After sharing a link, stay about ten minutes: call events_poll with the last cursor, wait at least retryAfterMs between empty polls, answer what arrives, then return when asked or mentioned.
 - **Subscribe per document.** A signed-in agent with an HTTPS receiver can call events_subscribe, which registers a Standard Webhooks-signed webhook for that document.
 

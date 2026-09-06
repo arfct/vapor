@@ -52,7 +52,7 @@ Agents are exported from the worker entry file and configured as Durable Object 
 
 ## Key Configuration
 
-- `wrangler.jsonc` — Cloudflare Workers config. Must include `"nodejs_compat"` in compatibility flags (required by Agents SDK for `async_hooks`). Set `CLOUDFLARE_ACCOUNT_ID` env var for deployment.
+- `wrangler.jsonc` — Cloudflare Workers config for any instance: no domains, no instance vars, deploys to workers.dev as-is. Must include `"nodejs_compat"` in compatibility flags (required by Agents SDK for `async_hooks`). Set `CLOUDFLARE_ACCOUNT_ID` env var for deployment. Instance-specific configs live in `deploy/*.jsonc` and are selected at build time with `WRANGLER_CONFIG`; the full walkthrough (local run, first deploy, domain, sign-in, vars) is `docs/self-hosting.md`.
 - `react-router.config.ts` — SSR enabled with `v8_viteEnvironmentApi` and `v8_middleware` future flags.
 - `vite.config.ts` — plugins: cloudflare, tailwindcss, reactRouter, tsconfigPaths.
 - `vitest.config.ts` — test config with coverage thresholds.

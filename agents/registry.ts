@@ -53,6 +53,8 @@ export interface AuthCode {
 interface WakeRecord {
   kind: WakeKind;
   url: string;
+  /** Origin of the request that saved the target: the instance's public URL as its owner reached it. */
+  origin?: string;
   sealedSecret: string;
   secretHint: string;
   createdAt: number;
@@ -255,6 +257,7 @@ class Registry extends Agent {
   async setWakeTarget(
     principal: string,
     input: unknown,
+    origin?: string,
   ): Promise<{ target: WakeTargetView } | { error: { code: "invalid_params"; message: string } }> {
     const checked = validateWakeTarget(input);
     if ("error" in checked) return { error: { code: "invalid_params", message: checked.error } };
@@ -264,6 +267,7 @@ class Registry extends Agent {
     const rec: WakeRecord = {
       kind: target.kind,
       url: target.url,
+      origin: origin ?? existing?.origin,
       sealedSecret: await sealSecret(target.secret, await this.wakeKey()),
       secretHint: secretHint(target.secret),
       createdAt: existing?.createdAt ?? now,
@@ -310,7 +314,10 @@ class Registry extends Agent {
       return { fired: false, reason: "unsealable" };
     }
 
-    const request = await buildWakeRequest({ kind: rec.kind, url: rec.url, secret }, args.event, args.origin, now);
+    // Document links in the wake text: the caller's origin (a request, or
+    // PUBLIC_ORIGIN) first, else the origin this target was saved from.
+    const origin = args.origin ?? rec.origin ?? "";
+    const request = await buildWakeRequest({ kind: rec.kind, url: rec.url, secret }, args.event, origin, now);
     let status = 0;
     let error: string | null = null;
     try {

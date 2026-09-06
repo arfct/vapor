@@ -1,6 +1,7 @@
 import { useRef, useState, type DragEvent } from "react";
 import Dialog, { SnippetRow } from "~/components/ui/dialog";
 import Icon from "~/components/Icon";
+import { useSite } from "~/lib/site-context";
 
 /**
  * Every way into a new document, in one place: blank, a markdown file
@@ -20,7 +21,7 @@ export default function NewDocumentDialog({
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
-  const origin = typeof window !== "undefined" ? window.location.origin : "https://vapor.fyi";
+  const { origin } = useSite();
 
   const takeFile = (file: File | undefined) => {
     if (file && file.name.endsWith(".md")) onFile(file);

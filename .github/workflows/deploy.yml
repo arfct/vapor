@@ -1,0 +1,50 @@
+# Deploys to Cloudflare Workers from GitHub. Off until you add two repository
+# secrets (Settings → Secrets and variables → Actions):
+#
+#   CLOUDFLARE_API_TOKEN   an API token with the "Edit Cloudflare Workers"
+#                          template (plus R2 write if you let it create the bucket)
+#   CLOUDFLARE_ACCOUNT_ID  from the Workers overview page's sidebar
+#
+# Optional repository *variable* WRANGLER_CONFIG points the build at another
+# wrangler config (the reference instance uses deploy/vapor.fyi.jsonc). With
+# the secrets absent the job runs and skips, so a fork without them stays green.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER_CONFIG: ${{ vars.WRANGLER_CONFIG }}
+    steps:
+      - name: Check for Cloudflare credentials
+        id: creds
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID secrets; skipping deploy."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.creds.outputs.present == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.creds.outputs.present == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: steps.creds.outputs.present == 'true'
+      - run: npm run deploy
+        if: steps.creds.outputs.present == 'true'

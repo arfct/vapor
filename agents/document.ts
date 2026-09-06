@@ -70,6 +70,7 @@ import {
 } from "../app/shared/attachment-policy";
 import type { ThreadData, ThreadReply } from "../app/shared/types";
 import type { WakeEvent } from "../app/shared/wake-policy";
+import { configuredOrigin } from "../app/shared/site";
 import type Registry from "./registry";
 
 /** A recorded document event's public shape, as returned by agentAwaitEvents. */
@@ -1287,7 +1288,10 @@ class DocumentAgent extends Agent {
     };
     const delivery = (async () => {
       const registry = (await getAgentByName(registryBinding, "global")) as unknown as Registry;
-      await registry.wake({ principal: owner, event });
+      // A document has no request in hand; PUBLIC_ORIGIN (if set) names the
+      // instance, else the Registry falls back to the origin the target was
+      // saved from.
+      await registry.wake({ principal: owner, event, origin: configuredOrigin(this.env) ?? undefined });
     })().catch((err: unknown) => console.error("wake dispatch failed:", err));
     const ctx = (this as unknown as { ctx?: { waitUntil?: (p: Promise<unknown>) => void } }).ctx;
     if (ctx?.waitUntil) ctx.waitUntil(delivery);

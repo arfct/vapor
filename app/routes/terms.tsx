@@ -1,17 +1,22 @@
 import LegalPage from "~/components/LegalPage";
 import type { Route } from "./+types/terms";
+import { useSite } from "~/lib/site-context";
+import { displayHost } from "~/shared/site";
 
 export function meta(_args: Route.MetaArgs) {
   return [{ title: "vapor — terms" }];
 }
 
 export default function Terms() {
+  const { origin, operatorName, sourceUrl } = useSite();
+  const host = displayHost(origin) || "this site";
+  const operator = operatorName ?? "the operator of this instance";
   return (
-    <LegalPage title="Terms of service" updated="August 30, 2026">
+    <LegalPage title="Terms of service" updated="September 6, 2026">
       <p>
-        vapor is a collaborative markdown editor operated by Artifact. By using vapor.fyi (and
-        its companion domains vpr.fyi and vaporware.fyi) you agree to these terms. They're
-        short, because the service is simple.
+        vapor is a collaborative markdown editor{operatorName ? ` operated by ${operatorName}` : ""}.
+        This instance runs at {host}; by using it you agree to these terms. They're short, because
+        the service is simple.
       </p>
 
       <h2>What vapor is</h2>
@@ -58,9 +63,9 @@ export default function Terms() {
       <p>
         vapor is a work in progress, provided as-is and as-available, without warranties of any
         kind. Documents may be lost before their scheduled expiry; the service may change or be
-        discontinued. To the maximum extent permitted by law, Artifact is not liable for any
-        damages arising from your use of vapor, and our total liability is limited to the amount
-        you paid to use it — which is nothing, because it's free.
+        discontinued. To the maximum extent permitted by law, {operator} is not liable for any
+        damages arising from your use of vapor, and total liability is limited to the amount you
+        paid to use it — which is nothing, because it's free.
       </p>
 
       <h2>Changes</h2>
@@ -68,11 +73,9 @@ export default function Terms() {
         We may update these terms; material changes will be reflected on this page with a new
         date. Continued use after a change means you accept the updated terms. Questions or
         problems:{" "}
-        <a
-          href="https://github.com/arfct/vapor"
-          className="text-ink underline hover:text-coral"
-        >
-          github.com/arfct/vapor
+        <a href={sourceUrl} className="text-ink underline hover:text-coral">
+          {displayHost(sourceUrl)}
+          {new URL(sourceUrl).pathname.replace(/\/$/, "")}
         </a>
         .
       </p>

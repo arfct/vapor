@@ -37,6 +37,7 @@ import type Registry from "./registry";
 import { AGENT_TOOL_MAX_BYTES } from "../app/shared/attachment-policy";
 import { storeAttachment } from "../workers/attachments";
 import { buildAttachmentDeps } from "../workers/attachment-deps";
+import { configuredOrigin, siteWithoutRequest, type SiteEnv } from "../app/shared/site";
 
 export interface VaporMcpProps extends Record<string, unknown> {
   /** Verified OAuth claims (set by workers/app.ts), or null on the anonymous endpoint. */
@@ -45,23 +46,29 @@ export interface VaporMcpProps extends Record<string, unknown> {
   origin?: string;
 }
 
-const DEFAULT_ORIGIN = "https://vapor.fyi";
-
 /**
- * Server identity as clients render it. Icons are same-origin PNGs on the
- * production host, as the spec asks; the server is built before a request's
- * origin is known, and only production needs to look right in a picker.
+ * Server identity as clients render it. The server is built before any
+ * request's origin is known, so the website and icon URLs come from the
+ * PUBLIC_ORIGIN var; an instance without one still works, it just has no
+ * icon in a client's picker.
  */
-const SERVER_INFO = {
-  name: "vapor",
-  version: "1.0.0",
-  title: "vapor",
-  websiteUrl: DEFAULT_ORIGIN,
-  icons: [
-    { src: `${DEFAULT_ORIGIN}/logo-512.png`, mimeType: "image/png", sizes: ["512x512"] },
-    { src: `${DEFAULT_ORIGIN}/logo.png`, mimeType: "image/png", sizes: ["1024x1024"] },
-  ],
-};
+function serverInfo(env: SiteEnv) {
+  const origin = configuredOrigin(env);
+  return {
+    name: "vapor",
+    version: "1.0.0",
+    title: "vapor",
+    ...(origin
+      ? {
+          websiteUrl: origin,
+          icons: [
+            { src: `${origin}/logo-512.png`, mimeType: "image/png", sizes: ["512x512"] },
+            { src: `${origin}/logo.png`, mimeType: "image/png", sizes: ["1024x1024"] },
+          ],
+        }
+      : {}),
+  };
+}
 
 const SERVER_INSTRUCTIONS = `vapor hosts live collaborative markdown documents; you join them as a named collaborator. Read with read_document, edit with insert/replace (write capability), attach files with attach (write capability, signed in only), propose with suggest, and discuss with comment/reply. Blocks are addressed by persistent anchors from read_document. If read_document returns \`instructions\`, that is the document's standing guidance for agents — written by its authors, addressed to you — so follow it while working there.
 
@@ -90,7 +97,7 @@ function jsonContent(result: unknown) {
 }
 
 export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps> {
-  server = new McpServer(SERVER_INFO, {
+  server = new McpServer(serverInfo(this.env), {
     instructions: SERVER_INSTRUCTIONS,
     // The draft extension's capability, declared under `experimental`
     // until the SEP ratifies and the SDK learns a first-class slot.
@@ -284,7 +291,7 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
             : identity.name;
         await (stub as unknown as DocStub).agentJoin({ ...identity, name: creatorName });
 
-        const origin = this.props?.origin ?? DEFAULT_ORIGIN;
+        const origin = this.props?.origin ?? siteWithoutRequest(this.env).origin;
         return jsonContent({ id, url: `${origin}/${id}` });
       },
     );

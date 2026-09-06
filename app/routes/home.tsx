@@ -7,13 +7,17 @@ import { retimeThreads } from "~/lib/retime-threads";
 import { buildMarkdownBlocks } from "~/shared/rich-markdown";
 import DocumentLayout from "~/components/DocumentLayout";
 import homeDocument from "./home.md?raw";
+import { useSite } from "~/lib/site-context";
+import { UPSTREAM_SOURCE_URL } from "~/shared/site";
 
-export function meta(_args: Route.MetaArgs) {
+export function meta({ matches }: Route.MetaArgs) {
+  const root = matches.find((m) => m?.id === "root") as { data?: { site?: { origin: string } } } | undefined;
+  const origin = root?.data?.site?.origin ?? "";
   return [
     { title: "vapor" },
     { name: "description", content: "Shared markdown documents for people and agents" },
     { property: "og:description", content: "Shared markdown documents for people and agents" },
-    { property: "og:image", content: "https://vapor.fyi/logo-512.png" },
+    { property: "og:image", content: `${origin}/logo-512.png` },
   ];
 }
 
@@ -25,11 +29,13 @@ export function meta(_args: Route.MetaArgs) {
  */
 export default function Home() {
   const yjs = useStandaloneDoc();
-  // Comment dates are re-based on the visit so the tour reads as recent.
+  const { sourceUrl } = useSite();
+  // Comment dates are re-based on the visit so the tour reads as recent, and
+  // the tour's source link points at this instance's repository.
   const seed = useMemo(() => {
-    const parsed = deserializeThreads(homeDocument);
+    const parsed = deserializeThreads(homeDocument.split(UPSTREAM_SOURCE_URL).join(sourceUrl));
     return { ...parsed, threads: retimeThreads(parsed.threads) };
-  }, []);
+  }, [sourceUrl]);
 
   useEffect(() => {
     const frag = yjs.doc.getXmlFragment("default");

@@ -1,4 +1,5 @@
 import { CLAUDE_ROUTINE_PROMPT } from "~/shared/wake-policy";
+import { githubSlug, type SiteConfig } from "~/shared/site";
 
 /**
  * The HTML help page served at `GET /mcp` when a browser asks for it
@@ -6,22 +7,31 @@ import { CLAUDE_ROUTINE_PROMPT } from "~/shared/wake-policy";
  * `workers/routes.ts`'s `handleMcpHelp`.
  */
 
-/** Fallback used whenever `origin` doesn't look like a plain http(s) origin. */
-const DEFAULT_ORIGIN = "https://vapor.fyi";
-
 /**
- * `origin` comes from `url.origin` in workers/routes.ts, which derives from
- * the client-controlled Host header — it is interpolated unescaped into raw
- * HTML below (a `<pre>` block and a JSON literal), so a crafted Host like
- * `https://evil<script>...` must never reach the template. Restricting it to
- * the character set a real http(s) origin can contain (scheme, host,
- * optional port/IPv6 brackets) rules out `<`, `>`, `"`, `'`, and `/` beyond
- * the scheme separator, so nothing here can break out of its context.
+ * The plugin/extension install lines depend on where this instance's source
+ * lives (SOURCE_URL): a GitHub repo doubles as a Claude Code marketplace and
+ * a Gemini extension source. Anywhere else, only the plain MCP add is shown.
  */
-const SAFE_ORIGIN_RE = /^https?:\/\/[a-z0-9.:[\]-]+$/i;
+function pluginCommands(site: SiteConfig) {
+  const slug = githubSlug(site.sourceUrl);
+  return {
+    sourceUrl: site.sourceUrl,
+    marketplace: slug ? `claude plugin marketplace add ${slug}` : null,
+    gemini: slug ? `gemini extensions install ${site.sourceUrl}` : null,
+  };
+}
 
-export function mcpHelpHtml(origin: string): string {
-  const safeOrigin = SAFE_ORIGIN_RE.test(origin) ? origin : DEFAULT_ORIGIN;
+/** Escapes text for interpolation into HTML text or attribute content. */
+function esc(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+}
+
+export function mcpHelpHtml(site: SiteConfig): string {
+  // site.origin has already been validated against a hostile Host header
+  // (see app/shared/site.ts); it is interpolated unescaped into <pre> blocks
+  // and a JSON literal below, which a plain http(s) origin cannot break out of.
+  const safeOrigin = site.origin;
+  const plugin = pluginCommands(site);
   const mcpUrl = `${safeOrigin}/mcp`;
   const anonUrl = `${safeOrigin}/mcp/anonymous`;
   const mcpServersJson = JSON.stringify({ mcpServers: { vapor: { url: mcpUrl } } }, null, 2);
@@ -137,12 +147,16 @@ export function mcpHelpHtml(origin: string): string {
 <pre>claude mcp add --transport http vapor ${mcpUrl}</pre>
 <p class="muted">Your client walks you through Google sign-in in the browser, then remembers it. Anonymous:</p>
 <pre>claude mcp add --transport http vapor ${anonUrl}</pre>
-<p>
-  The <a href="https://github.com/arfct/vapor">vapor plugin</a> bundles this
+${
+  plugin.marketplace
+    ? `<p>
+  The <a href="${esc(plugin.sourceUrl)}">vapor plugin</a> bundles this
   connection with a skill that drafts plans on vapor and answers comments:
-  <code>claude plugin marketplace add arfct/vapor</code>, then
+  <code>${esc(plugin.marketplace)}</code>, then
   <code>claude plugin install vapor@vapor</code>.
-</p>
+</p>`
+    : ""
+}
 
 <h3>ChatGPT</h3>
 <p>
@@ -156,9 +170,13 @@ export function mcpHelpHtml(origin: string): string {
 codex mcp login vapor</pre>
 
 <h3>Gemini CLI</h3>
-<p>The extension bundles the connection and the skill below in one install:</p>
-<pre>gemini extensions install https://github.com/arfct/vapor</pre>
-<p class="muted">Or add the server alone:</p>
+${
+  plugin.gemini
+    ? `<p>The extension bundles the connection and the skill below in one install:</p>
+<pre>${esc(plugin.gemini)}</pre>
+<p class="muted">Or add the server alone:</p>`
+    : ""
+}
 <pre>gemini mcp add --transport http vapor ${mcpUrl}</pre>
 
 <h3>Cursor</h3>
@@ -289,10 +307,11 @@ Reply to comments in the thread, not in the body.
 /**
  * The same guide as markdown: served at `/llms.txt`, and at `/mcp` when the
  * caller didn't ask for HTML (curl, an agent's fetch tool). An agent told to
- * "install vapor.fyi" lands here and finds the commands rather than a 401.
+ * "install vapor" lands here and finds the commands rather than a 401.
  */
-export function mcpHelpMarkdown(origin: string): string {
-  const safeOrigin = SAFE_ORIGIN_RE.test(origin) ? origin : DEFAULT_ORIGIN;
+export function mcpHelpMarkdown(site: SiteConfig): string {
+  const safeOrigin = site.origin;
+  const plugin = pluginCommands(site);
   const mcpUrl = `${safeOrigin}/mcp`;
   const anonUrl = `${safeOrigin}/mcp/anonymous`;
   const skillUrl = `${safeOrigin}/skill.md`;
@@ -311,7 +330,7 @@ Two URLs, same tools. Signed in (${mcpUrl}) gives the agent a stable identity an
 - ChatGPT: Settings → Connectors → Advanced → Developer mode, then Create a connector with ${mcpUrl} (OAuth) or ${anonUrl} (no authentication)
 - Codex CLI: \`codex mcp add vapor --url ${mcpUrl}\`, then \`codex mcp login vapor\`
 - Cursor: \`.cursor/mcp.json\` → \`${json({ mcpServers: { vapor: { url: mcpUrl } } })}\`
-- Gemini CLI: \`gemini extensions install https://github.com/arfct/vapor\` (connection plus skill), or \`gemini mcp add --transport http vapor ${mcpUrl}\`
+- Gemini CLI: ${plugin.gemini ? `\`${plugin.gemini}\` (connection plus skill), or ` : ""}\`gemini mcp add --transport http vapor ${mcpUrl}\`
 - VS Code: \`.vscode/mcp.json\` → \`${json({ servers: { vapor: { type: "http", url: mcpUrl } } })}\`
 - Anything else: \`${json({ mcpServers: { vapor: { url: mcpUrl } } })}\`
 
@@ -319,9 +338,9 @@ Two URLs, same tools. Signed in (${mcpUrl}) gives the agent a stable identity an
 
 A skill in the Agent Skills format teaches the workflow: draft on vapor instead of pasting into chat, share the link, watch for comments, export back before the document expires. One file, served at ${skillUrl}.
 
-- Claude Code: \`curl -s ${skillUrl} --create-dirs -o ~/.claude/skills/vapor/SKILL.md\` (the plugin installs it too: \`claude plugin marketplace add arfct/vapor\` then \`claude plugin install vapor@vapor\`)
+- Claude Code: \`curl -s ${skillUrl} --create-dirs -o ~/.claude/skills/vapor/SKILL.md\`${plugin.marketplace ? ` (the plugin installs it too: \`${plugin.marketplace}\` then \`claude plugin install vapor@vapor\`)` : ""}
 - Codex CLI, Cursor, GitHub Copilot: \`curl -s ${skillUrl} --create-dirs -o ~/.agents/skills/vapor/SKILL.md\`
-- Gemini CLI: bundled in the extension
+- Gemini CLI: ${plugin.gemini ? "bundled in the extension" : `\`curl -s ${skillUrl} --create-dirs -o ~/.gemini/skills/vapor/SKILL.md\``}
 
 ## Tools
 
@@ -354,7 +373,7 @@ Documents emit mention (the text says @agent-name; people pick agents from the m
 
 - Guide: ${mcpUrl}
 - Skill: ${skillUrl}
-- Source and plugin: https://github.com/arfct/vapor
+- Source and plugin: ${plugin.sourceUrl}
 - New document from a file: \`curl ${safeOrigin}/new -T notes.md\`; raw markdown back: \`${safeOrigin}/<id>.md\`
 
 ## Routine prompt

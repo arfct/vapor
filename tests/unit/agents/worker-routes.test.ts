@@ -202,61 +202,45 @@ describe("redirectLegacyDocPath", () => {
 });
 
 describe("redirectHost", () => {
-  it("redirects vpr.fyi with path and query to https://vapor.fyi", () => {
-    const res = redirectHost(new Request("https://vpr.fyi/abc?x=1"));
+  const env = {
+    PUBLIC_ORIGIN: "https://vapor.example",
+    REDIRECT_HOSTS: "www.vapor.example, vpr.example,WWW.VPR.EXAMPLE",
+  };
+
+  it("301s a listed alias to PUBLIC_ORIGIN with path and query preserved", () => {
+    const res = redirectHost(new Request("https://vpr.example/abc?x=1"), env);
 
     expect(res).not.toBeNull();
     expect(res!.status).toBe(301);
-    expect(res!.headers.get("Location")).toBe("https://vapor.fyi/abc?x=1");
+    expect(res!.headers.get("Location")).toBe("https://vapor.example/abc?x=1");
   });
 
-  it("redirects www.vpr.fyi to https://vapor.fyi", () => {
-    const res = redirectHost(new Request("https://www.vpr.fyi/path?q=2"));
-
-    expect(res).not.toBeNull();
-    expect(res!.status).toBe(301);
-    expect(res!.headers.get("Location")).toBe("https://vapor.fyi/path?q=2");
+  it("matches aliases case-insensitively and ignores whitespace in the list", () => {
+    expect(redirectHost(new Request("https://www.vapor.example/"), env)!.headers.get("Location")).toBe(
+      "https://vapor.example/",
+    );
+    expect(redirectHost(new Request("https://www.vpr.example/doc?id=123"), env)!.headers.get("Location")).toBe(
+      "https://vapor.example/doc?id=123",
+    );
   });
 
-  it("redirects vaporware.fyi to https://vapor.fyi", () => {
-    const res = redirectHost(new Request("https://vaporware.fyi/test"));
-
-    expect(res).not.toBeNull();
-    expect(res!.status).toBe(301);
-    expect(res!.headers.get("Location")).toBe("https://vapor.fyi/test");
+  it("returns null for the canonical host, localhost, and workers.dev", () => {
+    expect(redirectHost(new Request("https://vapor.example/abc"), env)).toBeNull();
+    expect(redirectHost(new Request("https://localhost:3000/abc"), env)).toBeNull();
+    expect(redirectHost(new Request("https://vapor.someone.workers.dev/abc"), env)).toBeNull();
   });
 
-  it("redirects www.vaporware.fyi to https://vapor.fyi", () => {
-    const res = redirectHost(new Request("https://www.vaporware.fyi/doc?id=123"));
-
-    expect(res).not.toBeNull();
-    expect(res!.status).toBe(301);
-    expect(res!.headers.get("Location")).toBe("https://vapor.fyi/doc?id=123");
+  it("never redirects when the vars are unset — a fresh deploy has no aliases", () => {
+    expect(redirectHost(new Request("https://www.vapor.example/"))).toBeNull();
+    expect(redirectHost(new Request("https://www.vapor.example/"), { REDIRECT_HOSTS: "www.vapor.example" })).toBeNull();
+    expect(redirectHost(new Request("https://www.vapor.example/"), { PUBLIC_ORIGIN: "https://vapor.example" })).toBeNull();
   });
 
-  it("redirects www.vapor.fyi to https://vapor.fyi", () => {
-    const res = redirectHost(new Request("https://www.vapor.fyi/"));
-
-    expect(res).not.toBeNull();
-    expect(res!.status).toBe(301);
-    expect(res!.headers.get("Location")).toBe("https://vapor.fyi/");
-  });
-
-  it("returns null for vapor.fyi (primary domain)", () => {
-    const res = redirectHost(new Request("https://vapor.fyi/abc"));
-
-    expect(res).toBeNull();
-  });
-
-  it("returns null for localhost", () => {
-    const res = redirectHost(new Request("https://localhost:3000/abc"));
-
-    expect(res).toBeNull();
-  });
-
-  it("returns null for workers.dev subdomain", () => {
-    const res = redirectHost(new Request("https://vapor.arfct.workers.dev/abc"));
-
+  it("refuses to loop when the canonical host is itself listed as an alias", () => {
+    const res = redirectHost(new Request("https://vapor.example/x"), {
+      PUBLIC_ORIGIN: "https://vapor.example",
+      REDIRECT_HOSTS: "vapor.example",
+    });
     expect(res).toBeNull();
   });
 });

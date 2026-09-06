@@ -9,6 +9,8 @@
 import { isValidDocumentId } from "../app/shared/constants";
 import type { AgentError } from "../app/shared/agent-protocol";
 import { mcpHelpHtml, mcpHelpMarkdown } from "../app/lib/mcp-help";
+import { configuredOrigin, redirectHosts, siteForRequest, type SiteConfig, type SiteEnv } from "../app/shared/site";
+import skillTemplate from "../plugin/skills/vapor/SKILL.md?raw";
 import { absolutizeAttachmentUrls } from "../app/shared/attachment-policy";
 import {
   mintSessionToken,
@@ -71,7 +73,7 @@ export async function handleRawMarkdown(
  * through (null) to `VaporMcp.serve`; clients POST everything else. Must be
  * checked before that branch in workers/app.ts.
  */
-export function handleMcpHelp(request: Request): Response | null {
+export function handleMcpHelp(request: Request, env: SiteEnv = {}): Response | null {
   if (request.method !== "GET") return null;
 
   const url = new URL(request.url);
@@ -80,56 +82,74 @@ export function handleMcpHelp(request: Request): Response | null {
   const accept = request.headers.get("Accept") ?? "";
   if (accept.includes("text/event-stream")) return null;
 
+  const site = siteForRequest(env, url.origin);
   if (accept.includes("text/html")) {
-    return new Response(mcpHelpHtml(url.origin), {
+    return new Response(mcpHelpHtml(site), {
       status: 200,
       headers: { "Content-Type": "text/html; charset=utf-8" },
     });
   }
-  return markdownGuide(url.origin);
+  return markdownGuide(site);
 }
 
 /** `GET /llms.txt` — the guide as the plain-text file agents look for first. */
-export function handleLlmsTxt(request: Request): Response | null {
+export function handleLlmsTxt(request: Request, env: SiteEnv = {}): Response | null {
   if (request.method !== "GET") return null;
   const url = new URL(request.url);
   if (url.pathname !== "/llms.txt") return null;
-  return markdownGuide(url.origin);
+  return markdownGuide(siteForRequest(env, url.origin));
 }
 
-function markdownGuide(origin: string): Response {
-  return new Response(mcpHelpMarkdown(origin), {
+function markdownGuide(site: SiteConfig): Response {
+  return new Response(mcpHelpMarkdown(site), {
+    status: 200,
+    headers: { "Content-Type": "text/markdown; charset=utf-8", "X-Content-Type-Options": "nosniff" },
+  });
+}
+
+/** The origin the canonical skill text is written against. */
+const SKILL_TEMPLATE_ORIGIN = "https://vapor.fyi";
+
+/**
+ * The skill file for this instance: the plugin's canonical SKILL.md with its
+ * URLs rewritten to the serving origin, so `curl <your-instance>/skill.md`
+ * teaches an agent to draft on your instance rather than on the reference one.
+ */
+export function skillMarkdown(origin: string): string {
+  return skillTemplate.split(SKILL_TEMPLATE_ORIGIN).join(origin);
+}
+
+/** `GET /skill.md` — the Agent Skills file, addressed to this instance. */
+export function handleSkill(request: Request, env: SiteEnv = {}): Response | null {
+  if (request.method !== "GET") return null;
+  const url = new URL(request.url);
+  if (url.pathname !== "/skill.md") return null;
+  const site = siteForRequest(env, url.origin);
+  return new Response(skillMarkdown(site.origin), {
     status: 200,
     headers: { "Content-Type": "text/markdown; charset=utf-8", "X-Content-Type-Options": "nosniff" },
   });
 }
 
 /**
- * Redirects secondary domains to the primary vapor.fyi domain. Hostnames
- * vpr.fyi, www.vpr.fyi, vaporware.fyi, www.vaporware.fyi, and www.vapor.fyi
- * are 301 redirected to https://vapor.fyi with the original path and query
- * string preserved. Returns null for the primary domain (vapor.fyi),
- * localhost, and *.workers.dev subdomains.
+ * Redirects alias hostnames to the canonical origin. The aliases come from
+ * the REDIRECT_HOSTS var (comma-separated) and the target from PUBLIC_ORIGIN;
+ * with either unset nothing is redirected, so a fresh deploy on workers.dev,
+ * a preview, or localhost is never bounced anywhere. Path and query string
+ * are preserved; the redirect is a 301 because the aliases are permanent.
  */
-export function redirectHost(request: Request): Response | null {
+export function redirectHost(request: Request, env: SiteEnv = {}): Response | null {
+  const canonical = configuredOrigin(env);
+  const aliases = redirectHosts(env);
+  if (!canonical || aliases.length === 0) return null;
+
   const url = new URL(request.url);
-  const hostname = url.hostname;
+  const hostname = url.hostname.toLowerCase();
+  if (!aliases.includes(hostname)) return null;
+  // Never redirect the canonical host to itself, however the vars are set.
+  if (hostname === new URL(canonical).hostname.toLowerCase()) return null;
 
-  // The www.* entries are not (yet) registered routes for this worker — they
-  // only ever fire if DNS is later pointed at it, and are harmless until then.
-  const redirectTargets = [
-    "vpr.fyi",
-    "www.vpr.fyi",
-    "vaporware.fyi",
-    "www.vaporware.fyi",
-    "www.vapor.fyi",
-  ];
-
-  if (!redirectTargets.includes(hostname)) {
-    return null;
-  }
-
-  const targetUrl = `https://vapor.fyi${url.pathname}${url.search}`;
+  const targetUrl = `${canonical}${url.pathname}${url.search}`;
   return new Response(null, {
     status: 301,
     headers: {
@@ -237,12 +257,12 @@ export async function handleAuth(request: Request, deps: AuthDeps): Promise<Resp
  * `GET /docs/:id` and `GET /docs/:id.md` — permanent redirects to the current
  * root-level document URLs (`/:id`, `/:id.md`).
  *
- * Documents used to live under `/docs/`; vapor.fyi is live and documents last
- * 99 hours, so links shared before the rename are still being opened. Without
- * this they 404. 301 (permanent) because the move is permanent, and the
- * `Location` is path-relative so the redirect stays on whichever host served
- * it — vapor.fyi, a workers.dev preview, or localhost. The query string is
- * preserved verbatim.
+ * Documents used to live under `/docs/`, and documents last 99 hours, so
+ * links shared before the rename are still being opened. Without this they
+ * 404. 301 (permanent) because the move is permanent, and the `Location` is
+ * path-relative so the redirect stays on whichever host served it — the
+ * canonical domain, a workers.dev preview, or localhost. The query string
+ * is preserved verbatim.
  *
  * Returns null for anything else, including a `/docs/` path whose id isn't a
  * valid document id, so those keep falling through to the normal 404.

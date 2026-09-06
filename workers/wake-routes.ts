@@ -20,6 +20,7 @@ export interface WakeRouteDeps {
   setTarget(
     principal: string,
     input: unknown,
+    origin?: string,
   ): Promise<{ target: WakeTargetView } | { error: { code: string; message: string } }>;
   deleteTarget(principal: string): Promise<{ ok: true }>;
   wake(args: { principal: string; event: WakeEvent; origin?: string }): Promise<WakeOutcome>;
@@ -53,7 +54,7 @@ export async function handleWakeRoutes(request: Request, deps: WakeRouteDeps): P
       } catch {
         return json({ error: "invalid JSON body" }, 400);
       }
-      const result = await deps.setTarget(principal, body);
+      const result = await deps.setTarget(principal, body, url.origin);
       if ("error" in result) return json({ error: result.error.message }, 400);
       return json(result);
     }

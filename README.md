@@ -2,7 +2,7 @@
 
 You paste a draft into chat and now there are two copies, both going stale. vapor gives the draft one URL instead: a live markdown document anyone can open and edit, people and AI agents side by side, each with a cursor. It deletes itself after 99 hours.
 
-Running at [vapor.fyi](https://vapor.fyi). A fork of [mist](https://github.com/inanimate-tech/mist).
+vapor is a single Cloudflare Worker you can run yourself: see [Running your own vapor](docs/self-hosting.md). The reference instance is [vapor.fyi](https://vapor.fyi); the examples below use it, and every command works the same against your own origin. A fork of [mist](https://github.com/inanimate-tech/mist).
 
 ## Documents
 
@@ -36,7 +36,7 @@ claude mcp add --transport http vapor https://vapor.fyi/mcp
 claude mcp add --transport http vapor https://vapor.fyi/mcp/anonymous
 ```
 
-The same URL works in claude.ai, ChatGPT (developer mode), Codex CLI, Cursor, Gemini CLI, and VS Code; [vapor.fyi/mcp](https://vapor.fyi/mcp) has the snippet for each, and every document's Share → Invite an agent dialog has the same.
+The same URL works in claude.ai, ChatGPT (developer mode), Codex CLI, Cursor, Gemini CLI, and VS Code. Every instance serves its own guide at `/mcp` (and `/llms.txt` for agents) with the snippet for each client, and every document's Share → Invite an agent dialog has the same.
 
 Agents get suggest and comment by default; full write is a separate grant on the consent screen. Their edits type in at human pace with a visible cursor (`pace: "instant"` skips the show). Each document's Agents panel lists who's enrolled, with revoke.
 
@@ -44,18 +44,18 @@ Tools: `read_document` · `insert` · `replace` · `suggest` · `comment` · `re
 
 A fenced block whose language is `agent` carries standing instructions for agents. People don't see it in the rendered page; `read_document` returns it as `instructions`.
 
-To have a mention wake an agent that isn't running anywhere, sign in and set a wake target once under Share → Invite an agent, in the Claude tab (routine) or the Other tab (webhook): a [Claude Code routine](https://code.claude.com/docs/en/routines)'s fire URL and token, or an HTTPS webhook. Every mention of your agent, and every reply in its threads, in any document it is on, fires it. The canonical routine prompt is on [vapor.fyi/mcp](https://vapor.fyi/mcp). Design in [the wake plan](docs/plans/2026-09-06-agent-wake-plan.md).
+To have a mention wake an agent that isn't running anywhere, sign in and set a wake target once under Share → Invite an agent, in the Claude tab (routine) or the Other tab (webhook): a [Claude Code routine](https://code.claude.com/docs/en/routines)'s fire URL and token, or an HTTPS webhook. Every mention of your agent, and every reply in its threads, in any document it is on, fires it. The canonical routine prompt is at the end of the `/mcp` guide. Design in [the wake plan](docs/plans/2026-09-06-agent-wake-plan.md).
 
 ## The drafting habit
 
-The vapor plugin for Claude Code bundles the MCP connection with a skill that changes where drafts live: plans and proposals go up as vapor docs instead of chat walls, Claude answers comments over MCP, and the settled document is exported to the repo before the 99-hour cliff. The bundled connection is the signed-in endpoint (`/mcp`) — the first tool call prompts a Google sign-in and consent screen.
+The vapor plugin for Claude Code bundles the MCP connection with a skill that changes where drafts live: plans and proposals go up as vapor docs instead of chat walls, Claude answers comments over MCP, and the settled document is exported to the repo before the 99-hour cliff. The bundled connection is the reference instance's signed-in endpoint — the first tool call prompts a Google sign-in and consent screen.
 
 ```bash
 claude plugin marketplace add arfct/vapor
 claude plugin install vapor@vapor
 ```
 
-Just the skill, no plugin (source in [`plugin/skills/vapor/SKILL.md`](plugin/skills/vapor/SKILL.md), served at [vapor.fyi/skill.md](https://vapor.fyi/skill.md)):
+Just the skill, no plugin: every instance serves it at `/skill.md`, addressed to that instance (source in [`plugin/skills/vapor/SKILL.md`](plugin/skills/vapor/SKILL.md)):
 
 ```bash
 curl -s https://vapor.fyi/skill.md --create-dirs -o ~/.claude/skills/vapor/SKILL.md
@@ -68,7 +68,20 @@ curl -s https://vapor.fyi/skill.md --create-dirs -o ~/.agents/skills/vapor/SKILL
 gemini extensions install https://github.com/arfct/vapor
 ```
 
-In a repository, `.agents/skills/vapor/SKILL.md` (a symlink here) gives every contributor's agent the workflow. `gemini-extension.json` and `skills/` at the root exist for the Gemini install and point at the same file.
+In a repository, `.agents/skills/vapor/SKILL.md` (a symlink here) gives every contributor's agent the workflow. `gemini-extension.json` and `skills/` at the root exist for the Gemini install and point at the same file. Running a fork and want the plugin to connect to it instead? [Shipping a plugin for your instance](docs/self-hosting.md#shipping-a-plugin-for-your-instance).
+
+## Run your own
+
+```bash
+git clone https://github.com/arfct/vapor && cd vapor
+npm install
+npm run dev                       # http://localhost:5173, everything emulated locally
+npx wrangler login
+npx wrangler r2 bucket create vapor-attachments
+npm run deploy                    # → https://vapor.<you>.workers.dev
+```
+
+That is a working instance. A custom domain, Google sign-in, the optional instance variables (`PUBLIC_ORIGIN`, `REDIRECT_HOSTS`, `OPERATOR_NAME`, `SOURCE_URL`), deploying from GitHub Actions, and keeping a separate production config are all in [docs/self-hosting.md](docs/self-hosting.md). Nothing in the code names a host: an instance describes itself from the URL it is served at.
 
 ## How it's built
 
@@ -78,12 +91,13 @@ Each document is one Cloudflare Durable Object holding the [Yjs](https://yjs.dev
 agents/    Durable Objects: DocumentAgent, VaporMcp, Registry
 app/       React Router app
 workers/   Worker entry, routes, OAuth server
+deploy/    Per-instance wrangler configs (the reference instance's lives here)
 tests/     Unit + integration
 ```
 
 ## Developing
 
-Node 22+.
+Node 22+ (`.nvmrc`).
 
 ```bash
 npm install
@@ -92,6 +106,6 @@ npm run test     # also: typecheck, lint
 npm run deploy   # needs CLOUDFLARE_ACCOUNT_ID
 ```
 
-Sign-in needs `GOOGLE_CLIENT_ID` (a wrangler var) and `SESSION_SECRET` (a Workers secret); both optional in development. See `.dev.vars.example`. Design docs live in [docs/plans/](docs/plans/).
+Sign-in needs `GOOGLE_CLIENT_ID` (a wrangler var) and `SESSION_SECRET` (a Workers secret); both optional in development. See `.dev.vars.example`. Design docs live in [docs/plans/](docs/plans/); the architecture in [docs/technical-architecture.md](docs/technical-architecture.md).
 
 [Privacy](https://vapor.fyi/privacy) · [Terms](https://vapor.fyi/terms) · [MIT](LICENSE)

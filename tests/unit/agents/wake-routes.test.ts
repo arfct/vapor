@@ -71,7 +71,7 @@ describe("handleWakeRoutes", () => {
     const body = JSON.stringify({ kind: "claude-routine", url: view.url, secret: "sk-ant-oat01-abcdefghijklmnop" });
     const ok = await handleWakeRoutes(await signedIn("/me/wake", { method: "PUT", body }), d);
     expect(ok!.status).toBe(200);
-    expect(d.setTarget).toHaveBeenCalledWith("email:ada@example.com", JSON.parse(body));
+    expect(d.setTarget).toHaveBeenCalledWith("email:ada@example.com", JSON.parse(body), ORIGIN);
 
     const bad = await handleWakeRoutes(
       await signedIn("/me/wake", { method: "PUT", body }),

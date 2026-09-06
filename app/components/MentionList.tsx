@@ -13,13 +13,7 @@ function renderItem(item: MentionItem) {
           <Icon name="alternate_email" className="text-[18px]" />
         </span>
       ) : item.kind === "agent" ? (
-        <span
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
-          style={{ backgroundColor: item.color }}
-          aria-hidden="true"
-        >
-          AI
-        </span>
+        <Avatar name={item.label} color={item.color} shape="hexagon" client={item.client} className="h-6 w-6" />
       ) : (
         <Avatar name={item.label} avatar={item.avatar} animal={item.animal} color={item.color} className="h-6 w-6" />
       )}

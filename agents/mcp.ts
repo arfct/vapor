@@ -26,8 +26,11 @@ import {
 import { eventCatalog, EVENTS_DRAFT_META_KEY, EVENTS_DRAFT_VERSION } from "./events";
 import { generateDocumentId, isValidDocumentId } from "../app/shared/constants";
 import {
-  slugifyAgentName,
+  blockHash,
   clientDisplayName,
+  counterpartLabel,
+  slugifyAgentName,
+  slugifyName,
   DEFAULT_CAPABILITIES,
   type AgentCapability,
   type AgentIdentity,
@@ -105,35 +108,37 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
   });
 
   /** Session-cached counterpart slug + label for the principal path. */
-  private agentSlug: string | null = null;
-  private agentLabel: string | null = null;
+  private owner: { uid: string; name: string } | null = null;
 
   /**
-   * The identity every tool call runs under. Principals get their global
-   * counterpart slug from the Registry (cached per session); anonymous
-   * sessions get a stable per-session id and a clientInfo-derived name.
+   * The identity every tool call runs under. Principals carry their
+   * owner's public id and display name (from the Registry, cached per
+   * session) so the document can name, colour, and mention the agent as
+   * theirs; anonymous sessions get a stable per-session id and a
+   * clientInfo-derived name.
    */
   private async identity(): Promise<AgentIdentity> {
     const auth = this.props?.auth ?? null;
     if (auth) {
-      if (!this.agentSlug) {
+      if (!this.owner) {
         const registry = (await getAgentByName(this.env.Registry, "global")) as unknown as Registry;
-        const ensured = await registry.ensureAgentSlug(auth.principal);
-        this.agentSlug =
-          "slug" in ensured ? ensured.slug : slugifyAgentName(auth.email.split("@")[0] ?? "agent");
         const { profile } = await registry.getProfile(auth.principal);
-        const ownerName = profile?.displayName ?? auth.email.split("@")[0] ?? "Someone";
-        // First name only: "Ada's Agent", not the full display name.
-        const firstName = ownerName.trim().split(/\s+/)[0] || "Someone";
-        this.agentLabel = `${firstName}'s Agent`;
+        const fallbackName = auth.email.split("@")[0] ?? "Someone";
+        this.owner = {
+          uid: profile?.uid ?? blockHash(auth.principal),
+          name: profile?.displayName ?? fallbackName,
+        };
       }
+      const client = clientDisplayName(this.server.server.getClientVersion()?.name);
       return {
         kind: "principal",
         id: auth.principal,
-        name: this.agentSlug,
-        label: this.agentLabel ?? undefined,
-        client: clientDisplayName(this.server.server.getClientVersion()?.name),
+        name: slugifyName(this.owner.name) ?? slugifyAgentName(auth.email.split("@")[0] ?? "agent"),
+        label: counterpartLabel(this.owner.name, client),
+        client,
         owner: auth.principal,
+        ownerUid: this.owner.uid,
+        ownerName: this.owner.name,
         caps: auth.caps ?? [...DEFAULT_CAPABILITIES],
       };
     }

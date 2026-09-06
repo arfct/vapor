@@ -44,40 +44,63 @@ describe("Registry", () => {
     kvStore = new Map();
   });
 
-  it("upserts and reads a profile, preserving uid and slug on update", async () => {
+  it("upserts and reads a profile, minting a short uid and keeping it on update", async () => {
     const reg = makeRegistry();
-    const { profile } = await reg.upsertProfile("email:ada@example.com", {
-      displayName: "Ada L",
-    });
-    expect(profile.uid).toBeTruthy();
-    expect(profile.agentSlug).toBeNull();
+    const { profile } = await reg.upsertProfile("google:1001", { displayName: "Ada L", email: "Ada@Example.com" });
+    expect(profile.uid).toMatch(/^[a-z0-9]{8}$/);
+    expect(profile.email).toBe("ada@example.com");
 
-    const slug = await reg.ensureAgentSlug("email:ada@example.com");
-    expect(slug).toEqual({ slug: "ada-l" });
-
-    const updated = await reg.upsertProfile("email:ada@example.com", {
+    const updated = await reg.upsertProfile("google:1001", {
       displayName: "Ada",
       avatar: "https://example.com/a.png",
     });
     expect(updated.profile.uid).toBe(profile.uid);
-    expect(updated.profile.agentSlug).toBe("ada-l");
+    expect(updated.profile.email).toBe("ada@example.com");
     expect(updated.profile.avatar).toBe("https://example.com/a.png");
+    expect((await reg.getProfile("google:1001")).profile?.displayName).toBe("Ada");
   });
 
-  it("uniquifies agent slugs globally and keeps them stable", async () => {
+  it("re-keys a legacy email principal onto the Google one, carrying the wake target and aliasing the old key", async () => {
     const reg = makeRegistry();
-    await reg.upsertProfile("email:a@x.com", { displayName: "Ada L" });
-    await reg.upsertProfile("email:b@x.com", { displayName: "Ada L" });
-    expect(await reg.ensureAgentSlug("email:a@x.com")).toEqual({ slug: "ada-l" });
-    expect(await reg.ensureAgentSlug("email:b@x.com")).toEqual({ slug: "ada-l-2" });
-    expect(await reg.ensureAgentSlug("email:a@x.com")).toEqual({ slug: "ada-l" });
-  });
-
-  it("ensureAgentSlug without a profile errors", async () => {
-    const reg = makeRegistry();
-    expect(await reg.ensureAgentSlug("email:ghost@x.com")).toMatchObject({
-      error: { code: "not_found" },
+    (reg as unknown as { env: Record<string, string> }).env = { SESSION_SECRET: "test-secret" };
+    const legacy = await reg.upsertProfile("email:ada@example.com", { displayName: "Ada L" });
+    await reg.setWakeTarget("email:ada@example.com", {
+      kind: "webhook",
+      url: "https://example.com/wake",
+      secret: "whsec_" + "a".repeat(32),
     });
+
+    const { profile } = await reg.upsertProfile("google:1001", {
+      displayName: "Ada L",
+      email: "ada@example.com",
+      legacyPrincipal: "email:ada@example.com",
+    });
+    expect(profile.principal).toBe("google:1001");
+    expect(profile.uid).toMatch(/^[a-z0-9]{8}$/);
+    expect(profile.uid).not.toBe(legacy.profile.uid);
+    expect(kvStore.has("p:email:ada@example.com")).toBe(false);
+    expect(kvStore.has(`u:${legacy.profile.uid}`)).toBe(false);
+
+    // A session or grant minted under the old principal still resolves.
+    expect((await reg.getProfile("email:ada@example.com")).profile?.uid).toBe(profile.uid);
+    expect((await reg.getWakeTarget("google:1001")).target?.url).toBe("https://example.com/wake");
+    expect((await reg.getWakeTarget("email:ada@example.com")).target?.url).toBe("https://example.com/wake");
+  });
+
+  it("resolves a typed address to name and uid, rate-limited per requester", async () => {
+    const reg = makeRegistry();
+    await reg.upsertProfile("google:1001", { displayName: "Ada L", email: "ada@example.com" });
+    await reg.upsertProfile("google:2002", { displayName: "Grace H", email: "grace@example.com", avatar: "g.png" });
+
+    const found = await reg.resolveEmail("google:1001", "Grace@Example.com");
+    expect(found).toMatchObject({ person: { displayName: "Grace H", avatar: "g.png" } });
+    expect("person" in found && found.person?.uid).toMatch(/^[a-z0-9]{8}$/);
+    expect(JSON.stringify(found)).not.toContain("grace@example.com");
+    expect(await reg.resolveEmail("google:1001", "nobody@example.com")).toEqual({ person: null });
+
+    for (let i = 0; i < 40; i++) await reg.resolveEmail("google:2002", "ada@example.com");
+    expect(await reg.resolveEmail("google:2002", "ada@example.com")).toMatchObject({ error: { code: "rate_limited" } });
+    expect(await reg.resolveEmail("google:1001", "ada@example.com")).toMatchObject({ person: { displayName: "Ada L" } });
   });
 
   it("auth codes are single use and expire", async () => {

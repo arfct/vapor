@@ -1,12 +1,19 @@
+import { fnv1a32Hex, shortIdOf } from "./short-id";
+
 export type AgentCapability = "comment" | "suggest" | "write";
 export type Pace = "natural" | "fast" | "instant";
 
 export interface AgentRosterEntry {
   name: string;            // slug, unique per doc
-  /** Display attribution ("<Owner>'s Agent"); null for anonymous agents. */
+  /** Display attribution ("<Owner>'s Claude"); null for anonymous agents. */
   label?: string | null;
   color: string;           // one of USER_COLOURS .color values
-  owner: string | null;    // free text this phase
+  /** The owner's public short id; null for anonymous agents. Never the principal. */
+  ownerUid: string | null;
+  /** The connecting client, e.g. "Claude"; null when it didn't say. */
+  client: string | null;
+  /** The mention token (without `@`), e.g. `nicholas-jitkoff+agent~k3f0a9x2`. */
+  mention: string;
   capabilities: AgentCapability[];
   createdAt: number;
   lastSeenAt: number | null;
@@ -38,7 +45,10 @@ export interface AgentIdentity {
   label?: string;
   /** Display name of the connecting client, e.g. "Claude" — shown next to comment timestamps. */
   client?: string;
-  owner: string | null; // principal for kind=principal, null for anonymous
+  owner: string | null; // principal for kind=principal, null for anonymous — server-side only
+  /** The owner's public short id and display name, for the roster and the mention token. */
+  ownerUid?: string | null;
+  ownerName?: string | null;
   caps: AgentCapability[];
 }
 
@@ -110,12 +120,7 @@ export const RATE_LIMIT_MUTATIONS_PER_MIN = 10;
 export const RATE_LIMIT_CHARS_PER_HOUR = 20_000;
 
 export function blockHash(text: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(16).padStart(8, "0");
+  return fnv1a32Hex(text);
 }
 
 export function formatAnchor(a: BlockAnchor): string {
@@ -163,42 +168,130 @@ export function slugifyAgentName(raw: string): string {
 }
 
 /**
- * `@slug` tokens that name roster agents. A slug must be whole (not
- * followed by more slug characters) and must not be the local part of an
- * email mention: `@ada@example.com` names the person ada@example.com, never
- * an agent called `ada`. A sentence-ending period after a slug is fine; a
- * period followed by a letter reads as a domain and is not.
+ * A mention token, as it appears in markdown after the `@`:
+ * `slug[+tag]~sid`. The slug is a display-name hint for readers of the raw
+ * text; the short id (and, for agents, the tag) is what resolves. The
+ * editor shows the name and hides the rest
+ * (docs/plans/2026-09-06-agent-identity-plan.md).
  */
-export function findMentions(
-  text: string,
-  rosterNames: string[]
-): string[] {
+export interface MentionToken {
+  slug: string;
+  /** `agent` for a person's counterpart agent; null for the person. */
+  tag: string | null;
+  sid: string;
+}
+
+export const MENTION_TAG_AGENT = "agent";
+
+/**
+ * Group 1 slug, group 2 tag (optional), group 3 short id; the match may
+ * start one character early (the boundary). A trailing alphanumeric means
+ * the id isn't finished, so it is not a mention yet.
+ */
+export const MENTION_RE =
+  /(?:^|[^a-z0-9@.~+])@([a-z0-9][a-z0-9-]{0,30}[a-z0-9])(?:\+([a-z0-9][a-z0-9-]{0,15}))?~([a-z0-9]{8})(?![a-z0-9~+])/g;
+
+/** One token, no `@`, or null when the text isn't exactly a token. */
+export function parseMentionToken(text: string): MentionToken | null {
+  const m = /^([a-z0-9][a-z0-9-]{0,30}[a-z0-9])(?:\+([a-z0-9][a-z0-9-]{0,15}))?~([a-z0-9]{8})$/.exec(text);
+  return m ? { slug: m[1], tag: m[2] ?? null, sid: m[3] } : null;
+}
+
+export function formatMention(token: MentionToken): string {
+  return `${token.slug}${token.tag ? `+${token.tag}` : ""}~${token.sid}`;
+}
+
+/** What a token resolves by: tag plus short id, slug ignored. */
+export function mentionKey(token: Pick<MentionToken, "tag" | "sid">): string {
+  return `${token.tag ?? ""}~${token.sid}`;
+}
+
+/** Every mention token in a text, in order, duplicates included. */
+export function findMentionTokens(text: string): MentionToken[] {
+  const out: MentionToken[] = [];
+  for (const m of text.matchAll(MENTION_RE)) out.push({ slug: m[1], tag: m[2] ?? null, sid: m[3] });
+  return out;
+}
+
+/** A person's token: their name as a slug, their short id. Null without a usable id. */
+export function personMention(name: string, id: string | null | undefined): string | null {
+  const sid = shortIdOf(id);
+  const slug = slugifyName(name) ?? "someone";
+  return sid ? formatMention({ slug, tag: null, sid }) : null;
+}
+
+/** A counterpart agent's token: the owner's name slug, the agent tag, the owner's short id. */
+export function agentMention(ownerName: string, ownerUid: string): string {
+  const sid = shortIdOf(ownerUid) ?? fnv1a32Hex(ownerUid);
+  return formatMention({ slug: slugifyName(ownerName) ?? "agent", tag: MENTION_TAG_AGENT, sid });
+}
+
+/**
+ * A counterpart agent's display name: the owner's first name, possessive,
+ * plus the client it connected from — "Ada's Claude" — or "Ada's Agent"
+ * when the client didn't identify itself.
+ */
+export function counterpartLabel(ownerName: string, client: string | null | undefined): string {
+  const firstName = ownerName.trim().split(/\s+/)[0] || "Someone";
+  return `${firstName}'s ${client ?? "Agent"}`;
+}
+
+/** An anonymous agent's token: its client slug and a short id from its session. */
+export function anonymousAgentMention(name: string, sessionId: string): string {
+  return formatMention({ slug: name, tag: null, sid: fnv1a32Hex(sessionId) });
+}
+
+/** A roster agent as the mention matcher sees it: its internal name and its token. */
+export interface MentionTarget {
+  name: string;
+  mention?: string | null;
+}
+
+/**
+ * The roster agents a text mentions, by internal name, once each. A token
+ * matches an agent whose `mention` has the same tag and short id (the slug
+ * is a hint and may be stale). A bare `@slug` still matches an agent by
+ * internal name, so mentions written before tokens existed keep working
+ * until their documents expire. A slug followed by `@` is never read as an
+ * agent: `@ada@example.com` is text about an address, not `@ada`.
+ */
+export function findMentions(text: string, roster: readonly (string | MentionTarget)[]): string[] {
+  const byName = new Map<string, string>();
+  const byKey = new Map<string, string>();
+  for (const entry of roster) {
+    const target = typeof entry === "string" ? { name: entry } : entry;
+    byName.set(target.name, target.name);
+    const token = target.mention ? parseMentionToken(target.mention) : null;
+    if (token) byKey.set(mentionKey(token), target.name);
+  }
+
   const found = new Set<string>();
+  for (const token of findMentionTokens(text)) {
+    const name = byKey.get(mentionKey(token));
+    if (name) found.add(name);
+  }
   for (const m of text.matchAll(SLUG_MENTION_RE)) {
-    if (rosterNames.includes(m[1])) found.add(m[1]);
+    const name = byName.get(m[1]);
+    if (name) found.add(name);
   }
   return [...found];
 }
 
 /** Group 1 is the slug; the match may start one character early (the boundary). */
 export const SLUG_MENTION_RE =
-  /(?:^|[^a-z0-9@.])@([a-z0-9][a-z0-9-]{0,30}[a-z0-9])(?![a-z0-9@-])(?!\.[a-z0-9])/g;
+  /(?:^|[^a-z0-9@.])@([a-z0-9][a-z0-9-]{0,30}[a-z0-9])(?![a-z0-9@~+-])(?!\.[a-z0-9])/g;
 
 /**
- * `@local@domain.tld` tokens: a person mentioned by full email address.
- * Case-insensitive, returned lowercased and deduplicated. A bare address
- * without the leading `@` is ordinary text, as it always was.
+ * Plain-text mentions with their ids removed: `@nicholas-jitkoff+agent~k3f0a9x2`
+ * reads as `@nicholas-jitkoff`. For surfaces that show comment text as
+ * text, where the editor's node isn't there to hide the id.
  */
-export function findEmailMentions(text: string): string[] {
-  const found = new Set<string>();
-  for (const m of text.matchAll(EMAIL_MENTION_RE)) {
-    found.add(m[1].toLowerCase());
-  }
-  return [...found];
+export function stripMentionIds(text: string): string {
+  return text.replace(MENTION_RE, (match, slug: string) => {
+    const at = match.indexOf("@");
+    return `${match.slice(0, at)}@${slug}`;
+  });
 }
-
-export const EMAIL_MENTION_RE =
-  /(?:^|[^a-z0-9@.])@([a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+)(?![a-z0-9@.-])/gi;
 
 /** True when a completion query has the shape of an email address. */
 export function isEmailQuery(query: string): boolean {
@@ -224,22 +317,25 @@ export function slugifyName(raw: string): string | null {
 /** One row in the `@` completion popup. `handle` is the text inserted after `@`. */
 export interface MentionItem {
   kind: "agent" | "person" | "email";
+  /** The mention token for agents and people; the typed address for an email row. */
   handle: string;
   /** Primary text: an agent's label or a person's display name. */
   label: string;
-  /** Secondary text: the handle for agents, the email for signed-in people. */
+  /** Secondary text: the readable part of the handle, never the id. */
   detail?: string;
   color?: string;
   avatar?: string;
   animal?: string;
+  /** The agent's client, for its mark. */
+  client?: string | null;
 }
 
 export interface MentionSources {
-  agents: Pick<AgentRosterEntry, "name" | "label" | "color">[];
+  agents: Pick<AgentRosterEntry, "name" | "label" | "color" | "mention" | "client">[];
   people: {
     name: string;
     color: string;
-    /** `email:<addr>` for signed-in people, an anonymous id otherwise. */
+    /** The person's public id: a short uid for the signed-in, the browser id otherwise. */
     id?: string;
     avatar?: string;
     animal?: string;
@@ -247,14 +343,19 @@ export interface MentionSources {
   }[];
 }
 
-const EMAIL_PRINCIPAL = /^email:(.+)$/i;
+/** The readable part of a token, for a popup's detail line: `@slug` or `@slug+tag`. */
+function readableHandle(handle: string): string {
+  const token = parseMentionToken(handle);
+  return token ? `@${token.slug}${token.tag ? `+${token.tag}` : ""}` : `@${handle}`;
+}
 
 /**
  * Builds the `@` completion list: agents first (mentioning one wakes it),
- * then people. Signed-in people complete to their email; anonymous people
- * to a slug of their name, with `-2`, `-3`… when it collides with an agent
- * or an earlier person. A query shaped like an email adds a final row that
- * inserts the address as typed, so anyone can be addressed.
+ * then people. Both complete to a token carrying a short id, so the
+ * document names exactly one of them; a person with no usable id falls
+ * back to a name slug, uniquified within the list. A query shaped like an
+ * email adds a final row that the popup resolves to a person before
+ * anything is inserted — the address itself is never written.
  */
 export function rankMentionItems(query: string, sources: MentionSources, max = 8): MentionItem[] {
   const q = query.trim().toLowerCase();
@@ -262,23 +363,23 @@ export function rankMentionItems(query: string, sources: MentionSources, max = 8
   const items: MentionItem[] = [];
 
   for (const agent of sources.agents) {
+    const handle = agent.mention || agent.name;
+    taken.add(handle);
     taken.add(agent.name);
     items.push({
       kind: "agent",
-      handle: agent.name,
+      handle,
       label: agent.label ?? agent.name,
-      detail: `@${agent.name}`,
+      detail: readableHandle(handle),
       color: agent.color,
+      client: agent.client ?? null,
     });
   }
 
   for (const person of sources.people) {
     if (person.isAgent) continue;
-    const email = person.id ? EMAIL_PRINCIPAL.exec(person.id)?.[1]?.toLowerCase() : undefined;
-    let handle: string;
-    if (email) {
-      handle = email;
-    } else {
+    let handle = personMention(person.name, person.id);
+    if (!handle) {
       const base = slugifyName(person.name);
       if (!base) continue;
       handle = base;
@@ -290,7 +391,7 @@ export function rankMentionItems(query: string, sources: MentionSources, max = 8
       kind: "person",
       handle,
       label: person.name,
-      detail: email ?? `@${handle}`,
+      detail: readableHandle(handle),
       color: person.color,
       avatar: person.avatar,
       animal: person.animal,
@@ -302,7 +403,7 @@ export function rankMentionItems(query: string, sources: MentionSources, max = 8
     : items;
   const ranked = matches.slice(0, max);
 
-  if (isEmailQuery(q) && !ranked.some((item) => item.handle === q)) {
+  if (isEmailQuery(q)) {
     ranked.push({ kind: "email", handle: q, label: `Mention ${q}` });
   }
   return ranked;

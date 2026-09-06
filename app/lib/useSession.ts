@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 
 export interface Session {
   signedIn: boolean;
-  principal?: string;
+  /** The signed-in person's public short id; what presence and attribution carry. */
+  uid?: string | null;
   email?: string;
   displayName?: string;
-  agentSlug?: string | null;
   avatar?: string | null;
 }
 

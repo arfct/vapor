@@ -184,7 +184,7 @@ export default function WakeSection({
     setEditing(true);
   };
 
-  const mine = signedIn ? roster.find((entry) => entry.owner === session?.principal) : undefined;
+  const mine = signedIn && session?.uid ? roster.find((entry) => entry.ownerUid === session.uid) : undefined;
   const title = "Listen for changes and mentions";
 
   let body: React.ReactNode;

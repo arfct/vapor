@@ -8,13 +8,27 @@ import type { AgentClientId } from "~/shared/agent-clients";
 
 const MARKS: Record<AgentClientId, string> = { claude, chatgpt, cursor, gemini, vscode, other };
 
+/** A client's mark as raw SVG, for DOM built outside React (the collaboration caret). */
+export function agentClientMarkSvg(client: AgentClientId): string {
+  return MARKS[client] ?? other;
+}
+
 /**
  * A client's mark, inline so it takes the current text colour in either
  * theme. The SVG files are the source of truth (app/assets/agents); each is
  * 24×24 with `fill="currentColor"` and no title, so the label alongside does
  * the naming.
  */
-export default function AgentClientIcon({ client, size = 20, className = "" }: { client: AgentClientId; size?: number; className?: string }) {
+export default function AgentClientIcon({
+  client,
+  size = 20,
+  className = "",
+}: {
+  client: AgentClientId;
+  /** Pixels, or any CSS length (a percentage fills a hexagon avatar). */
+  size?: number | string;
+  className?: string;
+}) {
   return (
     <span
       aria-hidden="true"

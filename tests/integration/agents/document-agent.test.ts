@@ -966,9 +966,41 @@ describe("DocumentAgent", () => {
       expect(roster).toHaveLength(1);
       expect(roster[0]).toMatchObject({
         name: "claude-code",
-        owner: null,
+        ownerUid: null,
+        client: null,
+        mention: expect.stringMatching(/^claude-code~[0-9a-f]{8}$/),
         capabilities: ["suggest", "comment"],
       });
+      // The roster's public shape never carries the principal.
+      expect(roster[0]).not.toHaveProperty("owner");
+    });
+
+    it("enrolls a counterpart under its owner's uid, colour, and mention token", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+
+      const ada = identity({
+        kind: "principal",
+        id: "google:1001",
+        name: "ada-lovelace",
+        label: "Ada's Claude",
+        client: "Claude",
+        owner: "google:1001",
+        ownerUid: "k3f0a9x2",
+        ownerName: "Ada Lovelace",
+        caps: ["suggest", "comment"],
+      });
+      expect(await agent.agentJoin(ada)).toEqual({ ok: true });
+
+      const [entry] = await agent.getAgentRoster();
+      expect(entry).toMatchObject({
+        name: "ada-lovelace",
+        label: "Ada's Claude",
+        client: "Claude",
+        ownerUid: "k3f0a9x2",
+        mention: "ada-lovelace+agent~k3f0a9x2",
+      });
+      expect(entry).not.toHaveProperty("owner");
+      expect(JSON.stringify(entry)).not.toContain("google:");
     });
 
     it("clears the roster on doc expiry (alarm), and a subsequent RPC re-enrolls fresh", async () => {

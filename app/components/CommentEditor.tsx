@@ -3,6 +3,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import { Extension, type Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { MentionSuggestion, type MentionSourceRef } from "~/lib/mention-suggestion";
+import { Mention } from "~/lib/mention";
 
 /** Enter sends, Escape cancels; the mention popup, at higher priority, sees both first while open. */
 const SubmitKeys = Extension.create<{ onSubmit: (editor: Editor) => void; onCancel: () => void }>({
@@ -90,6 +91,9 @@ const CommentEditor = forwardRef<
         undoRedo: false,
         trailingNode: false,
       }),
+      // A completed mention is a node here too, so the popup's insertion has
+      // somewhere to land; getText renders it back as its token.
+      Mention.configure({ targets: null }),
       MentionSuggestion.configure({ sources: mentions, docState: null }),
       // Handlers reach the latest props through refs: extension options are
       // fixed when the editor is created, before the first render has one.

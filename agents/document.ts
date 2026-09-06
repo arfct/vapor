@@ -7,7 +7,9 @@ import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import { MSG_SYNC, MSG_AWARENESS, DOCUMENT_TTL_MS, DOC_FORMAT_VERSION, USER_COLOURS } from "../app/shared/constants";
 import { animalGlyphForLabel } from "../app/shared/anon-animals";
-import type { AgentIdentity, AgentCapability, AgentRosterEntry, AgentError, Pace } from "../app/shared/agent-protocol";
+import type { AgentIdentity, AgentCapability, AgentRosterEntry, AgentError, MentionTarget, Pace } from "../app/shared/agent-protocol";
+import { agentMention, anonymousAgentMention } from "../app/shared/agent-protocol";
+import { colorIndexFor } from "../app/shared/short-id";
 import {
   AGENT_NAME_RE,
   findMentions,
@@ -173,6 +175,12 @@ interface RosterRow {
   last_seen_at: number | null;
   /** JSON array of { at: epoch-ms, chars: number }, pruned to the last hour. */
   recent_mutations?: string | null;
+  /** The mention token (without `@`); null on rows enrolled before tokens existed. */
+  mention?: string | null;
+  /** The owner's public short id; null for anonymous agents. */
+  owner_uid?: string | null;
+  /** The connecting client's display name, e.g. "Claude". */
+  client?: string | null;
 }
 
 /** One recorded mutation, used for rate-limiting agent writes. */
@@ -186,11 +194,24 @@ function rowToRosterEntry(row: RosterRow): AgentRosterEntry {
     name: row.name,
     label: row.label ?? null,
     color: row.color,
-    owner: row.owner,
+    ownerUid: row.owner_uid ?? null,
+    client: row.client ?? null,
+    // Rows enrolled before tokens existed are mentioned by bare name.
+    mention: row.mention ?? row.name,
     capabilities: JSON.parse(row.capabilities) as AgentCapability[],
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
   };
+}
+
+/**
+ * The token a document mentions an agent by: the owner's name and public
+ * id for a counterpart, the client name and a session id for an
+ * anonymous agent (docs/plans/2026-09-06-agent-identity-plan.md).
+ */
+function mentionForIdentity(identity: AgentIdentity, name: string): string {
+  if (identity.ownerUid && identity.ownerName) return agentMention(identity.ownerName, identity.ownerUid);
+  return anonymousAgentMention(name, identity.id);
 }
 
 class DocumentAgent extends Agent {
@@ -305,6 +326,12 @@ class DocumentAgent extends Agent {
         recent_mutations TEXT
       )
     `;
+    // Columns added after the table shipped (identity plan): mention token,
+    // owner's public id, connecting client. Rows from before stay valid.
+    const rosterColumns = new Set(this.sql<{ name: string }>`PRAGMA table_info(roster)`.map((c) => c.name));
+    if (!rosterColumns.has("mention")) this.sql`ALTER TABLE roster ADD COLUMN mention TEXT`;
+    if (!rosterColumns.has("owner_uid")) this.sql`ALTER TABLE roster ADD COLUMN owner_uid TEXT`;
+    if (!rosterColumns.has("client")) this.sql`ALTER TABLE roster ADD COLUMN client TEXT`;
     this.sql`
       CREATE TABLE IF NOT EXISTS performances (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -439,7 +466,7 @@ class DocumentAgent extends Agent {
       // No agents on the roster means nothing consumes events — not
       // mentions, and not doc_changed digests either. Check first, so an
       // agentless document accrues no `events` rows at all.
-      const rosterNames = this.getRosterNamesSync();
+      const rosterNames = this.getRosterTargetsSync();
       if (rosterNames.length === 0) return;
 
       const now = Date.now();
@@ -487,7 +514,7 @@ class DocumentAgent extends Agent {
     threadsMap.observe((event, transaction) => {
       if (transaction.origin === "agent") return;
 
-      const rosterNames = this.getRosterNamesSync();
+      const rosterNames = this.getRosterTargetsSync();
       if (rosterNames.length === 0) return;
 
       for (const key of event.keysChanged) {
@@ -521,7 +548,7 @@ class DocumentAgent extends Agent {
           this.recordEvent("mention", { agent: name, text: lastReply.text, threadId: thread.id });
         }
 
-        if (!rosterNames.includes(thread.author?.name)) continue;
+        if (!rosterNames.some((target) => target.name === thread.author?.name)) continue;
         if (lastReply.author?.name === thread.author.name) continue;
         this.recordEvent("thread_reply", { agent: thread.author.name, threadId: thread.id });
       }
@@ -842,6 +869,17 @@ class DocumentAgent extends Agent {
         this.sql`UPDATE roster SET label = ${label} WHERE identity_id = ${identity.id}`;
         row.label = label;
       }
+      // Identity details can change between sessions (a rename, another
+      // client) and rows from before these columns existed have none.
+      const mention = mentionForIdentity(identity, row.name);
+      const ownerUid = identity.ownerUid ?? null;
+      const client = identity.client ?? null;
+      if ((row.mention ?? null) !== mention || (row.owner_uid ?? null) !== ownerUid || (row.client ?? null) !== client) {
+        this.sql`UPDATE roster SET mention = ${mention}, owner_uid = ${ownerUid}, client = ${client} WHERE identity_id = ${identity.id}`;
+        row.mention = mention;
+        row.owner_uid = ownerUid;
+        row.client = client;
+      }
       return { entry: rowToRosterEntry(row) };
     }
 
@@ -867,18 +905,27 @@ class DocumentAgent extends Agent {
         : `${base}${suffix}`;
     }
 
-    const color = USER_COLOURS[roster.length % USER_COLOURS.length].color;
+    // A counterpart draws in its owner's colour, the same one the owner
+    // gets in every document; anonymous agents rotate through the palette.
+    const color = identity.ownerUid
+      ? USER_COLOURS[colorIndexFor(identity.ownerUid, USER_COLOURS.length)].color
+      : USER_COLOURS[roster.length % USER_COLOURS.length].color;
+    const mention = mentionForIdentity(identity, name);
+    const ownerUid = identity.ownerUid ?? null;
+    const client = identity.client ?? null;
     const createdAt = Date.now();
     this.sql`
-      INSERT INTO roster (identity_id, name, label, color, owner, capabilities, created_at, last_seen_at)
-      VALUES (${identity.id}, ${name}, ${identity.label ?? null}, ${color}, ${identity.owner}, ${JSON.stringify(identity.caps)}, ${createdAt}, ${null})
+      INSERT INTO roster (identity_id, name, label, color, owner, capabilities, created_at, last_seen_at, mention, owner_uid, client)
+      VALUES (${identity.id}, ${name}, ${identity.label ?? null}, ${color}, ${identity.owner}, ${JSON.stringify(identity.caps)}, ${createdAt}, ${null}, ${mention}, ${ownerUid}, ${client})
     `;
     return {
       entry: {
         name,
         label: identity.label ?? null,
         color,
-        owner: identity.owner,
+        ownerUid,
+        client,
+        mention,
         capabilities: identity.caps,
         createdAt,
         lastSeenAt: null,
@@ -900,9 +947,9 @@ class DocumentAgent extends Agent {
    * (which cannot await getAgentRoster's async signature, even though its
    * body is itself fully synchronous SQL access).
    */
-  private getRosterNamesSync(): string[] {
-    const rows = this.sql<{ name: string }>`SELECT name FROM roster`;
-    return rows.map((r) => r.name);
+  private getRosterTargetsSync(): MentionTarget[] {
+    const rows = this.sql<{ name: string; mention: string | null }>`SELECT name, mention FROM roster`;
+    return rows.map((r) => ({ name: r.name, mention: r.mention }));
   }
 
   /**
@@ -948,7 +995,7 @@ class DocumentAgent extends Agent {
    * the live Yjs block, so it needs no explicit clearing: entries go away
    * with the blocks (and with the whole document on expiry).
    */
-  private notifyMentions(block: Y.AbstractType<unknown>, text: string, rosterNames: string[]): void {
+  private notifyMentions(block: Y.AbstractType<unknown>, text: string, rosterNames: MentionTarget[]): void {
     const mentioned = new Set(findMentions(text, rosterNames));
 
     let notified = this.notifiedMentions.get(block);
@@ -1501,7 +1548,7 @@ class DocumentAgent extends Agent {
         blocks: { anchor: string; text: string }[];
         /** Standing per-document guidance addressed to agents; null when the document has none. */
         instructions: string | null;
-        presence: { name: string; isAgent: boolean }[];
+        presence: { name: string; isAgent: boolean; mention?: string }[];
         threads: ThreadData[];
       }
     | { error: AgentError }
@@ -1516,7 +1563,7 @@ class DocumentAgent extends Agent {
     const instructionBlocks = getAgentInstructions(doc);
     const instructions = instructionBlocks.length > 0 ? instructionBlocks.join("\n\n") : null;
 
-    const presence: { name: string; isAgent: boolean }[] = [];
+    const presence: { name: string; isAgent: boolean; mention?: string }[] = [];
     for (const state of awareness.getStates().values()) {
       const user = (state as { user?: { name?: string } }).user;
       if (user?.name) presence.push({ name: user.name, isAgent: false });
@@ -1526,7 +1573,7 @@ class DocumentAgent extends Agent {
     const roster = await this.getAgentRoster();
     for (const entry of roster) {
       if (entry.lastSeenAt != null && now - entry.lastSeenAt < 5 * 60 * 1000) {
-        presence.push({ name: entry.label ?? entry.name, isAgent: true });
+        presence.push({ name: entry.label ?? entry.name, isAgent: true, mention: `@${entry.mention}` });
       }
     }
 
@@ -2099,9 +2146,9 @@ class DocumentAgent extends Agent {
     const verified = await this.verifyIdentity(identity);
     if ("error" in verified) return verified;
 
-    const { name, label, color } = verified.entry;
+    const { name, label, color, client } = verified.entry;
     this.setAgentPresence(name, {
-      user: { name: label ?? name, color, isAgent: true },
+      user: { name: label ?? name, color, isAgent: true, ...(client ? { agentClient: client } : {}) },
       ...(status !== undefined ? { status } : {}),
     });
     this.resetAgentIdleTimer(name);
@@ -2558,11 +2605,16 @@ class DocumentAgent extends Agent {
     const status = existing?.state?.status;
     let user = existing?.state?.user;
     if (!user) {
-      const rows = this.sql<{ name: string; label: string | null; color: string }>`
-        SELECT name, label, color FROM roster WHERE name = ${agentName}
+      const rows = this.sql<{ name: string; label: string | null; color: string; client: string | null }>`
+        SELECT name, label, color, client FROM roster WHERE name = ${agentName}
       `;
       if (rows.length === 0) return; // unknown agent — nothing sane to show
-      user = { name: rows[0].label ?? rows[0].name, color: rows[0].color, isAgent: true };
+      user = {
+        name: rows[0].label ?? rows[0].name,
+        color: rows[0].color,
+        isAgent: true,
+        ...(rows[0].client ? { agentClient: rows[0].client } : {}),
+      };
     }
 
     this.setAgentPresence(agentName, { user, ...(status !== undefined ? { status } : {}), cursor });

@@ -13,7 +13,7 @@ import { blockHash } from "~/shared/agent-protocol";
  * `Y.createRelativePositionFromJSON`.
  */
 export interface AgentPresenceState {
-  user: { name: string; color: string; isAgent: true };
+  user: { name: string; color: string; isAgent: true; agentClient?: string };
   status?: string;
   cursor?: unknown;
 }

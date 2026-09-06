@@ -17,7 +17,7 @@ import { handleOAuth, OAUTH_CORS } from "./oauth";
 import { handleAttachmentUpload, handleAttachmentServe } from "./attachments";
 import { buildAttachmentDeps } from "./attachment-deps";
 import { handleWakeRoutes } from "./wake-routes";
-import { slugifyAgentName } from "../app/shared/agent-protocol";
+import { agentMention } from "../app/shared/agent-protocol";
 import type Registry from "../agents/registry";
 
 export { default as DocumentAgent } from "../agents/document";
@@ -81,6 +81,7 @@ export default {
         verifyGoogle: verifyGoogleIdToken,
         upsertProfile: (principal, info) => registry.upsertProfile(principal, info),
         getProfile: (principal) => registry.getProfile(principal),
+        resolveEmail: (requester, email) => registry.resolveEmail(requester, email),
       });
       if (authResponse) {
         return authResponse;
@@ -94,8 +95,8 @@ export default {
       const wakeResponse = await handleWakeRoutes(request, {
         secret: env.SESSION_SECRET ?? "",
         agentNameFor: async (principal) => {
-          const ensured = await registry.ensureAgentSlug(principal);
-          return "slug" in ensured ? ensured.slug : slugifyAgentName(principal.replace(/^email:/, "").split("@")[0] ?? "agent");
+          const { profile } = await registry.getProfile(principal);
+          return profile ? agentMention(profile.displayName, profile.uid) : "agent";
         },
         getTarget: (principal) => registry.getWakeTarget(principal),
         setTarget: (principal, input) => registry.setWakeTarget(principal, input),

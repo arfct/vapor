@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  blockHash, formatAnchor, parseAnchor, findMentions, findEmailMentions, isEmailQuery, slugifyName, rankMentionItems, AGENT_NAME_RE,
+  blockHash, formatAnchor, parseAnchor, findMentions, findMentionTokens, parseMentionToken, formatMention, personMention,
+  agentMention, stripMentionIds, isEmailQuery, slugifyName, rankMentionItems, AGENT_NAME_RE,
   RESERVED_SLUGS, isReservedSlug, slugifyAgentName,
   type AgentIdentity,
 } from "~/shared/agent-protocol";
@@ -29,6 +30,42 @@ describe("findMentions", () => {
   });
   it("requires word boundary", () => {
     expect(findMentions("email me@scribe.com", ["scribe"])).toEqual([]);
+  });
+  it("matches a token by tag and short id, ignoring the slug", () => {
+    const roster = [{ name: "nicholas-jitkoff", mention: "nicholas-jitkoff+agent~k3f0a9x2" }];
+    expect(findMentions("ask @nick+agent~k3f0a9x2 please", roster)).toEqual(["nicholas-jitkoff"]);
+    expect(findMentions("ask @nicholas-jitkoff~k3f0a9x2 please", roster)).toEqual([]);
+    expect(findMentions("ask @nicholas-jitkoff+agent~zzzzzzzz please", roster)).toEqual([]);
+  });
+  it("still matches a bare slug for agents named before tokens", () => {
+    const roster = [{ name: "scribe", mention: "scribe~c41d7e90" }];
+    expect(findMentions("@scribe do it", roster)).toEqual(["scribe"]);
+    expect(findMentions("@scribe~c41d7e90 do it", roster)).toEqual(["scribe"]);
+  });
+});
+
+describe("mention tokens", () => {
+  it("round-trips through parse and format", () => {
+    const token = { slug: "nicholas-jitkoff", tag: "agent", sid: "k3f0a9x2" };
+    expect(formatMention(token)).toBe("nicholas-jitkoff+agent~k3f0a9x2");
+    expect(parseMentionToken("nicholas-jitkoff+agent~k3f0a9x2")).toEqual(token);
+    expect(parseMentionToken("quiet-otter~3b9e02d7")).toEqual({ slug: "quiet-otter", tag: null, sid: "3b9e02d7" });
+    expect(parseMentionToken("quiet-otter")).toBeNull();
+    expect(parseMentionToken("quiet-otter~short")).toBeNull();
+  });
+  it("finds tokens in prose and not in addresses or unfinished ids", () => {
+    const found = findMentionTokens("cc @ada~k3f0a9x2, @bob+agent~d02e77b4. not me@ada~k3f0a9x2 nor @x~k3f0a9x2z");
+    expect(found.map(formatMention)).toEqual(["ada~k3f0a9x2", "bob+agent~d02e77b4"]);
+  });
+  it("derives a person's and an agent's token from name and id", () => {
+    expect(personMention("Nicholas Jitkoff", "k3f0a9x2")).toBe("nicholas-jitkoff~k3f0a9x2");
+    expect(personMention("Quiet Otter", "3b9e02d7-1c4e-4f6a-9a1b-0c2d3e4f5a6b")).toBe("quiet-otter~3b9e02d7");
+    expect(personMention("Quiet Otter", undefined)).toBeNull();
+    expect(agentMention("Nicholas Jitkoff", "k3f0a9x2")).toBe("nicholas-jitkoff+agent~k3f0a9x2");
+  });
+  it("strips ids for plain-text display", () => {
+    expect(stripMentionIds("hi @nicholas-jitkoff+agent~k3f0a9x2 and @ada~d02e77b4!")).toBe("hi @nicholas-jitkoff and @ada!");
+    expect(stripMentionIds("no mentions here")).toBe("no mentions here");
   });
 });
 
@@ -128,7 +165,7 @@ describe("slugifyAgentName", () => {
   });
 });
 
-describe("findMentions and email mentions", () => {
+describe("findMentions boundaries", () => {
   it("does not read the local part of an email mention as an agent", () => {
     expect(findMentions("ping @ada@example.com", ["ada"])).toEqual([]);
     expect(findMentions("ping @ada@example.com and @ada", ["ada"])).toEqual(["ada"]);
@@ -137,12 +174,6 @@ describe("findMentions and email mentions", () => {
     expect(findMentions("thanks @scribe.", ["scribe"])).toEqual(["scribe"]);
     expect(findMentions("see @scribe.com", ["scribe"])).toEqual([]);
     expect(findMentions("@scribe-x is not @scribe", ["scribe"])).toEqual(["scribe"]);
-  });
-  it("finds email mentions, lowercased and once each", () => {
-    expect(findEmailMentions("cc @Ada@Example.com, @ada@example.com; not ada@example.com"))
-      .toEqual(["ada@example.com"]);
-    expect(findEmailMentions("@a.b+c@sub.example.co.uk done")).toEqual(["a.b+c@sub.example.co.uk"]);
-    expect(findEmailMentions("@scribe only")).toEqual([]);
   });
   it("isEmailQuery recognises a complete address only", () => {
     expect(isEmailQuery("ada@example.com")).toBe(true);
@@ -161,38 +192,39 @@ describe("slugifyName", () => {
 
 describe("rankMentionItems", () => {
   const sources = {
-    agents: [{ name: "scribe", label: "Ada's Agent", color: "#111" }],
+    agents: [{ name: "ada-lovelace", label: "Ada's Claude", color: "#111", mention: "ada-lovelace+agent~k3f0a9x2", client: "Claude" }],
     people: [
-      { name: "Ada Lovelace", color: "#222", id: "email:Ada@Example.com", avatar: "a.png" },
-      { name: "Quiet Otter", color: "#333", id: "anon-1", animal: "🦦" },
+      { name: "Ada Lovelace", color: "#222", id: "k3f0a9x2", avatar: "a.png" },
+      { name: "Quiet Otter", color: "#333", id: "3b9e02d7-1c4e-4f6a-9a1b-0c2d3e4f5a6b", animal: "🦦" },
       { name: "Scribe", color: "#444" },
       { name: "Bot", color: "#555", isAgent: true },
     ],
   };
 
-  it("lists agents first, signed-in people by email, anonymous people by slug", () => {
+  it("lists agents first, then people, each as a token; a person with no id gets a slug", () => {
     const items = rankMentionItems("", sources);
     expect(items.map((i) => [i.kind, i.handle])).toEqual([
-      ["agent", "scribe"],
-      ["person", "ada@example.com"],
-      ["person", "quiet-otter"],
-      ["person", "scribe-2"],
+      ["agent", "ada-lovelace+agent~k3f0a9x2"],
+      ["person", "ada-lovelace~k3f0a9x2"],
+      ["person", "quiet-otter~3b9e02d7"],
+      ["person", "scribe"],
     ]);
-    expect(items[0].label).toBe("Ada's Agent");
-    expect(items[1].detail).toBe("ada@example.com");
+    expect(items[0].label).toBe("Ada's Claude");
+    expect(items[0].detail).toBe("@ada-lovelace+agent");
+    expect(items[0].client).toBe("Claude");
+    expect(items[1].detail).toBe("@ada-lovelace");
+    expect(items.every((i) => !i.handle.includes("@"))).toBe(true);
   });
 
   it("filters by handle, label, and any word of the name", () => {
-    expect(rankMentionItems("love", sources).map((i) => i.handle)).toEqual(["ada@example.com"]);
-    expect(rankMentionItems("ott", sources).map((i) => i.handle)).toEqual(["quiet-otter"]);
-    expect(rankMentionItems("scr", sources).map((i) => i.handle)).toEqual(["scribe", "scribe-2"]);
+    expect(rankMentionItems("love", sources).map((i) => i.handle)).toEqual(["ada-lovelace~k3f0a9x2"]);
+    expect(rankMentionItems("ott", sources).map((i) => i.handle)).toEqual(["quiet-otter~3b9e02d7"]);
+    expect(rankMentionItems("scr", sources).map((i) => i.handle)).toEqual(["scribe"]);
   });
 
-  it("adds a typed email as its own row unless it is already listed", () => {
+  it("adds a typed email as a row to resolve, never as a handle to insert", () => {
     const typed = rankMentionItems("bob@example.org", sources);
     expect(typed).toEqual([{ kind: "email", handle: "bob@example.org", label: "Mention bob@example.org" }]);
-    const known = rankMentionItems("ada@example.com", sources);
-    expect(known.map((i) => i.kind)).toEqual(["person"]);
   });
 
   it("caps the list", () => {

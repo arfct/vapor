@@ -4,7 +4,7 @@ import { useDocument } from "~/lib/DocumentContext";
 import { usePeople } from "~/lib/usePeople";
 import { timeAgo } from "~/lib/time-ago";
 import type { Person, PresenceUser } from "~/lib/people";
-import type { AgentRosterEntry } from "~/shared/agent-protocol";
+import { parseMentionToken, type AgentRosterEntry } from "~/shared/agent-protocol";
 import { isValidDocumentId } from "~/shared/constants";
 import Avatar from "~/components/Avatar";
 import Icon from "~/components/Icon";
@@ -32,7 +32,15 @@ function Face({ user, away, className }: { user: PresenceUser; away: boolean; cl
     // opacity/filter create stacking contexts that would float dimmed faces
     // above the others; give every face one, with the present ones on top.
     <span className={`relative inline-flex rounded-full bg-paper ${away ? "z-0 opacity-50 grayscale" : "z-10"}`}>
-      <Avatar name={user.name} avatar={user.avatar} animal={user.animal} color={user.color} className={className} />
+      <Avatar
+        name={user.name}
+        avatar={user.avatar}
+        animal={user.animal}
+        color={user.color}
+        shape={user.isAgent ? "hexagon" : "circle"}
+        client={user.agentClient}
+        className={className}
+      />
     </span>
   );
 }
@@ -49,6 +57,12 @@ interface Row {
 
 function agentDisplayName(entry: AgentRosterEntry): string {
   return entry.label ?? entry.name;
+}
+
+/** The readable part of an agent's mention, `@slug+agent`, never its id. */
+function agentHandle(entry: AgentRosterEntry): string {
+  const token = parseMentionToken(entry.mention);
+  return token ? `@${token.slug}${token.tag ? `+${token.tag}` : ""}` : `@${entry.name}`;
 }
 
 /**
@@ -91,8 +105,12 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
   );
 
   const mention = useCallback(
-    (name: string) => {
-      editorInstance?.chain().focus().insertContent(`@${name} `).run();
+    (entry: AgentRosterEntry) => {
+      const token = parseMentionToken(entry.mention);
+      const content = token
+        ? [{ type: "mention", attrs: { slug: token.slug, tag: token.tag, sid: token.sid } }, { type: "text", text: " " }]
+        : `@${entry.name} `;
+      editorInstance?.chain().focus().insertContent(content).run();
       setOpen(false);
     },
     [editorInstance],
@@ -116,7 +134,7 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
     if (present.has(entry.name)) continue;
     rows.push({
       key: `agent:${entry.name}`,
-      user: { name: agentDisplayName(entry), color: entry.color, isAgent: true },
+      user: { name: agentDisplayName(entry), color: entry.color, isAgent: true, agentClient: entry.client ?? undefined },
       away: true,
       status: entry.lastSeenAt ? `Agent · ${timeAgo(entry.lastSeenAt)}` : "Agent",
       agent: entry,
@@ -163,7 +181,7 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
                 <span className="min-w-0 truncate">
                   {row.user.name}
                   {row.agent ? (
-                    <span className="font-mono text-xs text-muted"> @{row.agent.name}</span>
+                    <span className="font-mono text-xs text-muted"> {agentHandle(row.agent)}</span>
                   ) : (
                     row.user.isAgent && row.user.agentClient && <span className="text-muted"> · {row.user.agentClient}</span>
                   )}
@@ -180,9 +198,9 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
                       </button>
                     </MenuTrigger>
                     <MenuContent align="end">
-                      {editorInstance && <MenuItem onClick={() => mention(row.agent!.name)}>Mention @{row.agent.name}</MenuItem>}
-                      <MenuItem onClick={() => navigator.clipboard?.writeText(`@${row.agent!.name}`).catch(() => {})}>
-                        Copy @{row.agent.name}
+                      {editorInstance && <MenuItem onClick={() => mention(row.agent!)}>Mention {agentHandle(row.agent)}</MenuItem>}
+                      <MenuItem onClick={() => navigator.clipboard?.writeText(`@${row.agent!.mention}`).catch(() => {})}>
+                        Copy {agentHandle(row.agent)}
                       </MenuItem>
                       <MenuSeparator />
                       <MenuItem destructive onClick={() => revoke(row.agent!.name)}>

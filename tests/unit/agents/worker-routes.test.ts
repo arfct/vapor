@@ -253,16 +253,22 @@ describe("handleAuth", () => {
       secret: "test-secret",
       googleClientId: "client-123",
       verifyGoogle: vi.fn(async () => ({
+        sub: "10769150350006150715113082367",
         email: "Ada@Example.com",
         name: "Ada",
         picture: "https://p/x.png",
       })),
       upsertProfile: vi.fn(async () => ({
-        profile: { displayName: "Ada", agentSlug: null },
+        profile: { uid: "k3f0a9x2", displayName: "Ada", avatar: null },
       })),
       getProfile: vi.fn(async () => ({
-        profile: { displayName: "Ada", agentSlug: "ada" },
+        profile: { uid: "k3f0a9x2", displayName: "Ada", avatar: null },
       })),
+      resolveEmail: vi.fn(async (_requester: string, email: string) =>
+        email === "grace@example.com"
+          ? { person: { uid: "d02e77b4", displayName: "Grace Hopper", avatar: null } }
+          : { person: null },
+      ),
       ...overrides,
     };
   }
@@ -284,7 +290,7 @@ describe("handleAuth", () => {
     expect(await res?.json()).toEqual({ googleClientId: "client-123" });
   });
 
-  it("google happy path sets a secure session cookie and lowercases the principal", async () => {
+  it("google happy path sets a secure session cookie and keys the profile on the Google sub", async () => {
     const d = deps();
     const res = await handleAuth(googlePost(), d);
     expect(res?.status).toBe(200);
@@ -294,9 +300,12 @@ describe("handleAuth", () => {
     expect(cookie).toContain("SameSite=Lax");
     expect(cookie).toContain("Secure");
     expect(d.upsertProfile).toHaveBeenCalledWith(
-      "email:ada@example.com",
-      expect.objectContaining({ displayName: "Ada" }),
+      "google:10769150350006150715113082367",
+      expect.objectContaining({ displayName: "Ada", email: "ada@example.com", legacyPrincipal: "email:ada@example.com" }),
     );
+    const body = (await res?.json()) as Record<string, unknown>;
+    expect(body.uid).toBe("k3f0a9x2");
+    expect(body.principal).toBeUndefined();
   });
 
   it("rejects cross-origin sign-in", async () => {
@@ -327,8 +336,34 @@ describe("handleAuth", () => {
     );
     const body = (await res?.json()) as Record<string, unknown>;
     expect(body.signedIn).toBe(true);
-    expect(body.principal).toBe("email:ada@example.com");
-    expect(body.agentSlug).toBe("ada");
+    expect(body.uid).toBe("k3f0a9x2");
+    expect(body.email).toBe("ada@example.com");
+    expect(body.principal).toBeUndefined();
+    expect(body.agentSlug).toBeUndefined();
+  });
+
+  it("resolve needs a session, validates the address, and returns name and uid only", async () => {
+    const d = deps();
+    const anonymous = await handleAuth(new Request("https://vapor.fyi/auth/resolve?email=grace@example.com"), d);
+    expect(anonymous?.status).toBe(401);
+
+    const signIn = await handleAuth(googlePost(), d);
+    const cookie = (signIn?.headers.get("Set-Cookie") ?? "").split(";")[0];
+    const bad = await handleAuth(new Request("https://vapor.fyi/auth/resolve?email=grace", { headers: { Cookie: cookie } }), d);
+    expect(bad?.status).toBe(400);
+
+    const found = await handleAuth(
+      new Request("https://vapor.fyi/auth/resolve?email=Grace@Example.com", { headers: { Cookie: cookie } }),
+      d,
+    );
+    expect(await found?.json()).toEqual({ person: { uid: "d02e77b4", displayName: "Grace Hopper", avatar: null } });
+    expect(d.resolveEmail).toHaveBeenCalledWith("google:10769150350006150715113082367", "grace@example.com");
+
+    const missing = await handleAuth(
+      new Request("https://vapor.fyi/auth/resolve?email=nobody@example.com", { headers: { Cookie: cookie } }),
+      d,
+    );
+    expect(await missing?.json()).toEqual({ person: null });
   });
 
   it("logout clears the cookie", async () => {

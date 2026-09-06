@@ -15,7 +15,7 @@ import { MarkdownParser, MarkdownSerializer } from "prosemirror-markdown";
 import MarkdownIt from "markdown-it";
 import * as Y from "yjs";
 import { yXmlFragmentToProseMirrorRootNode } from "@tiptap/y-tiptap";
-import { blockHash, parseAnchor as parseLegacyAnchor, type DocBlock } from "./agent-protocol";
+import { blockHash, formatMention, parseAnchor as parseLegacyAnchor, type DocBlock } from "./agent-protocol";
 import { parseAttachmentUrl } from "./attachment-policy";
 
 /* ---------- Schema (names must match the TipTap extensions) ---------- */
@@ -96,6 +96,19 @@ export const richSchema = new Schema({
     tableCell: { content: "inline*", attrs: tableCellAttrs, isolating: true },
     tableHeader: { content: "inline*", attrs: tableCellAttrs, isolating: true },
     hardBreak: { inline: true, group: "inline", selectable: false },
+    // A mention of a person or agent: `@slug[+tag]~sid` in markdown, the
+    // name alone in the editor. The short id is what resolves; the slug is
+    // a hint for readers of the raw text (agent-protocol.ts, MentionToken).
+    mention: {
+      inline: true,
+      group: "inline",
+      atom: true,
+      attrs: {
+        slug: { default: "" },
+        tag: { default: null as string | null },
+        sid: { default: "" },
+      },
+    },
     text: { inline: true, group: "inline" },
   },
   marks: {
@@ -318,11 +331,43 @@ function attachmentRule(state: { tokens: InlineToken[]; Token: TokenCtor }): voi
   }
 }
 
+const MENTION_AT_START_RE = /^@([a-z0-9][a-z0-9-]{0,30}[a-z0-9])(?:\+([a-z0-9][a-z0-9-]{0,15}))?~([a-z0-9]{8})(?![a-z0-9~+])/;
+
+/**
+ * `@slug[+tag]~sid` becomes a `mention` inline token. The `@` must start a
+ * word: preceded by nothing, whitespace, or punctuation other than the
+ * characters that would make it part of an address or another token.
+ */
+function mentionRule(
+  state: {
+    src: string;
+    pos: number;
+    pending: string;
+    push: (type: string, tag: string, nesting: number) => { attrSet: (name: string, value: string) => void };
+  },
+  silent: boolean,
+): boolean {
+  if (state.src.charCodeAt(state.pos) !== 0x40 /* @ */) return false;
+  const before = state.pending.slice(-1);
+  if (before && /[a-z0-9@.~+]/i.test(before)) return false;
+  const m = MENTION_AT_START_RE.exec(state.src.slice(state.pos));
+  if (!m) return false;
+  if (!silent) {
+    const tok = state.push("mention", "span", 0);
+    tok.attrSet("slug", m[1]);
+    if (m[2]) tok.attrSet("tag", m[2]);
+    tok.attrSet("sid", m[3]);
+  }
+  state.pos += m[0].length;
+  return true;
+}
+
 function makeMarkdownIt() {
   const md = new MarkdownIt({ html: false, linkify: true });
-  // Bare addresses stay text: `@ada@example.com` is a mention of a person
-  // (see findEmailMentions), and linkifying its tail would turn the mention
-  // into a mailto link. Explicit <mailto:…> and [text](mailto:…) still work.
+  md.inline.ruler.before("emphasis", "mention", mentionRule as never);
+  // Bare addresses stay text: vapor never writes one into a document, and a
+  // typed one linkified to mailto would look like a feature. Explicit
+  // <mailto:…> and [text](mailto:…) still work.
   md.linkify.set({ fuzzyEmail: false });
   md.inline.ruler.before("emphasis", "critic", criticRule as never);
   // A fence whose info string is exactly `agent` is an agent-instructions
@@ -384,6 +429,10 @@ export const markdownParser = new MarkdownParser(richSchema, makeMarkdownIt() as
     }),
   },
   hardbreak: { node: "hardBreak" },
+  mention: {
+    node: "mention",
+    getAttrs: (tok) => ({ slug: tok.attrGet("slug") ?? "", tag: tok.attrGet("tag"), sid: tok.attrGet("sid") ?? "" }),
+  },
   em: { mark: "italic" },
   strong: { mark: "bold" },
   s: { mark: "strike" },
@@ -500,6 +549,11 @@ export const markdownSerializer = new MarkdownSerializer(
           return;
         }
       }
+    },
+    mention(state, node) {
+      state.write(
+        `@${formatMention({ slug: String(node.attrs.slug), tag: (node.attrs.tag as string | null) ?? null, sid: String(node.attrs.sid) })}`,
+      );
     },
     text(state, node) {
       state.text(node.text ?? "");

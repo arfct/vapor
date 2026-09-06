@@ -20,9 +20,9 @@ Sign-in (Google) is optional and only changes attribution:
 | | Human | Agent |
 |---|---|---|
 | Anonymous | Curious Ladybug 🐞 | Agentic Butterfly 🦋 |
-| Signed in | Ada Lovelace | Ada's Agent |
+| Signed in | Ada Lovelace | Ada's Claude |
 
-Your anonymous animal lives in localStorage and follows you between documents. Sign in and your name takes over, earlier comments included.
+Your anonymous animal lives in localStorage and follows you between documents. Sign in and your name takes over, earlier comments included. People are circles; agents are hexagons carrying the mark of the client they connected from, in their owner's colour. Your email never appears in a document: mentions carry a short public id, and `@` completion shows names.
 
 ## Connecting an agent
 
@@ -40,7 +40,7 @@ The same URL works in claude.ai, ChatGPT (developer mode), Codex CLI, Cursor, Ge
 
 Agents get suggest and comment by default; full write is a separate grant on the consent screen. Their edits type in at human pace with a visible cursor (`pace: "instant"` skips the show). Each document's Agents panel lists who's enrolled, with revoke.
 
-Tools: `read_document` · `insert` · `replace` · `suggest` · `comment` · `reply` · `attach` · `create_document` · `join` · `leave` · `events_poll` · `events_subscribe`. Attachments (images inline, other files as a chip) need the signed-in endpoint with write. Mention `@agent-name` in a document, or reply in one of its threads, and the agent hears about it: by polling `events_poll` for a while after sharing a link, or through a signed webhook from `events_subscribe`.
+Tools: `read_document` · `insert` · `replace` · `suggest` · `comment` · `reply` · `attach` · `create_document` · `join` · `leave` · `events_poll` · `events_subscribe`. Attachments (images inline, other files as a chip) need the signed-in endpoint with write. Mention the agent in a document (type `@` and pick it), or reply in one of its threads, and the agent hears about it: by polling `events_poll` for a while after sharing a link, or through a signed webhook from `events_subscribe`.
 
 A fenced block whose language is `agent` carries standing instructions for agents. People don't see it in the rendered page; `read_document` returns it as `instructions`.
 

@@ -326,3 +326,30 @@ describe("attachments", () => {
   });
 });
 
+
+describe("mention tokens", () => {
+  it("parses a token into a mention node and serialises it back unchanged", () => {
+    const md = "ask @nicholas-jitkoff+agent~k3f0a9x2 and @quiet-otter~3b9e02d7 today";
+    const parsed = parseMarkdown(md);
+    if (!parsed.ok) throw new Error(parsed.message);
+    const para = parsed.doc.firstChild!;
+    const mentions = [] as { slug: string; tag: string | null; sid: string }[];
+    para.forEach((n) => {
+      if (n.type.name === "mention") mentions.push(n.attrs as { slug: string; tag: string | null; sid: string });
+    });
+    expect(mentions).toEqual([
+      { slug: "nicholas-jitkoff", tag: "agent", sid: "k3f0a9x2" },
+      { slug: "quiet-otter", tag: null, sid: "3b9e02d7" },
+    ]);
+    expect(serializePmDoc(parsed.doc)).toBe(md);
+  });
+
+  it("leaves addresses, bare slugs, and unfinished ids as text", () => {
+    for (const md of ["mail me@ada~k3f0a9x2 now", "hi @scribe there", "@ada~k3f0a9x nope", "@ada~k3f0a9x2z nope"]) {
+      const parsed = parseMarkdown(md);
+      if (!parsed.ok) throw new Error(parsed.message);
+      expect(parsed.doc.firstChild!.childCount).toBe(1);
+      expect(parsed.doc.firstChild!.firstChild!.type.name).toBe("text");
+    }
+  });
+});

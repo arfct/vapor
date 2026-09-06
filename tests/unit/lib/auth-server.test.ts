@@ -6,6 +6,7 @@ import {
   sessionFromRequest,
   sessionCookieHeader,
   principalFromEmail,
+  principalFromSub,
   SESSION_COOKIE,
 } from "~/lib/auth.server";
 
@@ -61,6 +62,7 @@ function validGooglePayload(overrides: Record<string, unknown> = {}) {
     iss: "https://accounts.google.com",
     aud: CLIENT_ID,
     exp: now() + 3600,
+    sub: "10769150350006150715113082367",
     email: "Foo@Bar.com",
     email_verified: true,
     name: "Foo Bar",
@@ -68,6 +70,12 @@ function validGooglePayload(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+describe("principalFromSub", () => {
+  it("prefixes Google's account id", () => {
+    expect(principalFromSub("10769150350006150715113082367")).toBe("google:10769150350006150715113082367");
+  });
+});
 
 describe("principalFromEmail", () => {
   it("lowercases and prefixes", () => {
@@ -148,10 +156,17 @@ describe("verifyGoogleIdToken", () => {
     const fetchJwks = async () => [jwk];
     const result = await verifyGoogleIdToken(token, CLIENT_ID, fetchJwks);
     expect(result).toEqual({
+      sub: "10769150350006150715113082367",
       email: "foo@bar.com",
       name: "Foo Bar",
       picture: "https://example.com/pic.png",
     });
+  });
+
+  it("rejects a token without a sub", async () => {
+    const { privateKey, jwk } = await generateFixtureKeys();
+    const token = await signIdToken(privateKey, jwk.kid, validGooglePayload({ sub: undefined }));
+    expect(await verifyGoogleIdToken(token, CLIENT_ID, async () => [jwk])).toBeNull();
   });
 
   it("rejects the wrong audience", async () => {

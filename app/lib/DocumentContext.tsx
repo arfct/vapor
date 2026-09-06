@@ -8,9 +8,9 @@ import { usePeople } from "~/lib/usePeople";
 import type { Person } from "~/lib/people";
 import { serializePmDoc } from "~/shared/rich-markdown";
 import { isValidDocumentId } from "~/shared/constants";
-import { rankMentionItems, type AgentRosterEntry, type MentionSources } from "~/shared/agent-protocol";
+import { mentionKey, parseMentionToken, rankMentionItems, type AgentRosterEntry, type MentionSources } from "~/shared/agent-protocol";
 import type { MentionSourceRef } from "~/lib/mention-suggestion";
-import type { MentionTargetsRef } from "~/lib/mention-highlight";
+import type { MentionTarget, MentionTargetsRef } from "~/lib/mention-highlight";
 import type { SlashActionsRef } from "~/lib/slash-commands";
 
 export interface DocumentContextValue {
@@ -81,10 +81,14 @@ export interface DocumentContextValue {
 const ROSTER_TTL_MS = 30_000;
 
 /** Every handle the popup would insert, with the colour its owner draws in. */
-export function mentionTargetsFor(sources: MentionSources): Map<string, string> {
-  const targets = new Map<string, string>();
+export function mentionTargetsFor(sources: MentionSources): Map<string, MentionTarget> {
+  const targets = new Map<string, MentionTarget>();
   for (const item of rankMentionItems("", sources, Number.POSITIVE_INFINITY)) {
-    if (item.color) targets.set(item.handle, item.color);
+    if (!item.color) continue;
+    const target = { color: item.color, label: item.label };
+    targets.set(item.handle, target);
+    const token = parseMentionToken(item.handle);
+    if (token) targets.set(mentionKey(token), target);
   }
   return targets;
 }
@@ -246,7 +250,7 @@ export function DocumentProvider({
 
   const sources = useMemo<MentionSources>(
     () => ({
-      agents: roster.map((a) => ({ name: a.name, label: a.label, color: a.color })),
+      agents: roster.map((a) => ({ name: a.name, label: a.label, color: a.color, mention: a.mention ?? a.name, client: a.client ?? null })),
       people: people.map((p) => ({
         name: p.user.name,
         color: p.user.color,
@@ -270,7 +274,10 @@ export function DocumentProvider({
   useEffect(() => {
     mentionTargetsRef.current = targets;
   }, [targets]);
-  const mentionTargetsKey = useMemo(() => [...targets.entries()].map(([h, c]) => `${h}:${c}`).join("|"), [targets]);
+  const mentionTargetsKey = useMemo(
+    () => [...targets.entries()].map(([h, t]) => `${h}:${t.color}:${t.label}`).join("|"),
+    [targets],
+  );
 
   const slashActionsRef = useRef<SlashActionsRef["current"]>({});
   useEffect(() => {

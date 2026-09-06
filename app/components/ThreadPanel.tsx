@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { stripMentionIds } from "~/shared/agent-protocol";
 import type { ThreadData } from "~/shared/types";
 import CommentEditor from "~/components/CommentEditor";
 import type { MentionSourceRef } from "~/lib/mention-suggestion";
@@ -38,6 +39,8 @@ function CommentRow({
           avatar={author.avatar}
           animal={author.animal}
           color={author.color}
+          shape={author.agentClient ? "hexagon" : "circle"}
+          client={author.agentClient}
           className="h-[25px] w-[25px]"
         />
         {connectTo && (
@@ -179,7 +182,7 @@ export default function ThreadPanel({
       <CommentRow
         author={thread.author}
         timestamp={thread.createdAt}
-        text={thread.commentText}
+        text={stripMentionIds(thread.commentText)}
         connectTo={thread.replies[0]?.author.color}
         showMeta={active}
         reserveActions={active || menuOpen}
@@ -190,7 +193,7 @@ export default function ThreadPanel({
           key={reply.id}
           author={reply.author}
           timestamp={reply.createdAt}
-          text={reply.text}
+          text={stripMentionIds(reply.text)}
           connectTo={thread.replies[i + 1]?.author.color}
           showMeta={active}
         />

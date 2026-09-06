@@ -2,12 +2,21 @@ import { Extension } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import { EMAIL_MENTION_RE, SLUG_MENTION_RE } from "~/shared/agent-protocol";
+import { SLUG_MENTION_RE } from "~/shared/agent-protocol";
 
 export const mentionHighlightKey = new PluginKey("mentionHighlight");
 
-/** Known handles (agent slugs, people emails and slugs) to the colour they draw in. */
-export type MentionTargets = Map<string, string>;
+/** How a known mention draws: the colour, and the current name to show in place of the token's slug. */
+export interface MentionTarget {
+  color: string;
+  label: string;
+}
+
+/**
+ * Known mentions to how they draw, keyed three ways so both mention forms
+ * resolve: a token's `tag~sid` key, its full handle, and a bare legacy slug.
+ */
+export type MentionTargets = Map<string, MentionTarget>;
 
 export interface MentionTargetsRef {
   current: MentionTargets;
@@ -16,9 +25,11 @@ export interface MentionTargetsRef {
 const SKIP_BLOCKS = new Set(["codeBlock", "agentInstructions"]);
 
 /**
- * Inline decorations over every mention in the document. Email mentions
- * always draw (their form is explicit); slug mentions only when the handle
- * names someone known, so `@todo` in prose stays plain. Code is skipped.
+ * Inline decorations over bare `@slug` mentions written before mention
+ * tokens existed (docs/plans/2026-09-06-agent-identity-plan.md): they
+ * colour only when the slug names someone known, so `@todo` in prose stays
+ * plain. Token mentions are `mention` nodes and draw themselves. Code is
+ * skipped.
  */
 export function mentionDecorations(doc: PMNode, targets: MentionTargets): DecorationSet {
   const decorations: Decoration[] = [];
@@ -30,26 +41,16 @@ export function mentionDecorations(doc: PMNode, targets: MentionTargets): Decora
 
     // One placeholder character per inline leaf keeps offsets aligned.
     const text = node.textBetween(0, node.content.size, undefined, "￼");
-    const add = (offset: number, handle: string, known: boolean) => {
-      const from = pos + 1 + offset;
-      const to = from + handle.length + 1;
-      if (codeMark && doc.rangeHasMark(from, to, codeMark)) return;
-      const color = targets.get(handle);
-      if (!known && !color) return;
-      decorations.push(
-        Decoration.inline(from, to, {
-          class: "cm-mention",
-          ...(color ? { style: `--mention-color: ${color}` } : {}),
-        }),
-      );
-    };
-
-    for (const m of text.matchAll(EMAIL_MENTION_RE)) {
-      const handle = m[1].toLowerCase();
-      add(m.index + m[0].length - m[1].length - 1, handle, true);
-    }
     for (const m of text.matchAll(SLUG_MENTION_RE)) {
-      add(m.index + m[0].length - m[1].length - 1, m[1], false);
+      const handle = m[1];
+      const target = targets.get(handle);
+      if (!target) continue;
+      const from = pos + 1 + m.index + m[0].length - handle.length - 1;
+      const to = from + handle.length + 1;
+      if (codeMark && doc.rangeHasMark(from, to, codeMark)) continue;
+      decorations.push(
+        Decoration.inline(from, to, { class: "cm-mention", style: `--mention-color: ${target.color}` }),
+      );
     }
     return false;
   });
@@ -58,9 +59,9 @@ export function mentionDecorations(doc: PMNode, targets: MentionTargets): Decora
 }
 
 /**
- * Colours mentions in place. Recomputed on every document change (a whole
- * document scan is cheap at vapor sizes) and when the editor signals that
- * the set of known handles changed via `setMeta(mentionHighlightKey, true)`.
+ * Colours legacy mentions in place. Recomputed on every document change (a
+ * whole document scan is cheap at vapor sizes) and when the editor signals
+ * that the set of known handles changed via `setMeta(mentionHighlightKey, true)`.
  */
 export const MentionHighlight = Extension.create<{ targets: MentionTargetsRef | null }>({
   name: "mentionHighlight",
@@ -71,7 +72,7 @@ export const MentionHighlight = Extension.create<{ targets: MentionTargetsRef | 
 
   addProseMirrorPlugins() {
     const ref = this.options.targets;
-    const targets = () => ref?.current ?? new Map<string, string>();
+    const targets = () => ref?.current ?? new Map<string, MentionTarget>();
     return [
       new Plugin({
         key: mentionHighlightKey,

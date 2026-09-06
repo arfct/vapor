@@ -77,9 +77,30 @@ async function signSession(data: string, secretValue: string): Promise<string> {
   return bytesToBase64Url(new Uint8Array(signature));
 }
 
-/** "email:" + lowercased address. Vapor's identity principal. */
+/**
+ * "google:" + the account's `sub` claim. Vapor's identity principal: opaque,
+ * stable across address changes, and never shown to anyone
+ * (docs/plans/2026-09-06-agent-identity-plan.md).
+ */
+export function principalFromSub(sub: string): string {
+  return `google:${sub}`;
+}
+
+/**
+ * The principal identity used before `sub` was kept: "email:" + lowercased
+ * address. Still minted at sign-in so the Registry can find and migrate a
+ * profile created under it.
+ */
 export function principalFromEmail(email: string): string {
   return `email:${email.toLowerCase()}`;
+}
+
+export interface GoogleIdentity {
+  /** Google's stable account id. */
+  sub: string;
+  email: string;
+  name: string;
+  picture?: string;
 }
 
 export async function mintSessionToken(
@@ -214,7 +235,7 @@ export async function verifyGoogleIdToken(
   credential: string,
   clientId: string,
   fetchJwks: FetchJwks = defaultFetchJwks,
-): Promise<{ email: string; name: string; picture?: string } | null> {
+): Promise<GoogleIdentity | null> {
   if (credential.length === 0 || credential.length > 8192) return null;
   const parts = credential.split(".");
   if (parts.length !== 3) return null;
@@ -248,7 +269,7 @@ export async function verifyGoogleIdToken(
   if (!verified) return null;
 
   if (!isRecord(payload)) return null;
-  const { iss, aud, exp, email, email_verified: emailVerified, name, picture } = payload;
+  const { iss, aud, exp, sub, email, email_verified: emailVerified, name, picture } = payload;
   if (iss !== "accounts.google.com" && iss !== "https://accounts.google.com") return null;
   if (aud !== clientId) return null;
   if (!Number.isInteger(exp)) return null;
@@ -256,9 +277,11 @@ export async function verifyGoogleIdToken(
   const now = Math.floor(Date.now() / 1000);
   if ((exp as number) <= now) return null;
   if (emailVerified !== true || typeof email !== "string") return null;
+  if (typeof sub !== "string" || sub.length === 0 || sub.length > 255) return null;
 
   const normalizedEmail = email.toLowerCase();
   return {
+    sub,
     email: normalizedEmail,
     name: typeof name === "string" && name.length > 0 ? name : normalizedEmail,
     ...(typeof picture === "string" ? { picture } : {}),

@@ -76,29 +76,25 @@ body {
   color: var(--color-paper);
 }
 
-/* Toolbar items sit back until wanted: 84% on touch screens; with a
+/* Toolbar buttons sit back until wanted: 84% on touch screens; with a
    pointer, 50% at rest, 84% while the bar is hovered, and full strength
-   for the hovered or open item. */
-.header-button,
-.toolbar-item {
+   for the hovered or open button. The face pile is people, not a tool,
+   and stays at full strength. */
+.header-button {
   opacity: 0.84;
 }
 @media (hover: hover) {
-  .header-button,
-  .toolbar-item {
+  .header-button {
     opacity: 0.5;
   }
-  header:hover .header-button,
-  header:hover .toolbar-item {
+  header:hover .header-button {
     opacity: 0.84;
   }
-  .header-button:hover,
-  .toolbar-item:hover {
+  .header-button:hover {
     opacity: 1;
   }
 }
-.header-button[data-popup-open],
-.toolbar-item[data-popup-open] {
+.header-button[data-popup-open] {
   opacity: 1;
 }
 
@@ -647,20 +643,15 @@ body {
 /* Thread card: the author's colour is set inline as --author-color. The
    name uses a deep shade of it (mixed toward black on light, white on
    dark); the selected card gets a hairline of the colour via box-shadow,
-   plus a soft shadow in a near-black shade at 10%. */
+   plus a soft shadow in a near-black shade at 10%. Hovering changes
+   nothing; only selection draws an outline. */
 .thread-card {
   --author-name: color-mix(in oklab, var(--author-color) 50%, var(--author-shade-base, #000));
   --author-deep: color-mix(in oklab, var(--author-color) 35%, #000);
   border-radius: 4px;
   transition: box-shadow 0.15s ease;
 }
-@media (hover: hover) {
-  .thread-card:hover {
-    box-shadow: 0 0 0 1px var(--color-border);
-  }
-}
-.thread-card.is-active,
-.thread-card.is-active:hover {
+.thread-card.is-active {
   box-shadow:
     0 0 0 1px var(--author-color),
     0 2px 8px color-mix(in srgb, var(--author-deep) 10%, transparent);

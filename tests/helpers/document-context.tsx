@@ -62,8 +62,6 @@ export function createMockDocumentContext(
     openCommentInput: vi.fn(),
     handleCommentActiveChange: vi.fn(),
     activateComment: vi.fn(),
-    handleResolveAtCursor: vi.fn(),
-    handleDeleteAtCursor: vi.fn(),
     threads: [],
     activeThreadId: null,
     setActiveThreadId: vi.fn(),

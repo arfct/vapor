@@ -182,8 +182,6 @@ export default function Editor({
   activeCommentRange,
   commentColors,
   onNewComment,
-  onResolveAtCursor,
-  onDeleteAtCursor,
 }: {
   yjs: YjsEditorState;
   hidden?: boolean;
@@ -199,8 +197,6 @@ export default function Editor({
   activeCommentRange?: { from: number; to: number } | null;
   commentColors?: CommentColorRange[];
   onNewComment?: () => void;
-  onResolveAtCursor?: () => void;
-  onDeleteAtCursor?: () => void;
 }) {
   const { doc, awareness, user, docState } = yjs;
   const prevHighlightRef = useRef<{ from: number; to: number } | null>(null);
@@ -383,14 +379,7 @@ export default function Editor({
           <EditorContent editor={editor} />
         </div>
       </div>
-      {onNewComment && onResolveAtCursor && onDeleteAtCursor && (
-        <BubbleToolbar
-          editor={editor}
-          onNewComment={onNewComment}
-          onResolveAtCursor={onResolveAtCursor}
-          onDeleteAtCursor={onDeleteAtCursor}
-        />
-      )}
+      {onNewComment && <BubbleToolbar editor={editor} onNewComment={onNewComment} />}
     </>
   );
 }

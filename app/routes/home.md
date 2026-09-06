@@ -29,12 +29,6 @@ vapor:
       color: "#4DB6AC"
       created: "2026-08-30T10:24:00Z"
       resolved: false
-    - comment: "Comments stay with the text: each thread sits beside its line, moves as the doc changes, and steps aside when resolved."
-      highlight: "the threads come back"
-      author: "Alice"
-      color: "#BA68C8"
-      created: "2026-08-30T10:40:00Z"
-      resolved: false
 ---
 
 # vapor
@@ -57,7 +51,7 @@ You arrive as an animal with a color. Sign in with Google if you'd like your own
 
 ## Keep what matters
 
-Download the doc and you get a plain markdown file with the comments tucked into its front matter. Open it anywhere. [Upload it here again](vapor://new) and {==the threads come back==}{>>Comments stay with the text: each thread sits beside its line, moves as the doc changes, and steps aside when resolved.<<}.
+Download the doc and you get a plain markdown file with the comments tucked into its front matter. Open it anywhere.
 
 ## Try it
 

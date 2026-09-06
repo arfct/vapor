@@ -49,7 +49,6 @@ export function useThreads({
   const reconcilingRef = useRef(false);
   /** Delayed fallback creations for marks whose author hasn't written a thread yet. */
   const fallbackTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
-  const suppressSelectionRef = useRef(false);
 
   // Reconcile: scan document marks, auto-create Y.Map entries for new comments,
   // then match all threads to positions and update state
@@ -198,10 +197,6 @@ export function useThreads({
   useEffect(() => {
     if (!editor) return;
     const handler = () => {
-      if (suppressSelectionRef.current) {
-        suppressSelectionRef.current = false;
-        return;
-      }
       const { from } = editor.state.selection;
       const $from = editor.state.doc.resolve(from);
       // Use nodeAt for reliable mark detection at boundaries (inclusive:false)
@@ -352,6 +347,5 @@ export function useThreads({
     deleteThread,
     activeThreadId,
     setActiveThreadId,
-    suppressSelectionRef,
   };
 }

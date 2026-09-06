@@ -6,7 +6,6 @@ import { useTheme, type Theme } from "~/lib/useTheme";
 import { useDocument } from "~/lib/DocumentContext";
 import { hasSuggestionMarkup, processAllRanges } from "~/lib/suggestion-actions";
 import Icon from "~/components/Icon";
-import Avatar from "~/components/Avatar";
 
 declare global {
   interface Window {
@@ -333,12 +332,7 @@ export default function HeaderMenu({
             </div>
             {session?.signedIn ? (
               <div className="border-t border-border py-1">
-                <div className="flex min-h-[36px] items-center gap-2 px-4 text-sm">
-                  <Avatar
-                    name={session.displayName ?? session.email ?? "?"}
-                    avatar={session.avatar}
-                    className="h-6 w-6"
-                  />
+                <div className="flex min-h-[36px] items-center px-4 text-sm">
                   <span className="min-w-0 truncate text-muted">{session.email ?? session.displayName}</span>
                 </div>
                 <Row icon="logout" label="Sign out" onClick={run(signOut)} />

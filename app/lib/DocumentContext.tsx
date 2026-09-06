@@ -4,7 +4,6 @@ import type { CapturedSelection, CommentColorRange, DocMode } from "~/shared/typ
 import type { MatchedThread } from "~/lib/comment-threads";
 import type { YjsEditorState } from "~/lib/useYjsEditor";
 import { useThreads } from "~/lib/useThreads";
-import { findCommentTextAtCursor } from "~/lib/comment-threads";
 import { serializePmDoc } from "~/shared/rich-markdown";
 
 export interface DocumentContextValue {
@@ -31,8 +30,6 @@ export interface DocumentContextValue {
   openCommentInput: () => void;
   handleCommentActiveChange: (active: boolean) => void;
   activateComment: (commentText: string) => void;
-  handleResolveAtCursor: () => void;
-  handleDeleteAtCursor: () => void;
 
   // Threads
   threads: MatchedThread[];
@@ -98,7 +95,6 @@ export function DocumentProvider({
     deleteThread,
     activeThreadId,
     setActiveThreadId,
-    suppressSelectionRef,
   } = useThreads({ doc: yjs.doc, editor: editorInstance, user: yjs.user });
 
   const toggleMode = useCallback(() => {
@@ -116,15 +112,15 @@ export function DocumentProvider({
     editor.on("update", update);
   }, []);
 
+  // Always selects, never toggles: with a mouse the selection handler in
+  // useThreads has already activated this thread by the time the click
+  // lands, so a toggle would close what the press just opened.
   const handleCommentClick = useCallback(
     (commentText: string) => {
       const match = threads.find((t) => t.commentText === commentText);
-      if (match) {
-        suppressSelectionRef.current = true;
-        setActiveThreadId(activeThreadId === match.id ? null : match.id);
-      }
+      if (match) setActiveThreadId(match.id);
     },
-    [threads, activeThreadId, setActiveThreadId, suppressSelectionRef],
+    [threads, setActiveThreadId],
   );
 
   const openCommentInput = useCallback(() => {
@@ -154,22 +150,6 @@ export function DocumentProvider({
     },
     [openCommentInput],
   );
-
-  const handleResolveAtCursor = useCallback(() => {
-    if (!editorInstance) return;
-    const text = findCommentTextAtCursor(editorInstance);
-    if (!text) return;
-    const match = threads.find((t) => t.commentText === text);
-    if (match) resolveThread(match.id);
-  }, [editorInstance, threads, resolveThread]);
-
-  const handleDeleteAtCursor = useCallback(() => {
-    if (!editorInstance) return;
-    const text = findCommentTextAtCursor(editorInstance);
-    if (!text) return;
-    const match = threads.find((t) => t.commentText === text);
-    if (match) deleteThread(match.id);
-  }, [editorInstance, threads, deleteThread]);
 
   const activeCommentRange = useMemo(() => {
     if (!activeThreadId) return null;
@@ -236,8 +216,6 @@ export function DocumentProvider({
     openCommentInput,
     handleCommentActiveChange,
     activateComment,
-    handleResolveAtCursor,
-    handleDeleteAtCursor,
     threads,
     activeThreadId,
     setActiveThreadId,

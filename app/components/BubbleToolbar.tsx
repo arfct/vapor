@@ -14,7 +14,7 @@ type BubbleContext =
 /**
  * Compute the bubble menu context from editor state.
  * Cached per state object to avoid redundant computation across
- * the three BubbleMenu plugin instances.
+ * the BubbleMenu plugin instances.
  */
 const contextCache = new WeakMap<EditorState, BubbleContext>();
 
@@ -82,8 +82,8 @@ function baseChecks(_view: EditorView, _element: HTMLElement, editor: TiptapEdit
 
 // On touch screens the OS edit menu (Cut / Copy / Paste) sits exactly where
 // the Comment bubble would; the header comment button covers that case.
-// Suggestion and annotation bubbles stay: they show at a caret, not a
-// selection, so the OS menu isn't there.
+// The suggestion bubble stays: it shows at a caret, not a selection, so the
+// OS menu isn't there.
 let coarsePointer: MediaQueryList | null = null;
 function isCoarsePointer(): boolean {
   if (typeof window === "undefined") return false;
@@ -102,11 +102,6 @@ const shouldShowSuggestion = ({ editor, element, view, state }: ShouldShowProps)
   return getContext(state)?.kind === "suggestion";
 };
 
-const shouldShowAnnotation = ({ editor, element, view, state }: ShouldShowProps) => {
-  if (!baseChecks(view, element, editor)) return false;
-  return getContext(state)?.kind === "annotation";
-};
-
 // 44px square icon buttons at every width: Accept/Reject sit side by side
 // and a mis-tap on track changes is destructive.
 const btnClass =
@@ -120,17 +115,12 @@ const menuOptions = { placement: "bottom" as const, offset: { mainAxis: 8 }, fli
 
 const UPDATE_DELAY_MS = 120;
 
-export default function BubbleToolbar({
-  editor,
-  onNewComment,
-  onResolveAtCursor,
-  onDeleteAtCursor,
-}: {
-  editor: TiptapEditor;
-  onNewComment: () => void;
-  onResolveAtCursor: () => void;
-  onDeleteAtCursor: () => void;
-}) {
+/**
+ * Comments and highlights get no bubble: resolving or deleting a thread
+ * happens in its expanded card. The annotation context is still detected so
+ * a selection inside one doesn't offer a second Comment.
+ */
+export default function BubbleToolbar({ editor, onNewComment }: { editor: TiptapEditor; onNewComment: () => void }) {
   return (
     <>
       {/* Plain text selection → Comment */}
@@ -171,28 +161,6 @@ export default function BubbleToolbar({
           aria-label="Reject"
         >
           <Icon name="close" />
-        </button>
-      </BubbleMenu>
-
-      {/* Annotation marks → Resolve / Delete */}
-      <BubbleMenu
-        editor={editor}
-        pluginKey="bubbleAnnotation"
-        updateDelay={UPDATE_DELAY_MS}
-        shouldShow={shouldShowAnnotation}
-        options={menuOptions}
-        className={menuClass}
-      >
-        <button
-          className={`${btnClass} border-r border-paper/20`}
-          onClick={onResolveAtCursor}
-          title="Resolve"
-          aria-label="Resolve"
-        >
-          <Icon name="check" />
-        </button>
-        <button className={btnClass} onClick={onDeleteAtCursor} title="Delete" aria-label="Delete">
-          <Icon name="delete" />
         </button>
       </BubbleMenu>
     </>

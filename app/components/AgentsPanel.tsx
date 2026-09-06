@@ -160,7 +160,6 @@ export default function AgentsPanel({
   // One line each: the snippet rows don't keep newlines, and compact JSON still pastes.
   const mcpServersJson = JSON.stringify({ mcpServers: { vapor: { url } } });
   const vscodeJson = JSON.stringify({ servers: { vapor: { type: "http", url } } });
-  const claudeCodeJson = JSON.stringify({ mcpServers: { vapor: { type: "http", url } } });
   const cursorLink = `cursor://anysphere.cursor-deeplink/mcp/install?name=vapor&config=${btoa(JSON.stringify({ url }))}`;
   const vscodeLink = `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name: "vapor", type: "http", url }))}`;
   const geminiExtension = "gemini extensions install https://github.com/arfct/vapor";
@@ -212,21 +211,13 @@ export default function AgentsPanel({
 
         {client === "claude" && (
           <div className="space-y-4" role="tabpanel">
-            {variant === "claude" && (
+            {/* Claude and the Claude Code app share claude.ai's connectors. */}
+            {(variant === "claude" || variant === "code-app") && (
               <>
                 <p className="text-sm text-muted">
                   <Nav href={claudeConnectorLink(url)}>Settings → Connectors → Add custom connector</Nav>.
                 </p>
                 <SnippetRow label="MCP server URL" text={url} showLabel={false} />
-              </>
-            )}
-            {variant === "code-app" && (
-              <>
-                <p className="text-sm text-muted">
-                  Add this to <code className="font-mono">.mcp.json</code> at the root of the project, then start a
-                  session. The app picks it up and asks once before using it.
-                </p>
-                <SnippetRow label=".mcp.json" text={claudeCodeJson} showLabel={false} />
               </>
             )}
             {variant === "code-cli" && <SnippetRow label="Claude Code" text={claudeCodeCommand} showLabel={false} />}

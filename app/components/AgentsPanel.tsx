@@ -15,7 +15,7 @@ const VARIANTS: Partial<Record<AgentClientId, { app: string; cli: string }>> = {
   chatgpt: { app: "ChatGPT app", cli: "Codex CLI" },
 };
 
-const pulldownClass = "cursor-pointer bg-transparent text-sm text-muted hover:text-ink focus:outline-none";
+const pulldownClass = "m-0 cursor-pointer bg-transparent p-0 text-sm text-muted hover:text-ink focus:outline-none";
 
 /** Opens claude.ai's add-connector dialog with the name and URL filled in; the person reviews and confirms. */
 export function claudeConnectorLink(mcpUrl: string): string {
@@ -154,7 +154,7 @@ export default function AgentsPanel({
               </>
             )}
             {showCli && <SnippetRow label="Claude Code" text={claudeCodeCommand} />}
-            {asYou && <WakeSection kind="claude-routine" docId={docId} roster={roster} onRoster={setRoster} />}
+            <WakeSection kind="claude-routine" docId={docId} roster={roster} onRoster={setRoster} />
           </div>
         )}
         {client === "chatgpt" && (

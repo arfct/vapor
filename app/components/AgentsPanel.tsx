@@ -148,8 +148,7 @@ export default function AgentsPanel({
             {showApp && (
               <>
                 <p className="text-sm text-muted">
-                  <Nav href={claudeConnectorLink(url)}>Settings → Connectors → Add custom connector</Nav>, with this URL
-                  filled in.
+                  <Nav href={claudeConnectorLink(url)}>Settings → Connectors → Add custom connector</Nav>.
                 </p>
                 <SnippetRow label="MCP server URL" text={url} showLabel={false} />
               </>

@@ -129,7 +129,7 @@ export function mcpHelpHtml(origin: string): string {
 <h3>Claude desktop and web</h3>
 <p>
   <a href="https://claude.ai/customize/connectors?modal=add-custom-connector&amp;connectorName=vapor&amp;connectorUrl=${encodeURIComponent(mcpUrl)}"><strong>Settings → Connectors → Add custom connector</strong></a>,
-  with this URL filled in. Sign-in happens in the consent popup.
+  Sign-in happens in the consent popup.
 </p>
 <pre>${mcpUrl}</pre>
 

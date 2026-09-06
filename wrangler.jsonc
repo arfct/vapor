@@ -1,6 +1,9 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	// Set CLOUDFLARE_ACCOUNT_ID env var or add your account_id here
+	// This is the whole deployment config for a self-hosted vapor. With no
+	// edits, `npm run deploy` publishes to <name>.<your-subdomain>.workers.dev.
+	// Set CLOUDFLARE_ACCOUNT_ID (or add "account_id" here) before deploying.
+	// Walkthrough, including the R2 bucket and secrets: docs/self-hosting.md.
 	"name": "vapor",
 	"compatibility_date": "2025-04-04",
 	"compatibility_flags": ["nodejs_compat"],
@@ -8,11 +11,8 @@
 	"observability": {
 		"enabled": true
 	},
-	"routes": [
-		{ "pattern": "vapor.fyi", "custom_domain": true },
-		{ "pattern": "vpr.fyi", "custom_domain": true },
-		{ "pattern": "vaporware.fyi", "custom_domain": true }
-	],
+	// To serve from your own domain (a zone on this Cloudflare account), add it:
+	// "routes": [{ "pattern": "vapor.example", "custom_domain": true }],
 	"durable_objects": {
 		"bindings": [
 			{ "name": "DocumentAgent", "class_name": "DocumentAgent" },
@@ -21,16 +21,23 @@
 		]
 	},
 	// Attachments live in R2, keyed <docId>/<attachmentId>; see
-	// docs/plans/2026-09-05-attachments-plan.md. The bucket and its 5-day
-	// lifecycle rule are created by hand (account owner).
+	// docs/plans/2026-09-05-attachments-plan.md. Create the bucket once
+	// (`wrangler r2 bucket create vapor-attachments`) and give it a 5-day
+	// expiry rule so files don't outlive their documents.
 	"r2_buckets": [{ "binding": "ATTACHMENTS", "bucket_name": "vapor-attachments" }],
 	"migrations": [
 		{ "tag": "v1", "new_sqlite_classes": ["DocumentAgent"] },
 		{ "tag": "v2", "new_sqlite_classes": ["VaporMcp"] },
 		{ "tag": "v3", "new_sqlite_classes": ["Registry"] }
 	],
-	"vars": {
-		"GOOGLE_CLIENT_ID": "12054056676-thqs6nurgk15kjl9mtdju83r45nhigdd.apps.googleusercontent.com"
-	},
+	// Every var is optional; app/shared/site.ts documents them. Set them here,
+	// or in the dashboard — `keep_vars` keeps dashboard values across deploys.
+	//   GOOGLE_CLIENT_ID  enables Google sign-in (leave unset to run anonymous-only)
+	//   PUBLIC_ORIGIN     canonical origin, e.g. "https://vapor.example"
+	//   REDIRECT_HOSTS    comma-separated aliases to 301 to PUBLIC_ORIGIN
+	//   OPERATOR_NAME     shown on /privacy and /terms
+	//   SOURCE_URL        your fork, if you publish your own plugin from it
+	// SESSION_SECRET is a secret, not a var: `wrangler secret put SESSION_SECRET`.
+	"vars": {},
 	"keep_vars": true
 }

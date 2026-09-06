@@ -5,6 +5,8 @@ import Dialog, { SnippetRow } from "~/components/ui/dialog";
 import AgentClientIcon from "~/components/AgentClientIcon";
 import Icon from "~/components/Icon";
 import WakeSection from "~/components/WakeSection";
+import { useSite } from "~/lib/site-context";
+import { githubSlug } from "~/shared/site";
 
 /** Whether the agent connects as the signed-in person or as an anonymous animal. */
 type Mode = "you" | "anonymous";
@@ -136,7 +138,8 @@ export default function AgentsPanel({
     setClient(id);
     setVariant(VARIANTS[id]?.initial ?? "");
   };
-  const origin = typeof window !== "undefined" ? window.location.origin : "https://vapor.fyi";
+  const site = useSite();
+  const origin = site.origin;
 
   const loadRoster = useCallback(() => {
     if (!docId) return;
@@ -162,7 +165,8 @@ export default function AgentsPanel({
   const vscodeJson = JSON.stringify({ servers: { vapor: { type: "http", url } } });
   const cursorLink = `cursor://anysphere.cursor-deeplink/mcp/install?name=vapor&config=${btoa(JSON.stringify({ url }))}`;
   const vscodeLink = `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name: "vapor", type: "http", url }))}`;
-  const geminiExtension = "gemini extensions install https://github.com/arfct/vapor";
+  // A GitHub-hosted fork doubles as a Gemini extension source; elsewhere the plain add is all there is.
+  const geminiExtension = githubSlug(site.sourceUrl) ? `gemini extensions install ${site.sourceUrl}` : geminiCommand;
   const asYou = mode === "you";
 
   const modePicker = (

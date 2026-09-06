@@ -106,7 +106,7 @@ export async function action({ params, context, request }: Route.ActionArgs) {
     // Per-doc tokens retired with the identity phase: agents connect over
     // MCP (OAuth or the anonymous endpoint) and enroll on first touch.
     return jsonResponse(
-      { error: { message: "Token minting is gone. Connect via https://vapor.fyi/mcp instead." } },
+      { error: { message: `Token minting is gone. Connect via ${new URL(request.url).origin}/mcp instead.` } },
       410,
     );
   }

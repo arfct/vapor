@@ -8,12 +8,14 @@ import { useYjsEditor } from "~/lib/useYjsEditor";
 import { DocumentProvider } from "~/lib/DocumentContext";
 import DocumentLayout from "~/components/DocumentLayout";
 
-export function meta(_args: Route.MetaArgs) {
+export function meta({ matches }: Route.MetaArgs) {
+  const root = matches.find((m) => m?.id === "root") as { data?: { site?: { origin: string } } } | undefined;
+  const origin = root?.data?.site?.origin ?? "";
   return [
     { title: "vapor" },
     { property: "og:title", content: "vapor" },
     { property: "og:description", content: "A shared markdown document for people and agents" },
-    { property: "og:image", content: "https://vapor.fyi/logo-512.png" },
+    { property: "og:image", content: `${origin}/logo-512.png` },
   ];
 }
 

@@ -12,7 +12,10 @@ export default defineConfig({
     allowedHosts: [".ts.net"],
   },
   plugins: [
-    cloudflare({ viteEnvironment: { name: "ssr" } }),
+    // WRANGLER_CONFIG selects the deployment config (default ./wrangler.jsonc);
+    // the build bakes it in, so `npm run deploy:vapor.fyi` sets it for the
+    // reference instance and a fork can point it at its own file.
+    cloudflare({ viteEnvironment: { name: "ssr" }, configPath: process.env.WRANGLER_CONFIG }),
     tailwindcss(),
     reactRouter(),
     tsconfigPaths(),

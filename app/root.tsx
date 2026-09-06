@@ -10,7 +10,20 @@ import {
 
 import type { Route } from "./+types/root";
 import Fathom from "~/components/Fathom";
+import { getCloudflare } from "~/lib/cloudflare.server";
+import { SiteProvider } from "~/lib/site-context";
+import { siteForRequest } from "~/shared/site";
 import "./app.css";
+
+/**
+ * Who this instance is, for every page: derived from the request's origin
+ * and the optional PUBLIC_ORIGIN / OPERATOR_NAME / SOURCE_URL vars. Nothing
+ * in the app names a particular host.
+ */
+export function loader({ request, context }: Route.LoaderArgs) {
+  const { env } = getCloudflare(context);
+  return { site: siteForRequest(env, new URL(request.url).origin) };
+}
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", type: "image/svg+xml", href: "/logo.svg" },
@@ -63,8 +76,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function App() {
-  return <Outlet />;
+export default function App({ loaderData }: Route.ComponentProps) {
+  return (
+    <SiteProvider site={loaderData.site}>
+      <Outlet />
+    </SiteProvider>
+  );
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

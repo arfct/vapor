@@ -1,16 +1,19 @@
 import LegalPage from "~/components/LegalPage";
 import type { Route } from "./+types/privacy";
+import { useSite } from "~/lib/site-context";
+import { displayHost } from "~/shared/site";
 
 export function meta(_args: Route.MetaArgs) {
   return [{ title: "vapor — privacy" }];
 }
 
 export default function Privacy() {
+  const { operatorName, sourceUrl } = useSite();
   return (
-    <LegalPage title="Privacy" updated="August 30, 2026">
+    <LegalPage title="Privacy" updated="September 6, 2026">
       <p>
-        vapor is a collaborative markdown editor operated by Artifact. This page describes what
-        vapor stores and why, in plain language.
+        vapor is a collaborative markdown editor{operatorName ? ` operated by ${operatorName}` : ""}.
+        This page describes what this instance stores and why, in plain language.
       </p>
 
       <h2>Documents are public and temporary</h2>
@@ -71,13 +74,11 @@ export default function Privacy() {
       <p>
         Documents remove themselves — everything in a document is permanently deleted when it
         expires. To remove a signed-in profile (email, name, avatar) sooner, open an issue at{" "}
-        <a
-          href="https://github.com/arfct/vapor"
-          className="text-ink underline hover:text-coral"
-        >
-          github.com/arfct/vapor
-        </a>{" "}
-        or contact Artifact, and we'll delete it.
+        <a href={sourceUrl} className="text-ink underline hover:text-coral">
+          {displayHost(sourceUrl)}
+          {new URL(sourceUrl).pathname.replace(/\/$/, "")}
+        </a>
+        {operatorName ? ` or contact ${operatorName}` : ""}, and it will be deleted.
       </p>
 
       <h2>Changes</h2>

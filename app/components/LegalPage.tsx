@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import type { ReactNode } from "react";
+import { useSite } from "~/lib/site-context";
 
 /**
  * Shared shell for the /privacy and /terms pages: the vapor wordmark, a
@@ -14,6 +15,7 @@ export default function LegalPage({
   updated: string;
   children: ReactNode;
 }) {
+  const { sourceUrl } = useSite();
   return (
     <div className="min-h-screen bg-paper text-ink">
       <header className="flex h-[60px] items-stretch border-b border-border">
@@ -41,13 +43,8 @@ export default function LegalPage({
           Terms
         </Link>
         {" · "}
-        <a
-          href="https://github.com/arfct/vapor"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-ink hover:text-coral"
-        >
-          GitHub
+        <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="text-ink hover:text-coral">
+          Source
         </a>
       </footer>
     </div>

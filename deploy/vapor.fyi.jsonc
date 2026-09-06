@@ -1,0 +1,42 @@
+{
+	"$schema": "../node_modules/wrangler/config-schema.json",
+	// The reference instance, vapor.fyi. Same worker as ../wrangler.jsonc (the
+	// name, bindings, and migrations must stay identical — a test checks — so
+	// the Durable Objects behind live documents are never orphaned); only the
+	// domains and instance vars differ. Deploy with `npm run deploy:vapor.fyi`.
+	// Your own instance doesn't need this file: edit ../wrangler.jsonc instead,
+	// or copy this one and point WRANGLER_CONFIG at your copy.
+	"name": "vapor",
+	"compatibility_date": "2025-04-04",
+	"compatibility_flags": ["nodejs_compat"],
+	"main": "../workers/app.ts",
+	"observability": {
+		"enabled": true
+	},
+	"routes": [
+		{ "pattern": "vapor.fyi", "custom_domain": true },
+		{ "pattern": "vpr.fyi", "custom_domain": true },
+		{ "pattern": "vaporware.fyi", "custom_domain": true }
+	],
+	"durable_objects": {
+		"bindings": [
+			{ "name": "DocumentAgent", "class_name": "DocumentAgent" },
+			{ "name": "VaporMcp", "class_name": "VaporMcp" },
+			{ "name": "Registry", "class_name": "Registry" }
+		]
+	},
+	"r2_buckets": [{ "binding": "ATTACHMENTS", "bucket_name": "vapor-attachments" }],
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["DocumentAgent"] },
+		{ "tag": "v2", "new_sqlite_classes": ["VaporMcp"] },
+		{ "tag": "v3", "new_sqlite_classes": ["Registry"] }
+	],
+	"vars": {
+		"GOOGLE_CLIENT_ID": "12054056676-thqs6nurgk15kjl9mtdju83r45nhigdd.apps.googleusercontent.com",
+		"PUBLIC_ORIGIN": "https://vapor.fyi",
+		"REDIRECT_HOSTS": "www.vapor.fyi,vpr.fyi,www.vpr.fyi,vaporware.fyi,www.vaporware.fyi",
+		"OPERATOR_NAME": "Artifact",
+		"SOURCE_URL": "https://github.com/arfct/vapor"
+	},
+	"keep_vars": true
+}

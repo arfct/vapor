@@ -44,8 +44,8 @@ const MentionList = forwardRef<SuggestionListHandle, PopupProps<MentionItem>>(fu
       empty={
         query.length === 0 ? (
           <>
-            No one to mention yet. Connect an agent at <span className="text-ink">vapor.fyi/mcp</span>, or type an
-            email address.
+            No one to mention yet. Connect an agent from <span className="text-ink">Share → Invite an agent</span>,
+            or type an email address.
           </>
         ) : undefined
       }

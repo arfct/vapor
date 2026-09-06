@@ -1,11 +1,12 @@
 {
-	"name": "mist",
+	"name": "vapor",
 	"private": true,
 	"type": "module",
 	"scripts": {
 		"build": "react-router build",
 		"cf-typegen": "wrangler types",
 		"deploy": "npm run build && wrangler deploy",
+		"deploy:vapor.fyi": "WRANGLER_CONFIG=deploy/vapor.fyi.jsonc npm run deploy",
 		"dev": "react-router dev",
 		"lint": "eslint .",
 		"postinstall": "npm run cf-typegen",

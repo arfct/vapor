@@ -1,15 +1,14 @@
 # CLAUDE.md
 
-This repo follows the Artifact Primer: https://github.com/arfct/ops/tree/main/primer
-
-- Standards (style, commits, branches): https://github.com/arfct/ops/blob/main/primer/standards.md
-- Work tracking: Linear workspace `arfct`, team Artifact (A) — https://github.com/arfct/ops/blob/main/primer/linear.md
-- Bugs: https://github.com/arfct/ops/blob/main/primer/bugs.md · Deployment: https://github.com/arfct/ops/blob/main/primer/deployment.md
-- Agent conventions and boundaries: https://github.com/arfct/ops/blob/main/primer/agents.md
-
 ## This repo
 
-vapor is a collaborative markdown editor — a fork of [mist](https://github.com/inanimate-tech/mist), deployed at https://vapor.fyi. `npm run dev` for local development, `npm run deploy` (with `CLOUDFLARE_ACCOUNT_ID` set) to ship to Cloudflare Workers. This is a fork: keep upstream's build tooling (ESLint config, CI) unchanged unless upstream changes it — don't propose tooling swaps here.
+vapor is a collaborative markdown editor — a fork of [mist](https://github.com/inanimate-tech/mist) that anyone can run as their own instance (`docs/self-hosting.md`). `npm run dev` for local development, `npm run deploy` (with `CLOUDFLARE_ACCOUNT_ID` set) to ship to Cloudflare Workers with the generic `wrangler.jsonc`; the reference instance, vapor.fyi, deploys with `npm run deploy:vapor.fyi` from `deploy/vapor.fyi.jsonc`. This is a fork: keep upstream's build tooling (ESLint config, CI) unchanged unless upstream changes it — don't propose tooling swaps here.
+
+Work is tracked in GitHub issues on this repository; branches are `feat/<issue>-<slug>`. Maintainers at Artifact additionally follow the [Artifact Primer](https://github.com/arfct/ops/tree/main/primer) for style, commits, and deployment; contributors to a fork don't need it.
+
+### Portability rule
+
+Nothing in `app/`, `agents/`, or `workers/` may name a host or a repository. The origin comes from the request (`url.origin`, or the root loader's `site` via `useSite()` in components); the rest comes from the optional vars `PUBLIC_ORIGIN`, `REDIRECT_HOSTS`, `OPERATOR_NAME`, and `SOURCE_URL`, resolved in `app/shared/site.ts`. The one allowed literal is the reference origin in `plugin/skills/vapor/SKILL.md`, which `workers/routes.ts` rewrites when serving `/skill.md`. Instance-specific config (domains, client ids) lives in `deploy/*.jsonc`, never in the generic `wrangler.jsonc`; `tests/unit/deploy-config.test.ts` keeps the two describing the same Worker.
 
 ### Start of Session
 
@@ -39,18 +38,15 @@ Naming is "vapor" throughout: `APP_NAME`, page titles, the export frontmatter ke
 
 ### Prerequisites
 
-Requires Node.js 22+ (see `.nvmrc`). Before running commands:
-
-```bash
-source ~/.nvm/nvm.sh && nvm use
-```
+Requires Node.js 22+ (see `.nvmrc`; `nvm use` picks it up). Node 26 currently fails the three localStorage-based test files (`safe-storage`, `anon-identity`, `use-theme`) because it ships its own global `localStorage`; that is an environment issue, not a regression.
 
 ### Commands
 
 ```bash
 npm run dev          # Local development server
 npm run build        # Production build
-npm run deploy       # Build and deploy to Cloudflare Workers
+npm run deploy       # Build and deploy to Cloudflare Workers (generic wrangler.jsonc → workers.dev or your routes)
+npm run deploy:vapor.fyi  # The reference instance (deploy/vapor.fyi.jsonc)
 npm run typecheck    # Full TypeScript type checking (runs cf-typegen + react-router typegen + tsc)
 npm run lint         # ESLint
 npm run test         # Vitest with coverage
@@ -76,7 +72,8 @@ See `docs/technical-architecture.md` for full details.
 - `app/shared/` — Constants and types shared between client and server
 - `app/routes/` — File-based routing (`home.tsx`, `doc.$id.tsx`, `new.ts`)
 - `workers/app.ts` — Cloudflare Worker entry point
-- `workers/routes.ts` — Pure handlers for `/:id.md` and the `/mcp` help page
+- `workers/routes.ts` — Pure handlers for `/:id.md`, the `/mcp` help page, `/llms.txt`, `/skill.md`, host redirects, and `/auth/*`
+- `deploy/` — Per-instance wrangler configs selected with `WRANGLER_CONFIG` (paths inside are relative to the file)
 - `tests/` — Unit tests (`tests/unit/`) and integration tests (`tests/integration/`)
 
 #### Routes
@@ -92,6 +89,7 @@ Documents render at the root path, not under `/docs`:
 | `/mcp` | `agents/mcp.ts` (`VaporMcp`) — OAuth-gated MCP server |
 | `/mcp/anonymous` | `agents/mcp.ts` (`VaporMcp`) — tokenless MCP server |
 | `/auth/*` | `workers/routes.ts` — Google sign-in sessions |
+| `/skill.md`, `/llms.txt` | `workers/routes.ts` — the plugin skill and the MCP guide, rewritten to the serving origin |
 | `/oauth/*`, `/.well-known/oauth-*` | `workers/oauth.ts` — OAuth 2.1 AS for MCP |
 | `/agents/*` | `agents/document.ts` (`DocumentAgent`) — Yjs WebSocket |
 
@@ -151,7 +149,7 @@ Ported from subpixel's dependency-free auth stack. Full design: `docs/plans/2026
 - **`app/lib/auth.server.ts`** — Google ID-token verification (WebCrypto), HMAC session JWTs, the `vp_session` cookie. Identity is a principal (`email:<addr>`); sign-in is optional.
 - **`agents/registry.ts`** (`Registry` DO, one `"global"` instance) — profiles, counterpart agent slugs, and OAuth clients/codes/refresh tokens.
 - **`workers/oauth.ts`** — OAuth 2.1 AS (PKCE, dynamic registration, discovery). Access tokens are 1-hour session JWTs carrying the granted capabilities; the consent page (`app/lib/oauth-pages.ts`) is where write is granted. `/mcp` requires one of these; `/mcp/anonymous` needs none.
-- Secrets: `SESSION_SECRET` (Workers secret), `GOOGLE_CLIENT_ID` (public var). See `.dev.vars.example`.
+- Secrets: `SESSION_SECRET` (Workers secret), `GOOGLE_CLIENT_ID` (public var). See `.dev.vars.example`. Both optional: without them an instance is anonymous-only.
 
 #### Testing Constraints
 

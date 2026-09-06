@@ -157,15 +157,14 @@ export function secretHint(secret: string): string {
   return secret.length <= 4 ? "…" : `…${secret.slice(-4)}`;
 }
 
-export const DEFAULT_WAKE_ORIGIN = "https://vapor.fyi";
-
 /**
  * The prose a woken agent reads. Written for a model with no other context:
  * what happened, where, and the one thing to do about it. The same text is
  * the routine's `text` and the webhook body's `text` field.
  */
-export function wakeText(event: WakeEvent, origin = DEFAULT_WAKE_ORIGIN): string {
-  const url = `${origin}/${event.docId}`;
+export function wakeText(event: WakeEvent, origin: string): string {
+  // With no origin known the link is root-relative; the receiver still gets the id.
+  const url = `${origin.replace(/\/+$/, "")}/${event.docId}`;
   const lines: string[] = [];
   if (event.name === "test") {
     lines.push(`vapor test: this is a test from the owner of @${event.agent}. Nothing happened in a document.`);
@@ -227,7 +226,7 @@ export const CLAUDE_ROUTINE_BETA = "experimental-cc-routine-2026-04-01";
 export async function buildWakeRequest(
   target: WakeTargetInput,
   event: WakeEvent,
-  origin = DEFAULT_WAKE_ORIGIN,
+  origin: string,
   now = Date.now(),
 ): Promise<WakeRequest> {
   const text = wakeText(event, origin);

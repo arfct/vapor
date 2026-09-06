@@ -1,9 +1,21 @@
-# Fathom analytics (optional — omit to disable)
+# Local development variables. Copy to .dev.vars (git-ignored); everything
+# is optional and the app runs anonymous-only with none of them set.
+
+# Identity. GOOGLE_CLIENT_ID is the public OAuth client id of a Google
+# "Web application" credential whose authorized JavaScript origins include
+# http://localhost:5173 (see docs/self-hosting.md). SESSION_SECRET signs
+# session JWTs; any long random string works locally:
+#   openssl rand -base64 32
+GOOGLE_CLIENT_ID=
+SESSION_SECRET=
+
+# Instance identity (app/shared/site.ts). Normally left unset locally: the
+# request's own origin (http://localhost:5173) is used everywhere.
+# PUBLIC_ORIGIN=
+# REDIRECT_HOSTS=
+# OPERATOR_NAME=
+# SOURCE_URL=
+
+# Fathom analytics (omit to disable)
 VITE_FATHOM_SITE_ID=
 VITE_FATHOM_DOMAINS=
-
-# Identity (optional — omit to keep sign-in disabled). SESSION_SECRET signs
-# session JWTs (Workers secret in prod, `openssl rand -base64 32` locally);
-# GOOGLE_CLIENT_ID is the public Google OAuth client id for GSI sign-in.
-SESSION_SECRET=
-GOOGLE_CLIENT_ID=

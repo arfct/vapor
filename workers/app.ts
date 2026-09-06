@@ -7,6 +7,7 @@ import {
   handleMcpHelp,
   handleLlmsTxt,
   handleAuth,
+  handleSkill,
   redirectHost,
   redirectLegacyDocPath,
   type MarkdownStub,
@@ -35,9 +36,10 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // Redirect secondary domains to the primary vapor.fyi domain. Must run
-    // before all other handlers since it operates on the hostname level.
-    const redirectResponse = redirectHost(request);
+    // Redirect alias hostnames (REDIRECT_HOSTS) to the canonical origin
+    // (PUBLIC_ORIGIN). Must run before all other handlers since it operates
+    // on the hostname level. A no-op unless both vars are set.
+    const redirectResponse = redirectHost(request, env);
     if (redirectResponse) {
       return redirectResponse;
     }
@@ -107,7 +109,8 @@ export default {
     // for browsers, markdown otherwise) instead of a protocol error; only the
     // event-stream GET a real MCP client makes falls through to VaporMcp.serve
     // below. /llms.txt is the same guide where agents look for it first.
-    const helpResponse = handleMcpHelp(request) ?? handleLlmsTxt(request);
+    // /skill.md is the plugin's skill with its URLs pointed at this instance.
+    const helpResponse = handleMcpHelp(request, env) ?? handleLlmsTxt(request, env) ?? handleSkill(request, env);
     if (helpResponse) {
       return helpResponse;
     }

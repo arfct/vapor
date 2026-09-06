@@ -258,7 +258,7 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
       "create_document",
       {
         description:
-          "Create a new vapor document, optionally with starting markdown. Returns its id and URL; the calling identity is enrolled as the document's first agent.",
+          "Create a new vapor document, optionally with starting markdown. Returns its id and URL; the calling identity is enrolled as the document's first agent. To revise a document that already exists, use replace on it instead: one document per draft, so the URL its readers have stays valid.",
         inputSchema: {
           markdown: z.string().optional().describe("Optional starting markdown for the document."),
         },

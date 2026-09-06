@@ -1,52 +1,49 @@
-import { useCallback, useEffect, useId, useState } from "react";
-import { useParams } from "react-router";
+import { useCallback, useEffect, useState } from "react";
 import type { AgentRosterEntry } from "~/shared/agent-protocol";
+import Dialog, { SnippetRow } from "~/components/ui/dialog";
 import { timeAgo } from "~/lib/time-ago";
 
 function relativeTime(ts: number | null): string {
   return ts == null ? "never" : timeAgo(ts);
 }
 
-function SnippetRow({ label, text }: { label: string; text: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = useCallback(() => {
-    navigator.clipboard?.writeText(text).then(
-      () => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      },
-      () => {},
-    );
-  }, [text]);
-  return (
-    <div>
-      <div className="mb-1 flex items-center justify-between">
-        <span className="text-sm text-muted">{label}</span>
-        <button onClick={copy} className="cursor-pointer text-sm text-muted hover:text-ink">
-          {copied ? "Copied" : "Copy"}
-        </button>
-      </div>
-      <code className="block break-all border border-border bg-border/20 px-3 py-2 text-sm">
-        {text}
-      </code>
-    </div>
-  );
+type Client = "claude" | "chatgpt";
+
+const CLIENTS: { id: Client; label: string }[] = [
+  { id: "claude", label: "Claude" },
+  { id: "chatgpt", label: "ChatGPT" },
+];
+
+const tabClass = (active: boolean) =>
+  `cursor-pointer border-b-2 px-3 py-2 text-sm transition-colors ${
+    active ? "border-ink text-ink" : "border-transparent text-muted hover:text-ink"
+  }`;
+
+function Steps({ children }: { children: React.ReactNode }) {
+  return <ol className="list-decimal space-y-1.5 pl-5 text-sm text-ink">{children}</ol>;
 }
 
 /**
- * The Agents panel: how to connect an agent over MCP (the two doors) plus
- * the document's live roster with per-entry revoke. Token minting is gone —
- * agents authenticate via OAuth (or the anonymous door) and enroll on first
- * touch.
+ * The Agents panel: how to connect an agent over MCP, one tab per client,
+ * plus — on a document — its live roster with per-entry revoke. Agents
+ * authenticate via OAuth (or the anonymous door) and enroll on first touch.
+ * Without a `docId` (the homepage tour) it shows only the instructions.
  */
-export default function AgentsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const params = useParams();
-  const docId = params.id ?? "";
+export default function AgentsPanel({
+  open,
+  onClose,
+  docId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  docId?: string;
+}) {
   const [roster, setRoster] = useState<AgentRosterEntry[]>([]);
-  const titleId = useId();
+  const [client, setClient] = useState<Client>("claude");
   const origin = typeof window !== "undefined" ? window.location.origin : "https://vapor.fyi";
 
   const loadRoster = useCallback(() => {
+    if (!docId) return;
     fetch(`/${docId}/agents`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data) => setRoster(Array.isArray(data) ? data : []))
@@ -57,15 +54,6 @@ export default function AgentsPanel({ open, onClose }: { open: boolean; onClose:
     if (open) loadRoster();
   }, [open, loadRoster]);
 
-  useEffect(() => {
-    if (!open) return;
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
-
   async function handleRevoke(name: string) {
     await fetch(`/${docId}/agents`, {
       method: "POST",
@@ -75,52 +63,64 @@ export default function AgentsPanel({ open, onClose }: { open: boolean; onClose:
     loadRoster();
   }
 
-  function handleOverlayClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (e.target === e.currentTarget) onClose();
-  }
-
-  const claudeCodeCommand = `claude mcp add --transport http vapor ${origin}/mcp`;
-  const anonCommand = `claude mcp add --transport http vapor ${origin}/mcp/anonymous`;
+  const mcpUrl = `${origin}/mcp`;
+  const anonUrl = `${origin}/mcp/anonymous`;
+  const claudeCodeCommand = `claude mcp add --transport http vapor ${mcpUrl}`;
+  const anonCommand = `claude mcp add --transport http vapor ${anonUrl}`;
 
   return (
-    <>
-      {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={handleOverlayClick}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={titleId}
-            className="max-h-[85vh] w-full max-w-lg overflow-y-auto border border-border bg-paper p-6"
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h2 id={titleId} className="text-lg font-medium">
-                Agents
-              </h2>
-              <button
-                onClick={onClose}
-                aria-label="Close"
-                className="cursor-pointer text-muted hover:text-ink"
-              >
-                {"✕"}
-              </button>
-            </div>
-
+    <Dialog open={open} onClose={onClose} title="Invite an agent">
             <div className="space-y-4">
               <p className="text-sm text-muted">
                 Connect an AI agent over MCP. Signing in gives it a stable identity and,
                 if you grant it, write access; the anonymous door needs no account and can
                 suggest and comment.
               </p>
-              <SnippetRow label="Claude Code — sign in" text={claudeCodeCommand} />
-              <SnippetRow label="Claude Code — anonymous" text={anonCommand} />
-              <p className="text-sm text-muted">
-                For claude.ai, add <code className="font-mono">{origin}/mcp</code> as a custom
-                connector (Settings → Connectors).
-              </p>
+              <div className="flex border-b border-border" role="tablist" aria-label="Client">
+                {CLIENTS.map((c) => (
+                  <button
+                    key={c.id}
+                    role="tab"
+                    aria-selected={client === c.id}
+                    onClick={() => setClient(c.id)}
+                    className={tabClass(client === c.id)}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+              {client === "claude" ? (
+                <div className="space-y-4" role="tabpanel">
+                  <SnippetRow label="Claude Code — sign in" text={claudeCodeCommand} />
+                  <SnippetRow label="Claude Code — anonymous" text={anonCommand} />
+                  <p className="text-sm text-muted">
+                    For claude.ai, add <code className="font-mono">{mcpUrl}</code> as a custom
+                    connector (Settings → Connectors).
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4" role="tabpanel">
+                  <Steps>
+                    <li>
+                      In ChatGPT, open Settings → Connectors → Advanced and turn on Developer
+                      mode. Custom connectors need a paid plan.
+                    </li>
+                    <li>
+                      Choose Create, name it <span className="font-mono">vapor</span>, and paste the
+                      server URL below. Pick OAuth to sign in, or use the anonymous URL with no
+                      authentication.
+                    </li>
+                    <li>
+                      In a chat, open the tools menu, enable the vapor connector, and paste a
+                      document link.
+                    </li>
+                  </Steps>
+                  <SnippetRow label="MCP server URL — sign in" text={mcpUrl} />
+                  <SnippetRow label="MCP server URL — anonymous" text={anonUrl} />
+                </div>
+              )}
 
+              {docId && (
               <div className="border-t border-border pt-4">
                 <h3 className="mb-2 text-sm uppercase tracking-wider text-muted">
                   In this document
@@ -166,10 +166,8 @@ export default function AgentsPanel({ open, onClose }: { open: boolean; onClose:
                   </ul>
                 )}
               </div>
+              )}
             </div>
-          </div>
-        </div>
-      )}
-    </>
+    </Dialog>
   );
 }

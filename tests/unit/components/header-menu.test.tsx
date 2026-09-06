@@ -38,17 +38,17 @@ describe("HeaderMenu", () => {
     expect(screen.getByLabelText("Auto")).toBeTruthy();
   });
 
-  it("shows display name and sign-out when signed in", async () => {
+  it("shows the email and a Sign out row when signed in", async () => {
     const fetchMock = mockFetch({
-      "/auth/me": { signedIn: true, displayName: "Ada" },
+      "/auth/me": { signedIn: true, displayName: "Ada", email: "ada@example.com" },
       "POST /auth/logout": { ok: true },
     });
     vi.stubGlobal("fetch", fetchMock);
     renderWithDocument(createElement(HeaderMenu));
     fireEvent.click(screen.getByLabelText("Menu"));
 
-    expect(await screen.findByText("Ada")).toBeTruthy();
-    fireEvent.click(screen.getByLabelText("Sign out"));
+    expect(await screen.findByText("ada@example.com")).toBeTruthy();
+    fireEvent.click(screen.getByText("Sign out"));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith("/auth/logout", { method: "POST" }),
     );

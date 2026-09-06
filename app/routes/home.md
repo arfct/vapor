@@ -39,17 +39,13 @@ vapor:
 
 # vapor
 
-A shared doc that lasts {==99 hours==}{>>Docs are ephemeral. Export what you want to keep.<<}. Send the link and anyone can read, edit, and comment, {==no account needed==}{>>Does this include agents?<<}. Agents can work alongside you, with their own cursor and name. Then the doc is gone, which is the point: a draft, a plan, or a quick review doesn't need to last, and it never becomes a pile to manage. Download the file when you want to keep something. The markdown is yours.
+A shared doc that lasts {==99 hours==}{>>Docs are ephemeral. Export what you want to keep.<<}. Send the link and anyone can read, edit, and comment, {==no account needed==}{>>Does this include agents?<<}. Agents can work alongside you, with their own cursor and name. Then the doc is gone, which is the point: a draft, a plan, or a quick review doesn't need to last, and it never becomes a pile to manage. Download the file when you want to keep something. The markdown is yours. [Create your own](vapor://new).
 
 ## Agents work here like people
 
 Point Claude at a doc and it shows up with {==its own cursor==}{>>Every collaborator gets a name and a color, agents included.<<}, reads the document, and edits with the rest of you: suggestions you can accept or reject, comments you can answer. Mention it in a comment and it replies. It types at a human pace, so you can watch what it's doing and step in if you don't like where it's going.
 
-To connect Claude Code, run this once:
-
-```bash
-claude mcp add --transport http vapor https://vapor.fyi/mcp
-```
+Ready to try it? [Invite your own agent](vapor://invite).
 
 ## Changes can be proposals
 
@@ -61,12 +57,10 @@ You arrive as an animal with a color. Sign in with Google if you'd like your own
 
 ## Keep what matters
 
-Download the doc and you get a plain markdown file with the comments tucked into its front matter. Open it anywhere. Upload it here again and {==the threads come back==}{>>Comments stay with the text: each thread sits beside its line, moves as the doc changes, and steps aside when resolved.<<}. Or start from a file in the terminal:
-
-```bash
-curl https://vapor.fyi/new -T file.md
-```
+Download the doc and you get a plain markdown file with the comments tucked into its front matter. Open it anywhere. [Upload it here again](vapor://new) and {==the threads come back==}{>>Comments stay with the text: each thread sits beside its line, moves as the doc changes, and steps aside when resolved.<<}.
 
 ## Try it
 
-This doc is live. Type anywhere, select something to comment on, or switch to **Suggest**. Nothing here is saved, so go ahead. The **+** button starts a real doc.
+This doc is live. Type anywhere, select something to comment on, or switch to **Suggest**. Nothing here is saved, so go ahead.
+
+Work in progress. Bugs and feedback on [GitHub](https://github.com/arfct/vapor).

@@ -25,8 +25,9 @@ declare global {
 // with nothing rendered, show a note instead of an empty slot.
 const GSI_FALLBACK_DELAY_MS = 2500;
 
-// Popover width, which the Google button also spans.
+// Popover width and side padding; the Google button fills the space between.
 const MENU_WIDTH_PX = 252;
+const MENU_PADDING_PX = 16;
 
 const themeOptions: { value: Theme; icon: string; label: string }[] = [
   { value: "light", icon: "light_mode", label: "Light" },
@@ -64,7 +65,7 @@ function Row({
 
 /**
  * The one menu at the top right. The wordmark (a link home) with the
- * theme switch; New document, Upload; the editing mode (Edit, Suggest, Markdown);
+ * theme switch; New document; the editing mode (Edit, Suggest, Markdown);
  * comments (start one, and on phones show or hide the sheet); Accept all /
  * Reject all; and the account row (Google sign-in or name + sign-out) at
  * the foot.
@@ -75,12 +76,10 @@ function Row({
 export default function HeaderMenu({
   comments,
   onNewDocument,
-  onUpload,
 }: {
   /** Phones only: the comment sheet's open state and toggle. */
   comments?: { open: boolean; onToggle: () => void };
   onNewDocument?: () => void;
-  onUpload?: () => void;
 } = {}) {
   const session = useSession();
   const { theme, setTheme } = useTheme();
@@ -181,8 +180,7 @@ export default function HeaderMenu({
           (theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
         window.google.accounts.id.renderButton(host, {
           theme: dark ? "filled_black" : "outline",
-          shape: "rectangular",
-          width: MENU_WIDTH_PX,
+          width: MENU_WIDTH_PX - 2 * MENU_PADDING_PX,
         });
       };
 
@@ -250,10 +248,9 @@ export default function HeaderMenu({
                 ))}
               </div>
             </div>
-            {(onNewDocument || onUpload) && (
+            {onNewDocument && (
               <div className="border-t border-border py-1">
-                {onNewDocument && <Row icon="note_add" label="New document" onClick={run(onNewDocument)} />}
-                {onUpload && <Row icon="upload_file" label="Upload .md file" onClick={run(onUpload)} />}
+                <Row icon="note_add" label="New document" onClick={run(onNewDocument)} />
               </div>
             )}
             <div className="border-t border-border py-1" role="group" aria-label="Editing mode">
@@ -307,31 +304,25 @@ export default function HeaderMenu({
               />
             </div>
             {session?.signedIn ? (
-              <div className="flex items-center gap-2 border-t border-border px-4 py-3">
-                <Avatar
-                  name={session.displayName ?? "?"}
-                  avatar={session.avatar}
-                  className="h-6 w-6"
-                />
-                <span className="min-w-0 truncate text-sm">{session.displayName}</span>
-                <button
-                  onClick={signOut}
-                  title="Sign out"
-                  aria-label="Sign out"
-                  className="ml-auto cursor-pointer text-muted transition-colors hover:text-ink"
-                >
-                  <Icon name="logout" />
-                </button>
+              <div className="border-t border-border py-1">
+                <div className="flex min-h-[36px] items-center gap-2 px-4 text-sm">
+                  <Avatar
+                    name={session.displayName ?? session.email ?? "?"}
+                    avatar={session.avatar}
+                    className="h-6 w-6"
+                  />
+                  <span className="min-w-0 truncate text-muted">{session.email ?? session.displayName}</span>
+                </div>
+                <Row icon="logout" label="Sign out" onClick={run(signOut)} />
               </div>
             ) : signInUnavailable ? (
               <p className="border-t border-border px-4 py-3 text-sm text-muted">
                 Sign-in needs a full browser — open this page in Safari or Chrome.
               </p>
             ) : (
-              // Google's button draws its own border. Pulled out by 1px, that
-              // border lands on the popover's, so the button reads as the
-              // popover's foot rather than a box inside it.
-              <div ref={setButtonHost} className="-mx-px -mb-px flex h-[40px] justify-center" />
+              <div className="flex h-[64px] items-center border-t border-border px-4">
+                <div ref={setButtonHost} />
+              </div>
             )}
           </Popover.Popup>
         </Popover.Positioner>

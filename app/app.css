@@ -108,8 +108,42 @@ body {
 .system-trigger .material-symbols-outlined,
 .sheet-toolbar .material-symbols-outlined,
 .theme-switch .material-symbols-outlined,
+.dialog-row .material-symbols-outlined,
 [role="menuitem"] .material-symbols-outlined {
   font-size: 24px;
+}
+
+/* A document condenses into view once its content has arrived, block by
+   block: the first ten top-level blocks 100ms apart, the rest together. */
+@keyframes condense {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    filter: none;
+  }
+}
+.doc-reveal .tiptap > * {
+  animation: condense 0.6s ease-out both;
+  animation-delay: 1s;
+}
+.doc-reveal .tiptap > :nth-child(1) { animation-delay: 0ms; }
+.doc-reveal .tiptap > :nth-child(2) { animation-delay: 100ms; }
+.doc-reveal .tiptap > :nth-child(3) { animation-delay: 200ms; }
+.doc-reveal .tiptap > :nth-child(4) { animation-delay: 300ms; }
+.doc-reveal .tiptap > :nth-child(5) { animation-delay: 400ms; }
+.doc-reveal .tiptap > :nth-child(6) { animation-delay: 500ms; }
+.doc-reveal .tiptap > :nth-child(7) { animation-delay: 600ms; }
+.doc-reveal .tiptap > :nth-child(8) { animation-delay: 700ms; }
+.doc-reveal .tiptap > :nth-child(9) { animation-delay: 800ms; }
+.doc-reveal .tiptap > :nth-child(10) { animation-delay: 900ms; }
+@media (prefers-reduced-motion: reduce) {
+  .doc-reveal .tiptap > * {
+    animation-duration: 0.01s;
+    animation-delay: 0s;
+  }
 }
 
 /* The homepage tour's own touches: its title is vapor, condensing to
@@ -543,6 +577,8 @@ body {
   height: 1em;
   overflow: hidden;
   white-space: nowrap;
+  /* Never squeezed by a flex row with long text beside it. */
+  flex-shrink: 0;
   white-space: nowrap;
   word-wrap: normal;
   direction: ltr;

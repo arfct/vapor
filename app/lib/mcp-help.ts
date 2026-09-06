@@ -256,6 +256,9 @@ Reply to comments in the thread, not in the body.
   remaining lifetime by default and are refreshed by re-subscribing;
   <code>events_unsubscribe</code> ends one early. This surface mirrors the
   draft MCP Events extension and will track the standard as it ratifies.
+  The receiver can be a small relay that wakes a hosted agent, such as a
+  Claude Code routine; the vapor repository's <code>relay/</code> directory
+  is a working example.
 </p>
 <p>
   To stop an agent for good, revoke it in the Agents panel. Documents and everything

@@ -44,6 +44,8 @@ Tools: `read_document` · `insert` · `replace` · `suggest` · `comment` · `re
 
 A fenced block whose language is `agent` carries standing instructions for agents. People don't see it in the rendered page; `read_document` returns it as `instructions`.
 
+To have a mention wake a Claude that isn't running anywhere, point `events_subscribe` at a relay that fires a [Claude Code routine](https://code.claude.com/docs/en/routines): [`relay/`](relay/) is a 60-line Worker that verifies vapor's signed webhook and forwards the event as the routine's fire text. Set `VAPOR_RELAY_URL` and `VAPOR_RELAY_SECRET` in your shell and the vapor skill subscribes every document it creates. Details in [the events plan](docs/plans/2026-08-31-mcp-events-polyfill-plan.md#the-routine-relay).
+
 ## The drafting habit
 
 The vapor plugin for Claude Code bundles the MCP connection with a skill that changes where drafts live: plans and proposals go up as vapor docs instead of chat walls, Claude answers comments over MCP, and the settled document is exported to the repo before the 99-hour cliff. The bundled connection is the signed-in endpoint (`/mcp`) — the first tool call prompts a Google sign-in and consent screen.

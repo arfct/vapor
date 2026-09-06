@@ -7,11 +7,14 @@ function relativeTime(ts: number | null): string {
   return ts == null ? "never" : timeAgo(ts);
 }
 
-type Client = "claude" | "chatgpt";
+type Client = "claude" | "chatgpt" | "codex" | "cursor" | "other";
 
 const CLIENTS: { id: Client; label: string }[] = [
   { id: "claude", label: "Claude" },
   { id: "chatgpt", label: "ChatGPT" },
+  { id: "codex", label: "Codex" },
+  { id: "cursor", label: "Cursor" },
+  { id: "other", label: "Other" },
 ];
 
 const tabClass = (active: boolean) =>
@@ -67,6 +70,11 @@ export default function AgentsPanel({
   const anonUrl = `${origin}/mcp/anonymous`;
   const claudeCodeCommand = `claude mcp add --transport http vapor ${mcpUrl}`;
   const anonCommand = `claude mcp add --transport http vapor ${anonUrl}`;
+  const codexCommand = `codex mcp add vapor --url ${mcpUrl}`;
+  const geminiCommand = `gemini mcp add --transport http vapor ${mcpUrl}`;
+  // One line each: the snippet rows don't keep newlines, and compact JSON still pastes.
+  const cursorJson = JSON.stringify({ mcpServers: { vapor: { url: mcpUrl } } });
+  const vscodeJson = JSON.stringify({ servers: { vapor: { type: "http", url: mcpUrl } } });
 
   return (
     <Dialog open={open} onClose={onClose} title="Invite an agent">
@@ -89,16 +97,49 @@ export default function AgentsPanel({
                   </button>
                 ))}
               </div>
-              {client === "claude" ? (
+              {client === "claude" && (
                 <div className="space-y-4" role="tabpanel">
                   <SnippetRow label="Claude Code — sign in" text={claudeCodeCommand} />
                   <SnippetRow label="Claude Code — anonymous" text={anonCommand} />
                   <p className="text-sm text-muted">
-                    For claude.ai, add <code className="font-mono">{mcpUrl}</code> as a custom
-                    connector (Settings → Connectors).
+                    For claude.ai and Claude Desktop, add <code className="font-mono">{mcpUrl}</code> as
+                    a custom connector (Settings → Connectors).
                   </p>
                 </div>
-              ) : (
+              )}
+              {client === "codex" && (
+                <div className="space-y-4" role="tabpanel">
+                  <SnippetRow label="Codex CLI" text={codexCommand} />
+                  <p className="text-sm text-muted">
+                    Then <code className="font-mono">codex mcp login vapor</code> to sign in, or use
+                    the anonymous URL with no login.
+                  </p>
+                </div>
+              )}
+              {client === "cursor" && (
+                <div className="space-y-4" role="tabpanel">
+                  <SnippetRow label=".cursor/mcp.json" text={cursorJson} />
+                  <p className="text-sm text-muted">
+                    In the project, or <code className="font-mono">~/.cursor/mcp.json</code> for every
+                    project. Sign in from Settings → MCP.
+                  </p>
+                </div>
+              )}
+              {client === "other" && (
+                <div className="space-y-4" role="tabpanel">
+                  <SnippetRow label="Gemini CLI" text={geminiCommand} />
+                  <SnippetRow label="VS Code — .vscode/mcp.json" text={vscodeJson} />
+                  <p className="text-sm text-muted">
+                    Any MCP client that speaks HTTP takes the same URL. Full guide, with what
+                    agents can do and how they watch a document:{" "}
+                    <a href="/mcp" className="underline" target="_blank" rel="noreferrer">
+                      {origin.replace(/^https?:\/\//, "")}/mcp
+                    </a>
+                    .
+                  </p>
+                </div>
+              )}
+              {client === "chatgpt" && (
                 <div className="space-y-4" role="tabpanel">
                   <Steps>
                     <li>

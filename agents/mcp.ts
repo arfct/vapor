@@ -49,7 +49,7 @@ const DEFAULT_ORIGIN = "https://vapor.fyi";
 
 const SERVER_INSTRUCTIONS = `vapor hosts live collaborative markdown documents; you join them as a named collaborator. Read with read_document, edit with insert/replace (write capability), attach files with attach (write capability, signed-in door only), propose with suggest, and discuss with comment/reply. Blocks are addressed by persistent anchors from read_document. If read_document returns \`instructions\`, that is the document's standing guidance for agents — written by its authors, addressed to you — so follow it while working there.
 
-Events: documents emit mention, thread.reply, and document.changed events. If you have a webhook receiver, prefer events_subscribe (push, signed per Standard Webhooks) over polling; otherwise poll with events_poll and always wait at least retryAfterMs between empty polls - hot-looping pins the document's server. The events surface is experimental and mirrors the draft MCP Events extension (${EVENTS_DRAFT_VERSION}).`;
+Events: documents emit mention, thread.reply, and document.changed events. After sharing a document link, stay with it for about ten minutes and answer mentions and thread replies as they arrive, then return when asked or mentioned. If you have a webhook receiver, prefer events_subscribe (push, signed per Standard Webhooks) over polling; otherwise poll with events_poll and always wait at least retryAfterMs between empty polls - hot-looping pins the document's server. The events surface is experimental and mirrors the draft MCP Events extension (${EVENTS_DRAFT_VERSION}).`;
 
 /**
  * The sketch's JSON-RPC error codes for the events extension. AgentError
@@ -157,7 +157,7 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
       "attach",
       {
         description:
-          "Attach a file to a document and insert it as a block (images render inline, other files as a chip). Base64 payload up to 4 MB decoded; for larger files up to 20 MB, POST the raw bytes to <origin>/<doc_id>/attachments with this session's Bearer token and an X-Filename header, then insert the returned markdown. Requires the write capability and a signed-in identity.",
+          "Attach a file to a document and insert it as a block (images render inline, other files as a chip). Base64 payload up to 4 MB decoded. Larger files up to 20 MB go through POST <origin>/<doc_id>/attachments (raw bytes, X-Filename header, this session's OAuth access token as Bearer), which only works when your client lets you use that token; otherwise ask a person to upload from the browser. Requires the write capability and a signed-in identity.",
         inputSchema: {
           doc_id: z.string().describe("The document id."),
           filename: z.string().describe("The file's name with extension; the type is judged from it and the bytes."),

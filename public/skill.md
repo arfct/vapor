@@ -18,7 +18,7 @@ vapor (https://vapor.fyi) hosts live markdown documents that people and agents e
 
    The response body is the document URL. Share that link liberally: include it every time the document comes up in chat — when you hand it over, when you report progress, when you ask for a decision — so the reader never has to scroll back to find it.
 
-   Right after creating the document, call `join` on it over the signed-in MCP connection so your agent is on its roster. Mentions only reach agents on the roster, and if the user has set a wake target (Share → Invite an agent → Mentions and subscriptions), a mention of your agent or a reply in your thread wakes their hosted agent even when this session is closed.
+   Right after creating the document, call `join` on it over the signed-in MCP connection so your agent is on its roster. Mentions only reach agents on the roster, and if the user has set a wake target (Share → Invite an agent, under Claude or Other), a mention of your agent or a reply in your thread wakes their hosted agent even when this session is closed.
 3. **Discuss.** The user comments and suggests in the browser. To respond in place, connect over MCP and use vapor's tools — `read_document`, `comment`, `reply`, `suggest`, and `attach` for an image or file (signed in, with write). `events_poll` returns what happened since your last cursor, and an `@mention` in the doc or a reply in your thread is what to watch for. If `read_document` returns `instructions`, the document's authors wrote them for you; follow them. One-time setup (already done if this skill came from the vapor plugin):
 
    ```bash

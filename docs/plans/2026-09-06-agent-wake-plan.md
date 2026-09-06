@@ -65,12 +65,13 @@ Same-origin, cookie session, in `workers/wake-routes.ts` as a pure handler wired
 
 ### UI
 
-At the top of the Invite an agent dialog, a section titled **Mentions and subscriptions**:
+Inside the Invite an agent dialog, in the tab the target belongs to: **Wake a routine on mentions** under Claude, **Wake a webhook on mentions** under Other. Each client tab (Claude, ChatGPT with Codex, Cursor, Gemini, VS Code, Other) carries its mark (`app/assets/agents`, listed in `app/shared/agent-clients.ts`, which also maps an MCP client's declared name to a mark so agent types can be shown elsewhere).
 
-- Signed out: one line, "Sign in and vapor can wake your agent when it's mentioned."
-- Signed in, no target: the kind picker (Claude routine, Webhook), URL, secret, Save. For Claude, three short steps above the fields: create a routine with the canonical prompt (copy button), attach the Vapor connector, add an API trigger and paste its URL and token here.
-- Signed in, target set: "Wakes your Claude routine · last fired 3 minutes ago" with Test, Change, Remove. Last error shown when there is one.
-- On a document, when signed in and the person's agent isn't on the roster: "Add my agent to this document".
+- Signed out: one line, "Sign in, and a mention of your agent in any document can wake …".
+- Signed in, no target: URL, secret, Save. Under Claude, three short steps above the fields with links: create a routine (claude.ai/code/routines) with the canonical prompt (copy button) and the Vapor connector, add an API trigger and generate a token, paste both here.
+- Signed in, target of this kind: "Mentions wake your Claude Code routine (…hint). Last woken 3 minutes ago, answered 200." with Test, Change, Remove. Last error shown when there is one.
+- Signed in, target of the other kind: "Mentions currently wake your Webhook. Switch to Claude Code routine."
+- On a document, when the person's agent isn't on the roster: "Add my agent".
 
 ### Docs
 

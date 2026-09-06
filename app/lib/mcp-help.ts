@@ -126,6 +126,13 @@ export function mcpHelpHtml(origin: string): string {
   anonymous URL to skip it. Swap one for the other to switch.
 </p>
 
+<h3>Claude desktop and web</h3>
+<p>
+  <a href="https://claude.ai/customize/connectors"><strong>Settings → Connectors → Add custom connector</strong></a>,
+  with this URL. Sign-in happens in the consent popup.
+</p>
+<pre>${mcpUrl}</pre>
+
 <h3>Claude Code</h3>
 <pre>claude mcp add --transport http vapor ${mcpUrl}</pre>
 <p class="muted">Your client walks you through Google sign-in in the browser, then remembers it. Anonymous:</p>
@@ -137,34 +144,26 @@ export function mcpHelpHtml(origin: string): string {
   <code>claude plugin install vapor@vapor</code>.
 </p>
 
-<h3>claude.ai and Claude Desktop</h3>
-<p>
-  <strong>Settings → Connectors → Add custom connector</strong>, paste the main URL.
-  Sign-in happens in the consent popup.
-</p>
-<pre>${mcpUrl}</pre>
-
 <h3>ChatGPT</h3>
 <p>
-  <strong>Settings → Connectors → Advanced → Developer mode</strong>, then
+  <a href="https://chatgpt.com/#settings/Connectors"><strong>Settings → Connectors → Advanced → Developer mode</strong></a>, then
   <strong>Create</strong> a connector with the URL. OAuth signs in; the anonymous
   URL needs no authentication. Paid plans only.
 </p>
 <pre>${mcpUrl}</pre>
-
-<h3>Codex CLI</h3>
+<p>Codex CLI, on the same account:</p>
 <pre>codex mcp add vapor --url ${mcpUrl}
 codex mcp login vapor</pre>
-
-<h3>Cursor</h3>
-<p><a href="${cursorLink}">Add to Cursor</a>, or put this in <code>.cursor/mcp.json</code>, then sign in from <strong>Settings → MCP</strong>:</p>
-<pre>${cursorJson}</pre>
 
 <h3>Gemini CLI</h3>
 <p>The extension bundles the connection and the skill below in one install:</p>
 <pre>gemini extensions install https://github.com/arfct/vapor</pre>
 <p class="muted">Or add the server alone:</p>
 <pre>gemini mcp add --transport http vapor ${mcpUrl}</pre>
+
+<h3>Cursor</h3>
+<p><a href="${cursorLink}">Add to Cursor</a>, or put this in <code>.cursor/mcp.json</code>, then sign in from <strong>Settings → MCP</strong>:</p>
+<pre>${cursorJson}</pre>
 
 <h3>VS Code and GitHub Copilot</h3>
 <p><a href="${vscodeLink}">Add to VS Code</a>, or put this in <code>.vscode/mcp.json</code>:</p>
@@ -240,9 +239,9 @@ Reply to comments in the thread, not in the body.
   of two ways.
 </p>
 <p>
-  <strong>Let vapor wake it.</strong> Sign in, open Share → Invite an agent, and
-  under <strong>Mentions and subscriptions</strong> give vapor one target: a
-  Claude Code routine's fire URL and token, or an HTTPS webhook of your own.
+  <strong>Let vapor wake it.</strong> Sign in and open Share → Invite an agent:
+  under <strong>Claude</strong>, give vapor a Claude Code routine's fire URL and
+  token; under <strong>Other</strong>, an HTTPS webhook of your own.
   From then on a mention of your agent, or a reply in one of its threads, in any
   document it is on, fires that target. No relay, no per-document setup. For a
   routine, create it at claude.ai/code/routines with the Vapor connector attached,
@@ -349,7 +348,7 @@ A fenced block whose language is \`agent\` carries guidance for agents that read
 
 Documents emit mention (the text says @agent-name), thread.reply (a person answered in the agent's thread), and document.changed.
 
-- **Let vapor wake your agent.** Sign in, open Share → Invite an agent → Mentions and subscriptions, and give vapor one target: a Claude Code routine's fire URL and token, or an HTTPS webhook. Every mention of your agent, and every reply in its threads, in any document it is on, fires it. Create the routine at claude.ai/code/routines with the Vapor connector and an API trigger; the prompt is at the end of this file. One wake per document every 30 seconds, fifty a day, no retries.
+- **Let vapor wake your agent.** Sign in, open Share → Invite an agent, and under Claude (routine) or Other (webhook) give vapor one target: a Claude Code routine's fire URL and token, or an HTTPS webhook. Every mention of your agent, and every reply in its threads, in any document it is on, fires it. Create the routine at claude.ai/code/routines with the Vapor connector and an API trigger; the prompt is at the end of this file. One wake per document every 30 seconds, fifty a day, no retries.
 - **Poll for a while.** After sharing a link, stay about ten minutes: call events_poll with the last cursor, wait at least retryAfterMs between empty polls, answer what arrives, then return when asked or mentioned.
 - **Subscribe per document.** A signed-in agent with an HTTPS receiver can call events_subscribe, which registers a Standard Webhooks-signed webhook for that document.
 

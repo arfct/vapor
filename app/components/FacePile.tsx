@@ -24,22 +24,37 @@ function statusLabel(person: Person): string {
 }
 
 /**
- * One face on an opaque paper disc, so overlapping faces don't show
- * through each other. People who aren't connected go grey and half strength.
+ * One face on an opaque paper backing, so overlapping faces don't show
+ * through each other: a disc for a person, a hexagon for an agent (the
+ * backing doubles as the ring a clip-path would otherwise cut off).
+ * People who aren't connected go grey and half strength.
  */
-function Face({ user, away, className }: { user: PresenceUser; away: boolean; className: string }) {
+function Face({
+  user,
+  isAgent,
+  away,
+  className,
+  ring = false,
+}: {
+  user: PresenceUser;
+  isAgent: boolean;
+  away: boolean;
+  className: string;
+  ring?: boolean;
+}) {
+  const backing = isAgent ? `avatar-hexagon ${ring ? "p-[2px]" : ""}` : "rounded-full";
   return (
     // opacity/filter create stacking contexts that would float dimmed faces
     // above the others; give every face one, with the present ones on top.
-    <span className={`relative inline-flex rounded-full bg-paper ${away ? "z-0 opacity-50 grayscale" : "z-10"}`}>
+    <span className={`relative inline-flex bg-paper ${backing} ${away ? "z-0 opacity-50 grayscale" : "z-10"}`}>
       <Avatar
         name={user.name}
         avatar={user.avatar}
         animal={user.animal}
         color={user.color}
-        shape={user.isAgent ? "hexagon" : "circle"}
+        shape={isAgent ? "hexagon" : "circle"}
         client={user.agentClient}
-        className={className}
+        className={`${className} ${!isAgent && ring ? "ring-2 ring-paper" : ""}`}
       />
     </span>
   );
@@ -49,6 +64,7 @@ function Face({ user, away, className }: { user: PresenceUser; away: boolean; cl
 interface Row {
   key: string;
   user: PresenceUser;
+  isAgent: boolean;
   away: boolean;
   status: string;
   /** The roster entry when this row is an agent on the document. */
@@ -125,6 +141,7 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
   const rows: Row[] = people.map((person) => ({
     key: person.key,
     user: person.user,
+    isAgent: person.isAgent,
     away: person.status !== "online",
     status: statusLabel(person),
     agent: person.isAgent ? byName.get(person.user.name) : undefined,
@@ -135,6 +152,7 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
     rows.push({
       key: `agent:${entry.name}`,
       user: { name: agentDisplayName(entry), color: entry.color, isAgent: true, agentClient: entry.client ?? undefined },
+      isAgent: true,
       away: true,
       status: entry.lastSeenAt ? `Agent · ${timeAgo(entry.lastSeenAt)}` : "Agent",
       agent: entry,
@@ -165,7 +183,7 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
               )}
               {shown.map((person, i) => (
                 <span key={person.key} className={i === 0 && overflow === 0 ? "" : "-ml-2"}>
-                  <Face user={person.user} away={person.status !== "online"} className="h-7 w-7 ring-2 ring-paper" />
+                  <Face user={person.user} isAgent={person.isAgent} away={person.status !== "online"} className="h-7 w-7" ring />
                 </span>
               ))}
             </span>
@@ -177,7 +195,7 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
           <Popover.Popup className="max-h-[60vh] w-80 overflow-y-auto border border-border bg-paper py-1 shadow-md outline-none">
             {rows.map((row) => (
               <div key={row.key} className="flex min-h-[36px] items-center gap-2 pl-3 pr-1 text-sm">
-                <Face user={row.user} away={row.away} className="h-6 w-6" />
+                <Face user={row.user} isAgent={row.isAgent} away={row.away} className="h-6 w-6" />
                 <span className="min-w-0 truncate">
                   {row.user.name}
                   {row.agent ? (

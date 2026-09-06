@@ -23,10 +23,9 @@ vapor:
           created: "2026-08-30T10:05:00Z"
     - comment: "Every collaborator gets a name and a color, agents included."
       highlight: "its own cursor"
-      author: "Agentic Otter"
-      animal: "🦦"
+      author: "Alice's Claude"
       client: "Claude"
-      color: "#4DB6AC"
+      color: "#BA68C8"
       created: "2026-08-30T10:24:00Z"
       resolved: false
 ---

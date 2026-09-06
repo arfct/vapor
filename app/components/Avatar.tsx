@@ -12,10 +12,10 @@ function initials(name: string): string {
 /**
  * People are circles, agents are hexagons. A circle shows the photo if
  * present, the anonymous animal glyph if present, otherwise the author's
- * initials. A hexagon is filled with the owner's colour and carries the
- * mark of the client the agent connected from, so the shape says "agent",
- * the mark says which kind, and the colour says whose
- * (docs/plans/2026-09-06-agent-identity-plan.md).
+ * initials. A hexagon is filled with the agent's colour: an anonymous
+ * agent shows its animal, an owned one the mark of the client it connected
+ * from, so the shape says "agent", what's inside says which one, and the
+ * colour says whose (docs/plans/2026-09-06-agent-identity-plan.md).
  */
 export default function Avatar({
   name,
@@ -35,6 +35,10 @@ export default function Avatar({
   client?: string | null;
   className?: string;
 }) {
+  // Older agent-authored comments predate the stored animal field; the
+  // label ("Agentic Lobster") still names the creature.
+  const glyph = animal ?? animalGlyphForLabel(name);
+
   if (shape === "hexagon") {
     return (
       <span
@@ -42,16 +46,19 @@ export default function Avatar({
         style={{ backgroundColor: color ?? "var(--color-muted)" }}
         title={name}
       >
-        <AgentClientIcon client={agentClientFor(client)} size="60%" />
+        {glyph ? (
+          <span className="anon-animal avatar-hexagon__animal" aria-hidden="true">
+            {glyph}
+          </span>
+        ) : (
+          <AgentClientIcon client={agentClientFor(client)} size="60%" />
+        )}
       </span>
     );
   }
   if (avatar) {
     return <img className={`${className} shrink-0 rounded-full object-cover`} src={avatar} alt="" />;
   }
-  // Older agent-authored comments predate the stored animal field; the
-  // label ("Agentic Lobster") still names the creature.
-  const glyph = animal ?? animalGlyphForLabel(name);
   if (glyph) {
     return (
       <span

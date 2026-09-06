@@ -3,10 +3,11 @@ import chatgpt from "~/assets/agents/chatgpt.svg?raw";
 import cursor from "~/assets/agents/cursor.svg?raw";
 import gemini from "~/assets/agents/gemini.svg?raw";
 import vscode from "~/assets/agents/vscode.svg?raw";
+import lmstudio from "~/assets/agents/lmstudio.svg?raw";
 import other from "~/assets/agents/other.svg?raw";
 import type { AgentClientId } from "~/shared/agent-clients";
 
-const MARKS: Record<AgentClientId, string> = { claude, chatgpt, cursor, gemini, vscode, other };
+const MARKS: Record<AgentClientId, string> = { claude, chatgpt, cursor, gemini, vscode, lmstudio, other };
 
 /** A client's mark as raw SVG, for DOM built outside React (the collaboration caret). */
 export function agentClientMarkSvg(client: AgentClientId): string {

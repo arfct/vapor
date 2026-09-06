@@ -5,13 +5,15 @@
  * comment can carry the client's mark.
  */
 
-export type AgentClientId = "claude" | "chatgpt" | "cursor" | "gemini" | "vscode" | "other";
+export type AgentClientId = "claude" | "chatgpt" | "cursor" | "gemini" | "vscode" | "lmstudio" | "other";
 
 export interface AgentClient {
   id: AgentClientId;
   label: string;
   /** Substrings of a slugified `clientInfo.name` that identify this client, most specific first. */
   matches: string[];
+  /** False for clients recognised when they connect but without a tab in the Invite an agent dialog. */
+  invite?: boolean;
 }
 
 export const AGENT_CLIENTS: AgentClient[] = [
@@ -21,6 +23,9 @@ export const AGENT_CLIENTS: AgentClient[] = [
   { id: "gemini", label: "Gemini", matches: ["gemini"] },
   { id: "cursor", label: "Cursor", matches: ["cursor"] },
   { id: "vscode", label: "VSC", matches: ["vscode", "visual-studio-code", "copilot"] },
+  // LM Studio hosts local models with an MCP client; its sessions declare
+  // names like "lmstudio-mcp-server-session". Recognised, not yet a tab.
+  { id: "lmstudio", label: "LM Studio", matches: ["lmstudio", "lm-studio"], invite: false },
   { id: "other", label: "Other", matches: [] },
 ];
 

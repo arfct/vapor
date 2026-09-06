@@ -28,9 +28,16 @@ describe("agent clients", () => {
     expect(agentClientFor("gemini-cli")).toBe("gemini");
     expect(agentClientFor("Visual Studio Code")).toBe("vscode");
     expect(agentClientFor("GitHub Copilot")).toBe("vscode");
+    expect(agentClientFor("lmstudio-mcp-server-session")).toBe("lmstudio");
+    expect(agentClientFor("LM Studio")).toBe("lmstudio");
     expect(agentClientFor("mcp-inspector")).toBe("other");
     expect(agentClientFor(undefined)).toBe("other");
     expect(agentClientFor("")).toBe("other");
+  });
+
+  it("keeps recognised-only clients out of the invite tabs", () => {
+    expect(AGENT_CLIENTS.find((c) => c.id === "lmstudio")?.invite).toBe(false);
+    expect(AGENT_CLIENTS.filter((c) => c.invite !== false).map((c) => c.id)).not.toContain("lmstudio");
   });
 
   it("looks up by id with other as the fallback", () => {

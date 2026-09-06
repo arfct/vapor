@@ -1,4 +1,5 @@
 import { fnv1a32Hex, shortIdOf } from "./short-id";
+import { agentClient, agentClientFor } from "./agent-clients";
 
 export type AgentCapability = "comment" | "suggest" | "write";
 export type Pace = "natural" | "fast" | "instant";
@@ -140,16 +141,17 @@ export function parseAnchor(s: string): BlockAnchor | null {
  * survives (empty input, symbols only, a single character).
  */
 /**
- * Human-facing name for an MCP client, from its `clientInfo.name`. Claude's
- * surfaces identify themselves variously ("claude-code", "Claude", …) but
- * are all one product family to a reader; anything else gets its slug
- * title-cased. Undefined when the client sent nothing.
+ * Human-facing name for an MCP client, from its `clientInfo.name`. Clients
+ * the client table knows get their label ("Claude" for every Claude
+ * surface, "LM Studio" for "lmstudio-mcp-server-session"); anything else
+ * gets its slug title-cased. Undefined when the client sent nothing.
  */
 export function clientDisplayName(raw: string | undefined): string | undefined {
   if (!raw?.trim()) return undefined;
+  const known = agentClientFor(raw);
+  if (known !== "other") return agentClient(known).label;
   const slug = slugifyAgentName(raw);
   if (slug === "agent") return undefined;
-  if (slug.includes("claude")) return "Claude";
   return slug
     .split("-")
     .map((w) => w[0].toUpperCase() + w.slice(1))

@@ -110,7 +110,10 @@ export function mergePeople({ online, viewers, threads, self }: MergeInput): Per
       ...existing?.user,
       ...presence,
     };
-    people.set(key, { key, user, status: "online", isAgent: Boolean(presence.isAgent), at: existing?.at });
+    // A presence entry says so itself; a comment author's client says so;
+    // and someone already known as an agent stays one when they connect.
+    const isAgent = Boolean(presence.isAgent || presence.agentClient || existing?.isAgent);
+    people.set(key, { key, user, status: "online", isAgent, at: existing?.at });
   }
 
   // Oldest activity first, newest last; someone connected with no recorded

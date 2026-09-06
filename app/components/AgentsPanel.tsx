@@ -188,7 +188,7 @@ export default function AgentsPanel({
             : "Connect an AI agent over MCP with no account: it appears as an anonymous animal and can suggest and comment."}
         </p>
         <div className="flex border-b border-border" role="tablist" aria-label="Client">
-          {AGENT_CLIENTS.map((c) => (
+          {AGENT_CLIENTS.filter((c) => c.invite !== false).map((c) => (
             <button
               key={c.id}
               role="tab"

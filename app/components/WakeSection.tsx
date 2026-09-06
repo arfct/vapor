@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AgentRosterEntry } from "~/shared/agent-protocol";
-import {
-  CLAUDE_ROUTINE_PROMPT,
-  WAKE_KINDS,
-  wakeKindInfo,
-  type WakeKind,
-  type WakeTargetView,
-} from "~/shared/wake-policy";
+import { CLAUDE_ROUTINE_PROMPT, wakeKindInfo, type WakeKind, type WakeTargetView } from "~/shared/wake-policy";
 import { useSession } from "~/lib/useSession";
 import { timeAgo } from "~/lib/time-ago";
 import { Input } from "~/components/ui/input";
@@ -17,20 +11,25 @@ type Outcome =
   | { fired: false; reason: string; status?: number; error?: string };
 
 const textButton = "cursor-pointer text-sm text-muted transition-colors hover:text-ink";
-const sectionTitle = "mb-2 text-sm uppercase tracking-wider text-muted";
+const link = "underline decoration-border underline-offset-2 hover:text-ink";
+
+export const ROUTINES_URL = "https://claude.ai/code/routines";
 
 /**
- * "Mentions and subscriptions": how vapor wakes this person's agent when it
- * is mentioned or replied to, anywhere it is enrolled. Signed-out visitors
- * see one line; the owner sets a target once (a Claude Code routine or a
- * webhook), tests it, and on a document can enrol their agent so mentions
- * here reach it. Plan: docs/plans/2026-09-06-agent-wake-plan.md.
+ * Wake-on-mention setup for one kind of target, shown inside the client tab
+ * it belongs to: a Claude Code routine under Claude, a webhook under Other.
+ * A signed-in person sets the target once; any document their agent is on
+ * then wakes it on a mention or a reply in its thread. If the person's
+ * target is of the other kind, this offers to switch rather than showing a
+ * second form. Plan: docs/plans/2026-09-06-agent-wake-plan.md.
  */
 export default function WakeSection({
+  kind,
   docId,
   roster,
   onRoster,
 }: {
+  kind: WakeKind;
   docId?: string;
   roster: AgentRosterEntry[];
   onRoster: (roster: AgentRosterEntry[]) => void;
@@ -39,13 +38,13 @@ export default function WakeSection({
   const signedIn = session?.signedIn === true;
   const [target, setTarget] = useState<WakeTargetView | null | undefined>(undefined);
   const [editing, setEditing] = useState(false);
-  const [kind, setKind] = useState<WakeKind>("claude-routine");
   const [url, setUrl] = useState("");
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [promptCopied, setPromptCopied] = useState(false);
+  const info = wakeKindInfo(kind)!;
 
   useEffect(() => {
     if (!signedIn) return;
@@ -82,7 +81,7 @@ export default function WakeSection({
       setTarget(data.target);
       setEditing(false);
       setSecret("");
-      setNote("Saved. Test it to be sure the token works.");
+      setNote("Saved. Test it to be sure it answers.");
     } catch {
       setError("Could not save.");
     } finally {
@@ -112,9 +111,9 @@ export default function WakeSection({
       const data = (await res.json()) as Outcome & { target?: WakeTargetView | null };
       if (data.target !== undefined) setTarget(data.target);
       if (data.fired) {
-        setNote(`Woke it. The target answered ${data.status}.`);
+        setNote(`Woke it. It answered ${data.status}.`);
       } else if (data.reason === "delivery") {
-        setError(data.error ?? "The target refused the wake.");
+        setError(data.error ?? "It refused the wake.");
       } else if (data.reason === "daily_cap") {
         setError("Daily wake cap reached. Try again tomorrow.");
       } else {
@@ -143,7 +142,7 @@ export default function WakeSection({
         return;
       }
       onRoster(data);
-      setNote("Your agent is on this document. Mention it by the name shown in the roster.");
+      setNote("Your agent is on this document. Mention it by the name in the roster.");
     } finally {
       setBusy(false);
     }
@@ -160,8 +159,7 @@ export default function WakeSection({
   }, []);
 
   const startEditing = () => {
-    setKind(target?.kind ?? "claude-routine");
-    setUrl(target?.url ?? "");
+    setUrl(target?.kind === kind ? target.url : "");
     setSecret("");
     setError(null);
     setNote(null);
@@ -169,112 +167,117 @@ export default function WakeSection({
   };
 
   const mine = signedIn ? roster.find((entry) => entry.owner === session?.principal) : undefined;
-  const info = wakeKindInfo(kind) ?? WAKE_KINDS[0];
+  const title = kind === "claude-routine" ? "Wake a routine on mentions" : "Wake a webhook on mentions";
+
+  let body: React.ReactNode;
+  if (!signedIn) {
+    body = (
+      <p className="text-sm text-muted">
+        Sign in, and a mention of your agent in any document can wake{" "}
+        {kind === "claude-routine" ? "a Claude Code routine" : "a webhook of yours"}.
+      </p>
+    );
+  } else if (target === undefined) {
+    body = <p className="text-sm text-muted">Loading…</p>;
+  } else if (target && !editing && target.kind === kind) {
+    body = (
+      <div className="space-y-2">
+        <p className="text-sm">
+          Mentions wake your {info.label} <span className="text-muted">({target.secretHint})</span>.
+        </p>
+        <p className="text-sm text-muted">
+          {target.lastFiredAt
+            ? `Last woken ${timeAgo(target.lastFiredAt)}${target.lastStatus ? `, answered ${target.lastStatus}` : ""}.`
+            : "Not woken yet."}{" "}
+          {target.firesToday > 0 && `${target.firesToday} today.`}
+        </p>
+        {target.lastError && <p className="text-sm text-coral">{target.lastError}</p>}
+        <div className="flex gap-4">
+          <button className={textButton} onClick={test} disabled={busy}>
+            Test
+          </button>
+          <button className={textButton} onClick={startEditing} disabled={busy}>
+            Change
+          </button>
+          <button className={`${textButton} hover:text-coral`} onClick={remove} disabled={busy}>
+            Remove
+          </button>
+        </div>
+      </div>
+    );
+  } else if (target && !editing) {
+    body = (
+      <p className="text-sm text-muted">
+        Mentions currently wake your {wakeKindInfo(target.kind)?.label ?? target.kind}.{" "}
+        <button className={`${textButton} underline`} onClick={startEditing} disabled={busy}>
+          Switch to {info.label}
+        </button>
+      </p>
+    );
+  } else {
+    body = (
+      <div className="space-y-3">
+        {kind === "claude-routine" ? (
+          <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
+            <li>
+              <a href={ROUTINES_URL} target="_blank" rel="noreferrer" className={link}>
+                Create a routine
+              </a>{" "}
+              with{" "}
+              <button className="cursor-pointer underline hover:text-ink" onClick={copyPrompt}>
+                {promptCopied ? "prompt copied" : "this prompt"}
+              </button>{" "}
+              and the Vapor connector attached.
+            </li>
+            <li>
+              Add an <strong className="font-semibold text-ink">API</strong> trigger and generate a token.
+            </li>
+            <li>Paste its URL and token here.</li>
+          </ol>
+        ) : (
+          <p className="text-sm text-muted">
+            A JSON POST for each mention or reply, with a <code className="font-mono">text</code> field saying what
+            happened. A <code className="font-mono">whsec_</code> secret signs it per Standard Webhooks; any other
+            secret is sent as a bearer token.
+          </p>
+        )}
+        <label className="block text-sm">
+          <span className="mb-1 block text-muted">{info.urlLabel}</span>
+          <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder={info.urlPlaceholder} spellCheck={false} />
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block text-muted">
+            {info.secretLabel}
+            {info.secretOptional && <span> (optional)</span>}
+          </span>
+          <Input
+            type="password"
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+            placeholder={info.secretPlaceholder}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <div className="flex items-center gap-4">
+          <Button size="sm" onClick={save} disabled={busy || !url}>
+            Save
+          </Button>
+          {target && (
+            <button className={textButton} onClick={() => setEditing(false)} disabled={busy}>
+              Cancel
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <section className="border-b border-border pb-4">
-      <h3 className={sectionTitle}>Mentions and subscriptions</h3>
-      {!signedIn ? (
-        <p className="text-sm text-muted">
-          Sign in and a mention of your agent in any document can wake it: a Claude Code routine, or
-          a webhook of your own.
-        </p>
-      ) : target === undefined ? (
-        <p className="text-sm text-muted">Loading…</p>
-      ) : target && !editing ? (
-        <div className="space-y-2">
-          <p className="text-sm">
-            Mentions wake your <span className="font-medium">{wakeKindInfo(target.kind)?.label ?? target.kind}</span>
-            <span className="text-muted"> ({target.secretHint})</span>.
-          </p>
-          <p className="text-sm text-muted">
-            {target.lastFiredAt
-              ? `Last woken ${timeAgo(target.lastFiredAt)}${target.lastStatus ? `, answered ${target.lastStatus}` : ""}.`
-              : "Not woken yet."}{" "}
-            {target.firesToday > 0 && `${target.firesToday} today.`}
-          </p>
-          {target.lastError && <p className="text-sm text-coral">{target.lastError}</p>}
-          <div className="flex gap-4">
-            <button className={textButton} onClick={test} disabled={busy}>
-              Test
-            </button>
-            <button className={textButton} onClick={startEditing} disabled={busy}>
-              Change
-            </button>
-            <button className={`${textButton} hover:text-coral`} onClick={remove} disabled={busy}>
-              Remove
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <p className="text-sm text-muted">
-            Set this once. Any document your agent is on can then wake it when someone mentions it or
-            replies in its thread.
-          </p>
-          <div className="flex flex-col gap-2" role="radiogroup" aria-label="Wake target kind">
-            {WAKE_KINDS.map((k) => (
-              <label key={k.kind} className="flex cursor-pointer items-start gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="wake-kind"
-                  className="mt-1"
-                  checked={kind === k.kind}
-                  onChange={() => setKind(k.kind)}
-                />
-                <span>
-                  <span className="font-medium">{k.label}</span>
-                  <span className="block text-muted">{k.summary}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-          {kind === "claude-routine" && (
-            <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
-              <li>
-                Create a routine at claude.ai/code/routines with{" "}
-                <button className="cursor-pointer underline hover:text-ink" onClick={copyPrompt}>
-                  {promptCopied ? "prompt copied" : "this prompt"}
-                </button>{" "}
-                and the <strong className="font-semibold text-ink">Vapor</strong> connector attached.
-              </li>
-              <li>
-                Under <strong className="font-semibold text-ink">Select a trigger → API</strong>, generate a token.
-              </li>
-              <li>Paste the fire URL and the token here.</li>
-            </ol>
-          )}
-          <label className="block text-sm">
-            <span className="mb-1 block text-muted">{info.urlLabel}</span>
-            <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder={info.urlPlaceholder} spellCheck={false} />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-muted">
-              {info.secretLabel}
-              {info.secretOptional && <span> (optional)</span>}
-            </span>
-            <Input
-              type="password"
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-              placeholder={info.secretPlaceholder}
-              autoComplete="off"
-              spellCheck={false}
-            />
-          </label>
-          <div className="flex items-center gap-4">
-            <Button size="sm" onClick={save} disabled={busy || !url}>
-              Save
-            </Button>
-            {target && (
-              <button className={textButton} onClick={() => setEditing(false)} disabled={busy}>
-                Cancel
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-      {signedIn && docId && target && !mine && (
+    <section className="border-t border-border pt-4">
+      <h3 className="mb-2 text-sm uppercase tracking-wider text-muted">{title}</h3>
+      {body}
+      {signedIn && docId && target && !mine && !editing && (
         <div className="mt-3 flex items-center justify-between gap-2">
           <p className="text-sm text-muted">Mentions only reach agents on this document.</p>
           <button className={textButton} onClick={join} disabled={busy}>

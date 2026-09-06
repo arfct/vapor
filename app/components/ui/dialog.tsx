@@ -69,7 +69,7 @@ export default function Dialog({
  * same control code blocks carry (code-block-copy.ts): content_copy, then a
  * check for a moment once copied.
  */
-export function SnippetRow({ label, text }: { label: string; text: string }) {
+export function SnippetRow({ label, text, showLabel = true }: { label: string; text: string; showLabel?: boolean }) {
   const [copied, setCopied] = useState(false);
   const copy = useCallback(() => {
     navigator.clipboard?.writeText(text).then(
@@ -82,7 +82,7 @@ export function SnippetRow({ label, text }: { label: string; text: string }) {
   }, [text]);
   return (
     <div>
-      <span className="mb-1 block text-sm text-muted">{label}</span>
+      {showLabel && <span className="mb-1 block text-sm text-muted">{label}</span>}
       <div className="relative">
         <code className="block break-all border border-border bg-border/20 py-2 pl-3 pr-10 text-sm">{text}</code>
         <button

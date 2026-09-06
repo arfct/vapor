@@ -17,7 +17,10 @@ const VARIANTS: Partial<Record<AgentClientId, { app: string; cli: string }>> = {
 
 const pulldownClass = "cursor-pointer bg-transparent text-sm text-muted hover:text-ink focus:outline-none";
 
-export const CLAUDE_CONNECTORS_URL = "https://claude.ai/customize/connectors";
+/** Opens claude.ai's add-connector dialog with the name and URL filled in; the person reviews and confirms. */
+export function claudeConnectorLink(mcpUrl: string): string {
+  return `https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=vapor&connectorUrl=${encodeURIComponent(mcpUrl)}`;
+}
 export const CHATGPT_CONNECTORS_URL = "https://chatgpt.com/#settings/Connectors";
 
 /** A UI path, linked straight to that screen when the product has a URL for it. */
@@ -145,9 +148,10 @@ export default function AgentsPanel({
             {showApp && (
               <>
                 <p className="text-sm text-muted">
-                  <Nav href={CLAUDE_CONNECTORS_URL}>Settings → Connectors → Add custom connector</Nav>, with this URL.
+                  <Nav href={claudeConnectorLink(url)}>Settings → Connectors → Add custom connector</Nav>, with this URL
+                  filled in.
                 </p>
-                <SnippetRow label="MCP server URL" text={url} />
+                <SnippetRow label="MCP server URL" text={url} showLabel={false} />
               </>
             )}
             {showCli && <SnippetRow label="Claude Code" text={claudeCodeCommand} />}
@@ -163,7 +167,7 @@ export default function AgentsPanel({
                   <strong className="font-semibold text-ink">Create</strong> a connector with this URL
                   {asYou ? " and OAuth" : " and no authentication"}. Paid plans only.
                 </p>
-                <SnippetRow label="MCP server URL" text={url} />
+                <SnippetRow label="MCP server URL" text={url} showLabel={false} />
               </>
             )}
             {showCli && (

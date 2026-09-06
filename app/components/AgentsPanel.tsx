@@ -84,7 +84,7 @@ export default function AgentsPanel({
       onChange={(e) => setMode(e.target.value as Mode)}
       className="cursor-pointer bg-transparent text-sm text-muted hover:text-ink focus:outline-none"
     >
-      <option value="you">as you</option>
+      <option value="you">personally</option>
       <option value="anonymous">anonymously</option>
     </select>
   );

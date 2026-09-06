@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   handleRawMarkdown,
   handleMcpHelp,
+  handleLlmsTxt,
   redirectHost,
   redirectLegacyDocPath,
 } from "../../../workers/routes";
@@ -88,12 +89,25 @@ describe("handleMcpHelp", () => {
     expect(body).toContain("claude mcp add");
   });
 
-  it("returns null when Accept is application/json (MCP clients)", () => {
+  it("returns null for the Streamable HTTP event stream GET (MCP clients)", () => {
     const res = handleMcpHelp(
-      new Request("https://vapor.fyi/mcp", { headers: { Accept: "application/json" } }),
+      new Request("https://vapor.fyi/mcp", {
+        headers: { Accept: "application/json, text/event-stream" },
+      }),
     );
 
     expect(res).toBeNull();
+  });
+
+  it("returns the guide as markdown for curl and agent fetch tools", async () => {
+    const res = handleMcpHelp(new Request("https://vapor.fyi/mcp", { headers: { Accept: "*/*" } }));
+
+    expect(res!.status).toBe(200);
+    expect(res!.headers.get("Content-Type")).toContain("text/markdown");
+    const body = await res!.text();
+    expect(body).toContain("claude mcp add --transport http vapor https://vapor.fyi/mcp");
+    expect(body).toContain("~/.agents/skills/vapor/SKILL.md");
+    expect(body).not.toContain("<html");
   });
 
   it("returns null for a non-/mcp path", () => {
@@ -110,6 +124,21 @@ describe("handleMcpHelp", () => {
     );
 
     expect(res).toBeNull();
+  });
+});
+
+describe("handleLlmsTxt", () => {
+  it("serves the markdown guide at /llms.txt", async () => {
+    const res = handleLlmsTxt(new Request("https://vapor.fyi/llms.txt"));
+
+    expect(res!.status).toBe(200);
+    expect(res!.headers.get("Content-Type")).toContain("text/markdown");
+    expect(await res!.text()).toContain("# vapor");
+  });
+
+  it("ignores other paths and methods", () => {
+    expect(handleLlmsTxt(new Request("https://vapor.fyi/other.txt"))).toBeNull();
+    expect(handleLlmsTxt(new Request("https://vapor.fyi/llms.txt", { method: "POST" }))).toBeNull();
   });
 });
 

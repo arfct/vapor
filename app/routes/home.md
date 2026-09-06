@@ -39,7 +39,7 @@ A shared doc that lasts {==99 hours==}{>>Docs are ephemeral. Export what you wan
 
 Point Claude at a doc and it shows up with {==its own cursor==}{>>Every collaborator gets a name and a color, agents included.<<}, reads the document, and edits with the rest of you: suggestions you can accept or reject, comments you can answer. Mention it in a comment and it replies. It types at a human pace, so you can watch what it's doing and step in if you don't like where it's going.
 
-Ready to try it? [Invite your own agent](vapor://invite).
+Ready to try it? Invite your agent at [vapor.fyi/mcp](vapor://invite).
 
 ## Changes can be proposals
 

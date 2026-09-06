@@ -266,3 +266,72 @@ Reply to comments in the thread, not in the body.
 </html>
 `;
 }
+
+/**
+ * The same guide as markdown: served at `/llms.txt`, and at `/mcp` when the
+ * caller didn't ask for HTML (curl, an agent's fetch tool). An agent told to
+ * "install vapor.fyi" lands here and finds the commands rather than a 401.
+ */
+export function mcpHelpMarkdown(origin: string): string {
+  const safeOrigin = SAFE_ORIGIN_RE.test(origin) ? origin : DEFAULT_ORIGIN;
+  const mcpUrl = `${safeOrigin}/mcp`;
+  const anonUrl = `${safeOrigin}/mcp/anonymous`;
+  const skillUrl = `${safeOrigin}/skill.md`;
+  const json = (value: unknown) => JSON.stringify(value);
+
+  return `# vapor
+
+> Live collaborative markdown documents that people and AI agents edit together, each with a cursor. Public by URL, gone after 99 hours. vapor is an MCP server: an agent reads a document, inserts or replaces text, attaches files, suggests tracked changes, comments, and watches for mentions.
+
+## Connect
+
+Two doors, same tools. Signed in (${mcpUrl}) gives the agent a stable identity and, if granted at consent, write access; the client opens a browser sign-in the first time. Anonymous (${anonUrl}) needs no account and can suggest and comment.
+
+- Claude Code: \`claude mcp add --transport http vapor ${mcpUrl}\`
+- claude.ai and Claude Desktop: Settings → Connectors → Add custom connector, with ${mcpUrl}
+- ChatGPT: Settings → Connectors → Advanced → Developer mode, then Create a connector with ${mcpUrl} (OAuth) or ${anonUrl} (no authentication)
+- Codex CLI: \`codex mcp add vapor --url ${mcpUrl}\`, then \`codex mcp login vapor\`
+- Cursor: \`.cursor/mcp.json\` → \`${json({ mcpServers: { vapor: { url: mcpUrl } } })}\`
+- Gemini CLI: \`gemini extensions install https://github.com/arfct/vapor\` (connection plus skill), or \`gemini mcp add --transport http vapor ${mcpUrl}\`
+- VS Code: \`.vscode/mcp.json\` → \`${json({ servers: { vapor: { type: "http", url: mcpUrl } } })}\`
+- Anything else: \`${json({ mcpServers: { vapor: { url: mcpUrl } } })}\`
+
+## Skill
+
+A skill in the Agent Skills format teaches the workflow: draft on vapor instead of pasting into chat, share the link, watch for comments, export back before the document expires. One file, served at ${skillUrl}.
+
+- Claude Code: \`curl -s ${skillUrl} --create-dirs -o ~/.claude/skills/vapor/SKILL.md\` (the plugin installs it too: \`claude plugin marketplace add arfct/vapor\` then \`claude plugin install vapor@vapor\`)
+- Codex CLI, Cursor, GitHub Copilot: \`curl -s ${skillUrl} --create-dirs -o ~/.agents/skills/vapor/SKILL.md\`
+- Gemini CLI: bundled in the extension
+
+## Tools
+
+| Tool | Needs | Does |
+|---|---|---|
+| read_document | — | Markdown, block anchors, presence, open threads, and any standing instructions |
+| suggest | suggest | A tracked change inside a block, for a person to accept or reject |
+| comment, reply | comment | Open a thread on a block, or answer in one |
+| insert, replace | write | Direct edits, typed at human pace with a visible cursor (pace: "instant" skips the show) |
+| attach | write, signed in | Upload a file (base64, up to 4 MB) and insert it; images inline, other files as a chip |
+| create_document | — | A new document, optionally with starting markdown; returns its URL |
+| join, leave | — | Presence with a short status, and stepping out |
+| events_poll, events_subscribe | — | Watch the document |
+
+Anonymous agents get suggest and comment; signed-in agents get the grant chosen at consent. Every agent shows in the document's Agents panel, where anyone can revoke it.
+
+## Standing instructions
+
+A fenced block whose language is \`agent\` carries guidance for agents that readers don't see. read_document returns them as \`instructions\`; follow them while working in that document.
+
+## Watching
+
+Documents emit mention (the text says @agent-name), thread.reply (a person answered in the agent's thread), and document.changed. After sharing a link, stay about ten minutes: call events_poll with the last cursor, wait at least retryAfterMs between empty polls, answer what arrives, then return when asked or mentioned. With an HTTPS receiver on the signed-in door, events_subscribe registers a Standard Webhooks-signed webhook instead.
+
+## Links
+
+- Guide: ${mcpUrl}
+- Skill: ${skillUrl}
+- Source and plugin: https://github.com/arfct/vapor
+- New document from a file: \`curl ${safeOrigin}/new -T notes.md\`; raw markdown back: \`${safeOrigin}/<id>.md\`
+`;
+}

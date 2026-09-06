@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mcpHelpHtml } from "~/lib/mcp-help";
+import { mcpHelpHtml, mcpHelpMarkdown } from "~/lib/mcp-help";
 
 describe("mcpHelpHtml", () => {
   it("embeds a normal origin into the connection snippets", () => {
@@ -42,5 +42,22 @@ describe("mcpHelpHtml", () => {
     );
     expect(html).toContain("-o ~/.agents/skills/vapor/SKILL.md");
     expect(html).toContain("gemini extensions install https://github.com/arfct/vapor");
+  });
+
+  it("the markdown guide carries the same doors and installs as the page, safely", () => {
+    const md = mcpHelpMarkdown("https://vapor.fyi");
+    for (const needle of [
+      "claude mcp add --transport http vapor https://vapor.fyi/mcp",
+      "https://vapor.fyi/mcp/anonymous",
+      "codex mcp add vapor --url https://vapor.fyi/mcp",
+      "gemini extensions install https://github.com/arfct/vapor",
+      "~/.agents/skills/vapor/SKILL.md",
+      "https://vapor.fyi/skill.md",
+    ]) {
+      expect(md).toContain(needle);
+    }
+    const hostile = mcpHelpMarkdown("https://evil<script>alert(1)</script>");
+    expect(hostile).not.toContain("<script");
+    expect(hostile).toContain("https://vapor.fyi/mcp");
   });
 });

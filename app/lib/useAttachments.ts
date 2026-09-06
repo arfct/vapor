@@ -81,7 +81,13 @@ export function useAttachments({
   const run = useCallback(
     async (files: File[], pos?: number) => {
       if (!editor) return;
-      let at = pos ?? editor.state.selection.to;
+      // A drop lands between blocks, after the one under the pointer, rather
+      // than splitting a sentence at the exact character.
+      const afterBlock = (p: number) => {
+        const $p = editor.state.doc.resolve(Math.min(Math.max(p, 0), editor.state.doc.content.size));
+        return $p.depth > 0 ? $p.after(1) : $p.pos;
+      };
+      let at = afterBlock(pos ?? editor.state.selection.to);
       for (const file of files) {
         showSuggestNotice(`Uploading ${file.name}…`);
         const result = await uploadAttachment(docId, file);

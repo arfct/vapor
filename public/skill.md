@@ -17,7 +17,7 @@ vapor (https://vapor.fyi) hosts live markdown documents that people and agents e
    ```
 
    The response body is the document URL. Share that link liberally: include it every time the document comes up in chat — when you hand it over, when you report progress, when you ask for a decision — so the reader never has to scroll back to find it.
-3. **Discuss.** The user comments and suggests in the browser. To respond in place, connect over MCP and use vapor's tools — `read_document`, `comment`, `reply`, `suggest`; `await_events` blocks until something happens, and an `@mention` in the doc wakes a waiting agent. One-time setup (already done if this skill came from the vapor plugin):
+3. **Discuss.** The user comments and suggests in the browser. To respond in place, connect over MCP and use vapor's tools — `read_document`, `comment`, `reply`, `suggest`, and `attach` for an image or file (signed in, with write). `events_poll` returns what happened since your last cursor, and an `@mention` in the doc or a reply in your thread is what to watch for. If `read_document` returns `instructions`, the document's authors wrote them for you; follow them. One-time setup (already done if this skill came from the vapor plugin):
 
    ```bash
    claude mcp add --transport http vapor https://vapor.fyi/mcp
@@ -25,7 +25,7 @@ vapor (https://vapor.fyi) hosts live markdown documents that people and agents e
 
    `/mcp` is OAuth-gated: the first tool call opens a browser consent screen (Google sign-in, then a grant for read-only or write access). Comment and suggest work either way; only `insert`/`replace` need the write grant. For a zero-setup connection with no identity, use `/mcp/anonymous` instead — comment and suggest still work, but as an anonymous animal, not the signed-in name.
 
-   After handing over a link, stay with the document for about ten minutes: call `await_events` (or poll `events_poll`, honouring `retryAfterMs`) and answer comments and mentions as they arrive — the reader is most likely reading right now. Tell the user you're watching, and stop early if they move the conversation on in chat. After that window, return to chat and pick the document back up when asked.
+   After handing over a link, stay with the document for about ten minutes: poll `events_poll` for `mention` and `thread.reply`, waiting at least `retryAfterMs` between empty polls, and answer comments and mentions as they arrive — the reader is most likely reading right now. Tell the user you're watching, and stop early if they move the conversation on in chat. After that window, return to chat and pick the document back up when asked or mentioned. To leave standing guidance for other agents in the document, add a fenced block whose language is `agent`; readers don't see it, agents do.
 4. **Archive.** This is the step that matters most and the one most easily forgotten: vapor is the review venue, not storage, and everything there — text, suggestions, comment threads — is gone 99 hours after creation. When the discussion settles (or before the clock runs out, settled or not), export back over the local file and commit it:
 
    ```bash

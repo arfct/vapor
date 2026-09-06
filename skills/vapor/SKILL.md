@@ -1,0 +1,1 @@
+../../plugin/skills/vapor/SKILL.md

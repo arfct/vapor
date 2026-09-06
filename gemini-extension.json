@@ -1,0 +1,11 @@
+{
+  "name": "vapor",
+  "version": "0.1.0",
+  "description": "Draft plans and documents on vapor.fyi — live markdown people and agents review together, exported to the repo before the doc expires.",
+  "mcpServers": {
+    "vapor": {
+      "httpUrl": "https://vapor.fyi/mcp",
+      "oauth": { "enabled": true }
+    }
+  }
+}

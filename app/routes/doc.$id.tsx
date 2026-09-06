@@ -9,7 +9,12 @@ import { DocumentProvider } from "~/lib/DocumentContext";
 import DocumentLayout from "~/components/DocumentLayout";
 
 export function meta(_args: Route.MetaArgs) {
-  return [{ title: "vapor" }];
+  return [
+    { title: "vapor" },
+    { property: "og:title", content: "vapor" },
+    { property: "og:description", content: "A shared markdown document for people and agents" },
+    { property: "og:image", content: "https://vapor.fyi/logo-512.png" },
+  ];
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {

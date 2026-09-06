@@ -8,7 +8,7 @@
  */
 import { isValidDocumentId } from "../app/shared/constants";
 import type { AgentError } from "../app/shared/agent-protocol";
-import { mcpHelpHtml } from "../app/lib/mcp-help";
+import { mcpHelpHtml, mcpHelpMarkdown } from "../app/lib/mcp-help";
 import { absolutizeAttachmentUrls } from "../app/shared/attachment-policy";
 import {
   mintSessionToken,
@@ -64,11 +64,12 @@ export async function handleRawMarkdown(
 }
 
 /**
- * `GET /mcp` with `Accept: text/html` — a browser landing on the MCP
- * endpoint gets a how-to-connect page instead of a protocol error. MCP
- * clients POST with an `application/json`-flavoured Accept header, so they
- * never match this and fall through to `VaporMcp.serve`. Must be checked
- * before that branch in workers/app.ts.
+ * `GET /mcp` — anyone landing on the MCP endpoint gets the how-to-connect
+ * guide instead of a protocol error: HTML for a browser, markdown for curl
+ * or an agent's fetch tool. The one GET a real MCP client makes is the
+ * Streamable HTTP event stream, `Accept: text/event-stream`, which falls
+ * through (null) to `VaporMcp.serve`; clients POST everything else. Must be
+ * checked before that branch in workers/app.ts.
  */
 export function handleMcpHelp(request: Request): Response | null {
   if (request.method !== "GET") return null;
@@ -77,11 +78,29 @@ export function handleMcpHelp(request: Request): Response | null {
   if (url.pathname !== "/mcp" && url.pathname !== "/mcp/anonymous") return null;
 
   const accept = request.headers.get("Accept") ?? "";
-  if (!accept.includes("text/html")) return null;
+  if (accept.includes("text/event-stream")) return null;
 
-  return new Response(mcpHelpHtml(url.origin), {
+  if (accept.includes("text/html")) {
+    return new Response(mcpHelpHtml(url.origin), {
+      status: 200,
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
+  }
+  return markdownGuide(url.origin);
+}
+
+/** `GET /llms.txt` — the guide as the plain-text file agents look for first. */
+export function handleLlmsTxt(request: Request): Response | null {
+  if (request.method !== "GET") return null;
+  const url = new URL(request.url);
+  if (url.pathname !== "/llms.txt") return null;
+  return markdownGuide(url.origin);
+}
+
+function markdownGuide(origin: string): Response {
+  return new Response(mcpHelpMarkdown(origin), {
     status: 200,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+    headers: { "Content-Type": "text/markdown; charset=utf-8", "X-Content-Type-Options": "nosniff" },
   });
 }
 

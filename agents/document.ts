@@ -1158,7 +1158,7 @@ class DocumentAgent extends Agent {
       return {
         error: {
           code: "capability_denied",
-          message: "Webhook subscriptions require the authenticated /mcp door; the anonymous door may poll.",
+          message: "Webhook subscriptions require the signed-in /mcp endpoint; anonymous agents may poll.",
         },
       };
     }
@@ -1208,7 +1208,7 @@ class DocumentAgent extends Agent {
     const verified = await this.verifyIdentity(identity);
     if ("error" in verified) return verified;
     if (identity.kind !== "principal") {
-      return { error: { code: "capability_denied", message: "Webhook subscriptions require the authenticated /mcp door." } };
+      return { error: { code: "capability_denied", message: "Webhook subscriptions require the signed-in /mcp endpoint." } };
     }
     const argumentsJson = JSON.stringify({ doc_id: this.name });
     const id = await subscriptionId(identity.id, args.url, args.name, argumentsJson);

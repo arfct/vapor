@@ -26,7 +26,7 @@ export interface DocBlock extends BlockAnchor {
 /**
  * A caller's verified identity, as established upstream (session cookie or
  * OAuth bearer token) and passed down to DocumentAgent/VaporMcp — the single
- * source of truth for both MCP doors. `kind: "anonymous"` covers tokenless
+ * source of truth for both MCP endpoints. `kind: "anonymous"` covers tokenless
  * `/mcp/anonymous` callers (DEFAULT_CAPABILITIES, no owner); `kind:
  * "principal"` covers signed-in/OAuth callers (caps from the OAuth grant).
  */

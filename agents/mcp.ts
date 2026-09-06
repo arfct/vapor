@@ -1,5 +1,5 @@
 /**
- * The MCP server vapor exposes on two doors (routed in workers/app.ts):
+ * The MCP server vapor exposes at two endpoints (routed in workers/app.ts):
  *
  *   /mcp            — OAuth-authenticated. The worker verifies the access
  *                     token (a vapor session JWT) and passes the claims in
@@ -39,7 +39,7 @@ import { storeAttachment } from "../workers/attachments";
 import { buildAttachmentDeps } from "../workers/attachment-deps";
 
 export interface VaporMcpProps extends Record<string, unknown> {
-  /** Verified OAuth claims (set by workers/app.ts), or null on the anonymous door. */
+  /** Verified OAuth claims (set by workers/app.ts), or null on the anonymous endpoint. */
   auth: { principal: string; email: string; caps?: AgentCapability[] } | null;
   /** Origin of the MCP request, used to build document URLs. */
   origin?: string;
@@ -47,9 +47,25 @@ export interface VaporMcpProps extends Record<string, unknown> {
 
 const DEFAULT_ORIGIN = "https://vapor.fyi";
 
-const SERVER_INSTRUCTIONS = `vapor hosts live collaborative markdown documents; you join them as a named collaborator. Read with read_document, edit with insert/replace (write capability), attach files with attach (write capability, signed-in door only), propose with suggest, and discuss with comment/reply. Blocks are addressed by persistent anchors from read_document. If read_document returns \`instructions\`, that is the document's standing guidance for agents — written by its authors, addressed to you — so follow it while working there.
+/**
+ * Server identity as clients render it. Icons are same-origin PNGs on the
+ * production host, as the spec asks; the server is built before a request's
+ * origin is known, and only production needs to look right in a picker.
+ */
+const SERVER_INFO = {
+  name: "vapor",
+  version: "1.0.0",
+  title: "vapor",
+  websiteUrl: DEFAULT_ORIGIN,
+  icons: [
+    { src: `${DEFAULT_ORIGIN}/logo-512.png`, mimeType: "image/png", sizes: ["512x512"] },
+    { src: `${DEFAULT_ORIGIN}/logo.png`, mimeType: "image/png", sizes: ["1024x1024"] },
+  ],
+};
 
-Events: documents emit mention, thread.reply, and document.changed events. If you have a webhook receiver, prefer events_subscribe (push, signed per Standard Webhooks) over polling; otherwise poll with events_poll and always wait at least retryAfterMs between empty polls - hot-looping pins the document's server. The events surface is experimental and mirrors the draft MCP Events extension (${EVENTS_DRAFT_VERSION}).`;
+const SERVER_INSTRUCTIONS = `vapor hosts live collaborative markdown documents; you join them as a named collaborator. Read with read_document, edit with insert/replace (write capability), attach files with attach (write capability, signed in only), propose with suggest, and discuss with comment/reply. Blocks are addressed by persistent anchors from read_document. If read_document returns \`instructions\`, that is the document's standing guidance for agents — written by its authors, addressed to you — so follow it while working there.
+
+Events: documents emit mention, thread.reply, and document.changed events. After sharing a document link, stay with it for about ten minutes and answer mentions and thread replies as they arrive, then return when asked or mentioned. If you have a webhook receiver, prefer events_subscribe (push, signed per Standard Webhooks) over polling; otherwise poll with events_poll and always wait at least retryAfterMs between empty polls - hot-looping pins the document's server. The events surface is experimental and mirrors the draft MCP Events extension (${EVENTS_DRAFT_VERSION}).`;
 
 /**
  * The sketch's JSON-RPC error codes for the events extension. AgentError
@@ -74,15 +90,12 @@ function jsonContent(result: unknown) {
 }
 
 export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps> {
-  server = new McpServer(
-    { name: "vapor", version: "1.0.0" },
-    {
-      instructions: SERVER_INSTRUCTIONS,
-      // The draft extension's capability, declared under `experimental`
-      // until the SEP ratifies and the SDK learns a first-class slot.
-      capabilities: { experimental: { events: {} } },
-    },
-  );
+  server = new McpServer(SERVER_INFO, {
+    instructions: SERVER_INSTRUCTIONS,
+    // The draft extension's capability, declared under `experimental`
+    // until the SEP ratifies and the SDK learns a first-class slot.
+    capabilities: { experimental: { events: {} } },
+  });
 
   /** Session-cached counterpart slug + label for the principal path. */
   private agentSlug: string | null = null;
@@ -152,12 +165,12 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
     }
 
     // attach needs the R2 binding, so it lives here with create_document.
-    // Uploads require a principal with write: the anonymous door is refused.
+    // Uploads require a principal with write: the anonymous endpoint is refused.
     this.server.registerTool(
       "attach",
       {
         description:
-          "Attach a file to a document and insert it as a block (images render inline, other files as a chip). Base64 payload up to 4 MB decoded; for larger files up to 20 MB, POST the raw bytes to <origin>/<doc_id>/attachments with this session's Bearer token and an X-Filename header, then insert the returned markdown. Requires the write capability and a signed-in identity.",
+          "Attach a file to a document and insert it as a block (images render inline, other files as a chip). Base64 payload up to 4 MB decoded. Larger files up to 20 MB go through POST <origin>/<doc_id>/attachments (raw bytes, X-Filename header, this session's OAuth access token as Bearer), which only works when your client lets you use that token; otherwise ask a person to upload from the browser. Requires the write capability and a signed-in identity.",
         inputSchema: {
           doc_id: z.string().describe("The document id."),
           filename: z.string().describe("The file's name with extension; the type is judged from it and the bytes."),
@@ -188,7 +201,7 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
         const identity = await this.identity();
         if (identity.kind !== "principal" || !identity.owner) {
           return jsonContent({
-            error: { code: "capability_denied", message: "Attachments need a signed-in identity (the /mcp door)." },
+            error: { code: "capability_denied", message: "Attachments need a signed-in identity (the /mcp endpoint)." },
           });
         }
         if (!identity.caps.includes("write")) {

@@ -146,7 +146,7 @@ function cookieValue(request: Request, name: string): string | null {
   return null;
 }
 
-/** One session helper, both doors: browser cookie or Authorization bearer. */
+/** One session helper for both credentials: browser cookie or Authorization bearer. */
 export async function sessionFromRequest(request: Request, secret: string): Promise<SessionClaims | null> {
   const token =
     cookieValue(request, SESSION_COOKIE) ??

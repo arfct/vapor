@@ -5,6 +5,7 @@ import { VaporMcp, type VaporMcpProps } from "../agents/mcp";
 import {
   handleRawMarkdown,
   handleMcpHelp,
+  handleLlmsTxt,
   handleAuth,
   redirectHost,
   redirectLegacyDocPath,
@@ -82,11 +83,11 @@ export default {
       }
     }
 
-    // A browser landing on /mcp (Accept: text/html) gets a how-to-connect
-    // page instead of a protocol error. MCP clients send an
-    // application/json-flavoured Accept and never match this, so they fall
-    // through to VaporMcp.serve below. Must run before that branch.
-    const helpResponse = handleMcpHelp(request);
+    // Anyone landing on /mcp with a GET gets the how-to-connect guide (HTML
+    // for browsers, markdown otherwise) instead of a protocol error; only the
+    // event-stream GET a real MCP client makes falls through to VaporMcp.serve
+    // below. /llms.txt is the same guide where agents look for it first.
+    const helpResponse = handleMcpHelp(request) ?? handleLlmsTxt(request);
     if (helpResponse) {
       return helpResponse;
     }
@@ -114,7 +115,7 @@ export default {
       return markdownResponse;
     }
 
-    // The MCP server has two doors. /mcp/anonymous never challenges:
+    // The MCP server has two endpoints. /mcp/anonymous never challenges:
     // tokenless sessions run as per-session anonymous identities.
     if (url.pathname === "/mcp/anonymous" || url.pathname.startsWith("/mcp/anonymous/")) {
       const props: VaporMcpProps = { auth: null, origin: url.origin };
@@ -128,7 +129,7 @@ export default {
       return anonMcpHandler.fetch(request, env, mcpCtx);
     }
 
-    // /mcp is the identity door: it accepts exactly one credential type — a
+    // /mcp is the signed-in endpoint: it accepts exactly one credential type — a
     // vapor OAuth access token (session JWT). A bare or invalid request gets
     // the 401 challenge that drives MCP clients into the consent flow.
     if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) {

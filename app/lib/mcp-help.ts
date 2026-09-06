@@ -22,11 +22,12 @@ export function mcpHelpHtml(origin: string): string {
   const safeOrigin = SAFE_ORIGIN_RE.test(origin) ? origin : DEFAULT_ORIGIN;
   const mcpUrl = `${safeOrigin}/mcp`;
   const anonUrl = `${safeOrigin}/mcp/anonymous`;
-  const mcpServersJson = JSON.stringify(
-    { mcpServers: { vapor: { url: mcpUrl } } },
-    null,
-    2,
-  );
+  const mcpServersJson = JSON.stringify({ mcpServers: { vapor: { url: mcpUrl } } }, null, 2);
+  const cursorJson = mcpServersJson;
+  const vscodeJson = JSON.stringify({ servers: { vapor: { type: "http", url: mcpUrl } } }, null, 2);
+  const cursorLink = `cursor://anysphere.cursor-deeplink/mcp/install?name=vapor&config=${btoa(JSON.stringify({ url: mcpUrl }))}`;
+  const vscodeLink = `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name: "vapor", type: "http", url: mcpUrl }))}`;
+  const skillUrl = `${safeOrigin}/skill.md`;
 
   return `<!doctype html>
 <html lang="en">
@@ -53,6 +54,11 @@ export function mcpHelpHtml(origin: string): string {
     margin-top: 2.5rem;
     margin-bottom: 0.5rem;
   }
+  h3 {
+    font-size: 0.95rem;
+    margin-top: 1.5rem;
+    margin-bottom: 0.25rem;
+  }
   p {
     color: #1a1a1a;
   }
@@ -75,6 +81,21 @@ export function mcpHelpHtml(origin: string): string {
   a {
     color: #e8564a;
   }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.9rem;
+  }
+  td, th {
+    text-align: left;
+    vertical-align: top;
+    padding: 0.35rem 0.6rem 0.35rem 0;
+    border-bottom: 1px solid #e5e5e5;
+  }
+  th {
+    color: #999;
+    font-weight: normal;
+  }
 </style>
 </head>
 <body>
@@ -83,58 +104,234 @@ export function mcpHelpHtml(origin: string): string {
 
 <p>
   Every vapor document is a live, multiplayer markdown file. This MCP server lets an
-  agent read a document, insert or replace text, attach files (signed in), suggest tracked changes, comment,
-  and watch for mentions — the same document a person has open in their browser,
-  edited alongside them in real time.
+  agent read a document, insert or replace text, attach files, suggest tracked changes,
+  comment, and watch for mentions — the same document a person has open in their
+  browser, edited alongside them in real time.
 </p>
 
 <p>
-  <strong>${mcpUrl}</strong> is the main door: signing in gives your agent a
-  stable identity and, if you grant it at consent, write access. Adding it in a
-  client pops a browser sign-in the first time. Prefer no account?
+  <strong>${mcpUrl}</strong> is the main URL: signing in gives your agent a
+  stable identity ("Ada's Agent") and, if you grant it at consent, write access.
+  Adding it in a client pops a browser sign-in the first time. Prefer no account?
   <strong>${anonUrl}</strong> connects with zero setup and can suggest and
-  comment.
+  comment as an anonymous animal.
 </p>
 
-<h2>Claude Code — signed in</h2>
-<pre>claude mcp add --transport http vapor ${mcpUrl}</pre>
-<p>Your client walks you through Google sign-in in the browser, then remembers it.</p>
-
-<h2>Claude Code — anonymous</h2>
-<pre>claude mcp add --transport http vapor ${anonUrl}</pre>
-
-<h2>claude.ai</h2>
+<h2>Connect a client</h2>
 <p>
-  Go to <strong>Settings → Connectors → Add custom connector</strong> and paste the
-  main URL — sign-in happens in the consent popup:
+  Every client below takes the same URL. Use the main URL to sign in, or the
+  anonymous URL to skip it. Swap one for the other to switch.
+</p>
+
+<h3>Claude Code</h3>
+<pre>claude mcp add --transport http vapor ${mcpUrl}</pre>
+<p class="muted">Your client walks you through Google sign-in in the browser, then remembers it. Anonymous:</p>
+<pre>claude mcp add --transport http vapor ${anonUrl}</pre>
+<p>
+  The <a href="https://github.com/arfct/vapor">vapor plugin</a> bundles this
+  connection with a skill that drafts plans on vapor and answers comments:
+  <code>claude plugin marketplace add arfct/vapor</code>, then
+  <code>claude plugin install vapor@vapor</code>.
+</p>
+
+<h3>claude.ai and Claude Desktop</h3>
+<p>
+  <strong>Settings → Connectors → Add custom connector</strong>, paste the main URL.
+  Sign-in happens in the consent popup.
 </p>
 <pre>${mcpUrl}</pre>
 
-<h2>Generic MCP client</h2>
+<h3>ChatGPT</h3>
+<p>
+  <strong>Settings → Connectors → Advanced → Developer mode</strong>, then
+  <strong>Create</strong> a connector with the URL. OAuth signs in; the anonymous
+  URL needs no authentication. Paid plans only.
+</p>
+<pre>${mcpUrl}</pre>
+
+<h3>Codex CLI</h3>
+<pre>codex mcp add vapor --url ${mcpUrl}
+codex mcp login vapor</pre>
+
+<h3>Cursor</h3>
+<p><a href="${cursorLink}">Add to Cursor</a>, or put this in <code>.cursor/mcp.json</code>, then sign in from <strong>Settings → MCP</strong>:</p>
+<pre>${cursorJson}</pre>
+
+<h3>Gemini CLI</h3>
+<p>The extension bundles the connection and the skill below in one install:</p>
+<pre>gemini extensions install https://github.com/arfct/vapor</pre>
+<p class="muted">Or add the server alone:</p>
+<pre>gemini mcp add --transport http vapor ${mcpUrl}</pre>
+
+<h3>VS Code and GitHub Copilot</h3>
+<p><a href="${vscodeLink}">Add to VS Code</a>, or put this in <code>.vscode/mcp.json</code>:</p>
+<pre>${vscodeJson}</pre>
+
+<h3>Anything else</h3>
+<p>Most clients accept this shape, and follow the OAuth flow they discover automatically:</p>
 <pre>${mcpServersJson}</pre>
 <p class="muted">
-  Use <code>${anonUrl}</code> for tokenless access; the main URL follows the OAuth
-  flow your client discovers automatically.
+  Building your own agent? The Anthropic and OpenAI APIs both take a remote MCP
+  server URL directly; point them at the anonymous URL, or at the main URL with
+  an access token from the OAuth flow.
 </p>
 
-<h2>Events &amp; webhooks (experimental)</h2>
+<h2>Teach the agent the workflow</h2>
 <p>
-  Documents emit <code>mention</code>, <code>thread.reply</code>, and
-  <code>document.changed</code> events. Instead of polling, an agent on the
-  authenticated door can register a webhook with the
-  <code>events_subscribe</code> tool: pass an HTTPS URL and a client-generated
-  secret (<code>whsec_</code> + base64 of 24&ndash;64 random bytes), and vapor
-  POSTs each occurrence there, signed per
+  The connection gives an agent the tools. A small skill teaches it the habit: draft
+  on vapor instead of pasting into chat, share the link, watch for comments, and
+  export back to the repo before the document expires. It's one file in the
+  <a href="https://agentskills.io">Agent Skills</a> format, served at
+  <code>${skillUrl}</code>, and the same file works in every client that reads skills.
+</p>
+<p>Claude Code (the plugin above installs it too):</p>
+<pre>curl -s ${skillUrl} --create-dirs -o ~/.claude/skills/vapor/SKILL.md</pre>
+<p>Codex CLI, Cursor, and GitHub Copilot share one folder:</p>
+<pre>curl -s ${skillUrl} --create-dirs -o ~/.agents/skills/vapor/SKILL.md</pre>
+<p class="muted">
+  Gemini CLI gets it with the extension. In a repository, the same file under
+  <code>.agents/skills/vapor/</code> reaches every contributor's agent at once.
+  ChatGPT has no equivalent; the connector gives it the tools, and the workflow lives
+  in the conversation.
+</p>
+
+<h2>What an agent can do</h2>
+<table>
+<tr><th>Tool</th><th>Needs</th><th></th></tr>
+<tr><td><code>read_document</code></td><td>—</td><td>Markdown, block anchors, who is present, open threads, and any standing instructions.</td></tr>
+<tr><td><code>suggest</code></td><td>suggest</td><td>A tracked change inside a block, for a person to accept or reject.</td></tr>
+<tr><td><code>comment</code>, <code>reply</code></td><td>comment</td><td>Open a thread on a block, or answer in one.</td></tr>
+<tr><td><code>insert</code>, <code>replace</code></td><td>write</td><td>Direct edits, typed in at human pace with a visible cursor (<code>pace: "instant"</code> skips the show).</td></tr>
+<tr><td><code>attach</code></td><td>write, signed in</td><td>Upload a file (base64, up to 4 MB) and insert it: images render inline, other files as a chip. Images, PDF, text, CSV, JSON, zip, and office formats.</td></tr>
+<tr><td><code>create_document</code></td><td>—</td><td>A new document, optionally with starting markdown. Returns its URL.</td></tr>
+<tr><td><code>join</code>, <code>leave</code></td><td>—</td><td>Show up in the presence stack with a short status, and step out.</td></tr>
+<tr><td><code>events_poll</code>, <code>events_subscribe</code></td><td>—</td><td>Watch the document; see below.</td></tr>
+</table>
+<p>
+  Anonymous agents get suggest and comment. Signed-in agents get the grant chosen on
+  the consent screen: suggest and comment, or full write. Every agent shows in the
+  document's Agents panel (Share → Invite an agent), where anyone can revoke it.
+</p>
+
+<h2>Standing instructions</h2>
+<p>
+  A document can carry guidance for agents that people don't see in the rendered
+  page: a fenced block whose language is <code>agent</code>. Anywhere in the
+  document, as many as you like.
+</p>
+<pre>\`\`\`agent
+Keep the tone plain. Suggest, don't edit, in the Decisions section.
+Reply to comments in the thread, not in the body.
+\`\`\`</pre>
+<p>
+  <code>read_document</code> returns them joined as <code>instructions</code>, and
+  the server tells agents to follow them while working in that document.
+</p>
+
+<h2>Watching a document</h2>
+<p>
+  Documents emit three events: <code>mention</code> when the text says
+  <code>@agent-name</code> (the name shown in the Agents panel),
+  <code>thread.reply</code> when a person answers in a thread the agent took part in,
+  and <code>document.changed</code>, a digest of edits. An agent picks them up in one
+  of two ways.
+</p>
+<p>
+  <strong>Poll for a while.</strong> After sharing a link, stay with the document
+  for about ten minutes, since the reader is most likely reading right now: call
+  <code>events_poll</code> with the cursor from the previous call and wait at least
+  <code>retryAfterMs</code> between empty polls. Answer mentions and thread replies as
+  they arrive, then go back to what you were doing and return when asked or
+  mentioned. (<code>await_events</code>, the older long-poll, still works but is
+  deprecated.)
+</p>
+<p>
+  <strong>Subscribe with a webhook.</strong> A signed-in agent with a
+  reachable HTTPS receiver can register one with <code>events_subscribe</code>: pass
+  the URL and a client-generated secret (<code>whsec_</code> + base64 of 24&ndash;64
+  random bytes), and vapor POSTs each occurrence there, signed per
   <a href="https://www.standardwebhooks.com/">Standard Webhooks</a>
   (<code>webhook-id</code> / <code>webhook-timestamp</code> /
   <code>webhook-signature</code> headers). Subscriptions last the document's
-  remaining lifetime by default and are refreshed by re-subscribing.
-  <code>events_poll</code> pulls the same events by cursor &mdash; wait at
-  least <code>retryAfterMs</code> between empty polls. This surface mirrors the
+  remaining lifetime by default and are refreshed by re-subscribing;
+  <code>events_unsubscribe</code> ends one early. This surface mirrors the
   draft MCP Events extension and will track the standard as it ratifies.
+</p>
+<p>
+  To stop an agent for good, revoke it in the Agents panel. Documents and everything
+  in them, subscriptions included, expire 99 hours after creation.
 </p>
 
 </body>
 </html>
+`;
+}
+
+/**
+ * The same guide as markdown: served at `/llms.txt`, and at `/mcp` when the
+ * caller didn't ask for HTML (curl, an agent's fetch tool). An agent told to
+ * "install vapor.fyi" lands here and finds the commands rather than a 401.
+ */
+export function mcpHelpMarkdown(origin: string): string {
+  const safeOrigin = SAFE_ORIGIN_RE.test(origin) ? origin : DEFAULT_ORIGIN;
+  const mcpUrl = `${safeOrigin}/mcp`;
+  const anonUrl = `${safeOrigin}/mcp/anonymous`;
+  const skillUrl = `${safeOrigin}/skill.md`;
+  const json = (value: unknown) => JSON.stringify(value);
+
+  return `# vapor
+
+> Live collaborative markdown documents that people and AI agents edit together, each with a cursor. Public by URL, gone after 99 hours. vapor is an MCP server: an agent reads a document, inserts or replaces text, attaches files, suggests tracked changes, comments, and watches for mentions.
+
+## Connect
+
+Two URLs, same tools. Signed in (${mcpUrl}) gives the agent a stable identity and, if granted at consent, write access; the client opens a browser sign-in the first time. Anonymous (${anonUrl}) needs no account and can suggest and comment.
+
+- Claude Code: \`claude mcp add --transport http vapor ${mcpUrl}\`
+- claude.ai and Claude Desktop: Settings → Connectors → Add custom connector, with ${mcpUrl}
+- ChatGPT: Settings → Connectors → Advanced → Developer mode, then Create a connector with ${mcpUrl} (OAuth) or ${anonUrl} (no authentication)
+- Codex CLI: \`codex mcp add vapor --url ${mcpUrl}\`, then \`codex mcp login vapor\`
+- Cursor: \`.cursor/mcp.json\` → \`${json({ mcpServers: { vapor: { url: mcpUrl } } })}\`
+- Gemini CLI: \`gemini extensions install https://github.com/arfct/vapor\` (connection plus skill), or \`gemini mcp add --transport http vapor ${mcpUrl}\`
+- VS Code: \`.vscode/mcp.json\` → \`${json({ servers: { vapor: { type: "http", url: mcpUrl } } })}\`
+- Anything else: \`${json({ mcpServers: { vapor: { url: mcpUrl } } })}\`
+
+## Skill
+
+A skill in the Agent Skills format teaches the workflow: draft on vapor instead of pasting into chat, share the link, watch for comments, export back before the document expires. One file, served at ${skillUrl}.
+
+- Claude Code: \`curl -s ${skillUrl} --create-dirs -o ~/.claude/skills/vapor/SKILL.md\` (the plugin installs it too: \`claude plugin marketplace add arfct/vapor\` then \`claude plugin install vapor@vapor\`)
+- Codex CLI, Cursor, GitHub Copilot: \`curl -s ${skillUrl} --create-dirs -o ~/.agents/skills/vapor/SKILL.md\`
+- Gemini CLI: bundled in the extension
+
+## Tools
+
+| Tool | Needs | Does |
+|---|---|---|
+| read_document | — | Markdown, block anchors, presence, open threads, and any standing instructions |
+| suggest | suggest | A tracked change inside a block, for a person to accept or reject |
+| comment, reply | comment | Open a thread on a block, or answer in one |
+| insert, replace | write | Direct edits, typed at human pace with a visible cursor (pace: "instant" skips the show) |
+| attach | write, signed in | Upload a file (base64, up to 4 MB) and insert it; images inline, other files as a chip |
+| create_document | — | A new document, optionally with starting markdown; returns its URL |
+| join, leave | — | Presence with a short status, and stepping out |
+| events_poll, events_subscribe | — | Watch the document |
+
+Anonymous agents get suggest and comment; signed-in agents get the grant chosen at consent. Every agent shows in the document's Agents panel, where anyone can revoke it.
+
+## Standing instructions
+
+A fenced block whose language is \`agent\` carries guidance for agents that readers don't see. read_document returns them as \`instructions\`; follow them while working in that document.
+
+## Watching
+
+Documents emit mention (the text says @agent-name), thread.reply (a person answered in the agent's thread), and document.changed. After sharing a link, stay about ten minutes: call events_poll with the last cursor, wait at least retryAfterMs between empty polls, answer what arrives, then return when asked or mentioned. A signed-in agent with an HTTPS receiver can call events_subscribe, which registers a Standard Webhooks-signed webhook instead.
+
+## Links
+
+- Guide: ${mcpUrl}
+- Skill: ${skillUrl}
+- Source and plugin: https://github.com/arfct/vapor
+- New document from a file: \`curl ${safeOrigin}/new -T notes.md\`; raw markdown back: \`${safeOrigin}/<id>.md\`
 `;
 }

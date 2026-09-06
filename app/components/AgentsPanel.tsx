@@ -154,7 +154,8 @@ export default function AgentsPanel({
               </>
             )}
             {showCli && <SnippetRow label="Claude Code" text={claudeCodeCommand} />}
-            <WakeSection kind="claude-routine" docId={docId} roster={roster} onRoster={setRoster} />
+            {/* An anonymous agent has no owner, so nothing could be woken for it. */}
+            {asYou && <WakeSection kind="claude-routine" docId={docId} roster={roster} onRoster={setRoster} />}
           </div>
         )}
         {client === "chatgpt" && (

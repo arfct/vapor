@@ -127,6 +127,9 @@ Track-changes functionality spans multiple files:
 #### Version history
 
 `DocumentAgent` keeps a `versions` table of markdown snapshots (policy in `app/shared/version-policy.ts`, HTTP handler in `agents/version-routes.ts`, dialog in `app/components/HistoryDialog.tsx`). Restore is an ordinary `"agent"`-origin edit; see `docs/markdown-and-criticmarkup.md` and `docs/plans/2026-09-05-version-history-plan.md`.
+#### Attachments
+
+Files live in R2 (`ATTACHMENTS` binding, keyed `<docId>/<attachmentId>`), metadata in the document's `attachments` table, per-account budgets in the Registry's `upload_ledger`. Policy in `app/shared/attachment-policy.ts`; upload/serve handlers in `workers/attachments.ts` (pure, tested) wired from `workers/app.ts`; the editor node in `app/lib/attachment.ts`; the MCP `attach` tool in `agents/mcp.ts`. Uploads require sign-in. See `docs/plans/2026-09-05-attachments-plan.md`.
 
 #### Agent collaborators
 

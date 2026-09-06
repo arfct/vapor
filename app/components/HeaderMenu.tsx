@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Popover } from "@base-ui/react/popover";
 import { useSession, notifyAuthChanged } from "~/lib/useSession";
+import { SIGN_IN_EVENT } from "~/lib/useAttachments";
 import { useTheme, type Theme } from "~/lib/useTheme";
 import { useDocument } from "~/lib/DocumentContext";
 import { hasSuggestionMarkup, processAllRanges } from "~/lib/suggestion-actions";
@@ -138,6 +139,13 @@ export default function HeaderMenu({
   // State, not a ref: the popover portal mounts a render after `open`
   // flips, so the effect must re-run once the host element exists.
   const [buttonHost, setButtonHost] = useState<HTMLDivElement | null>(null);
+
+  // Something elsewhere (a dropped file while signed out) asks for sign-in.
+  useEffect(() => {
+    const open = () => setOpen(true);
+    window.addEventListener(SIGN_IN_EVENT, open);
+    return () => window.removeEventListener(SIGN_IN_EVENT, open);
+  }, []);
 
   function handleOpenChange(next: boolean) {
     if (next) setSignInUnavailable(false);

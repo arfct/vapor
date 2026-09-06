@@ -9,6 +9,7 @@
 import { isValidDocumentId } from "../app/shared/constants";
 import type { AgentError } from "../app/shared/agent-protocol";
 import { mcpHelpHtml } from "../app/lib/mcp-help";
+import { absolutizeAttachmentUrls } from "../app/shared/attachment-policy";
 import {
   mintSessionToken,
   sessionFromRequest,
@@ -49,7 +50,9 @@ export async function handleRawMarkdown(
     return new Response("Not found", { status: 404 });
   }
 
-  return new Response(result.markdown, {
+  // Attachment paths become absolute URLs on this request's origin, so the
+  // file is complete wherever it is opened.
+  return new Response(absolutizeAttachmentUrls(result.markdown, url.origin), {
     status: 200,
     headers: {
       "Content-Type": "text/markdown; charset=utf-8",

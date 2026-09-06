@@ -20,6 +20,10 @@
 			{ "name": "Registry", "class_name": "Registry" }
 		]
 	},
+	// Attachments live in R2, keyed <docId>/<attachmentId>; see
+	// docs/plans/2026-09-05-attachments-plan.md. The bucket and its 5-day
+	// lifecycle rule are created by hand (account owner).
+	"r2_buckets": [{ "binding": "ATTACHMENTS", "bucket_name": "vapor-attachments" }],
 	"migrations": [
 		{ "tag": "v1", "new_sqlite_classes": ["DocumentAgent"] },
 		{ "tag": "v2", "new_sqlite_classes": ["VaporMcp"] },

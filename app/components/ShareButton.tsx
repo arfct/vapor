@@ -6,6 +6,7 @@ import { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from "~/compo
 import Icon from "~/components/Icon";
 import ConnectionStatus from "~/components/ConnectionStatus";
 import { formatRemainingTime } from "~/lib/format-remaining";
+import { absolutizeAttachmentUrls } from "~/shared/attachment-policy";
 
 const COPY_FEEDBACK_MS = 2000;
 
@@ -49,7 +50,8 @@ export default function ShareButton({ onInviteAgent }: { onInviteAgent?: () => v
   }, []);
 
   const handleDownload = useCallback(() => {
-    const content = serializeThreads(markdown, threads);
+    // Attachment paths become absolute URLs so the file is complete offline.
+    const content = serializeThreads(absolutizeAttachmentUrls(markdown, window.location.origin), threads);
     const blob = new Blob([content], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

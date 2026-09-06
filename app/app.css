@@ -166,6 +166,47 @@ body {
   margin: 1rem 0 0.5rem;
 }
 
+/* Attachments: an image with a caption, or a chip that downloads. The
+   selected state matches the code-block chrome. */
+.tiptap .attachment {
+  max-width: 65ch;
+  margin: 0 0 1rem;
+}
+.tiptap .attachment.is-selected > * {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+.tiptap .attachment-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.25rem;
+}
+.tiptap .attachment-image figcaption {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+.tiptap .attachment-chip {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.25rem;
+  background-color: var(--color-border);
+  color: var(--color-ink);
+  font-size: 0.95rem;
+  text-decoration: none;
+}
+.tiptap .attachment-chip .material-symbols-outlined {
+  font-size: 20px;
+  color: var(--color-muted);
+}
+
 /* Editor styles */
 .tiptap {
   outline: none;

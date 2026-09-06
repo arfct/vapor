@@ -59,6 +59,14 @@ import {
   type VersionSummary,
 } from "../app/shared/version-policy";
 import { handleVersionRequest, type VersionStub } from "./version-routes";
+import {
+  RESERVATION_TTL_MS,
+  budgetAllows,
+  mintAttachmentId,
+  sanitizeFilename,
+  typeForFilename,
+  type AttachmentError,
+} from "../app/shared/attachment-policy";
 import type { ThreadData, ThreadReply } from "../app/shared/types";
 
 /** A recorded document event's public shape, as returned by agentAwaitEvents. */
@@ -308,6 +316,19 @@ class DocumentAgent extends Agent {
         type TEXT,
         payload TEXT,
         created_at INTEGER
+      )
+    `;
+    // Attachment metadata only; the bytes live in R2 under <docId>/<id>.
+    this.sql`
+      CREATE TABLE IF NOT EXISTS attachments (
+        id TEXT PRIMARY KEY,
+        filename TEXT,
+        content_type TEXT,
+        bytes INTEGER,
+        uploader TEXT,
+        uploader_name TEXT,
+        created_at INTEGER,
+        state TEXT
       )
     `;
     this.sql`
@@ -624,6 +645,10 @@ class DocumentAgent extends Agent {
     this.contributorsSinceSnapshot.clear();
     this.connectionClients.clear();
     this.dirtySinceSnapshot = false;
+    // Attachments: the objects in R2, then their rows. A lifecycle rule on
+    // the bucket backstops a DO whose alarm never runs.
+    await this.deleteAttachmentObjects();
+    this.sql`DELETE FROM attachments`;
     for (const finish of this.eventWaiters) finish();
     this.eventWaiters = [];
     // Agent presence belongs to a document that no longer exists — drop it
@@ -1698,6 +1723,104 @@ class DocumentAgent extends Agent {
       saveVersion: (reason, author) => this.saveVersion(reason, author),
       restoreVersion: (id, actor) => this.restoreVersion(id, actor),
     };
+  }
+
+  // ---------------------------------------------------------------------
+  // Attachments (docs/plans/2026-09-05-attachments-plan.md)
+  // ---------------------------------------------------------------------
+
+  private attachmentBucket(): R2Bucket | null {
+    return (this.env as Partial<Cloudflare.Env> | undefined)?.ATTACHMENTS ?? null;
+  }
+
+  private async deleteAttachmentObjects(): Promise<void> {
+    const bucket = this.attachmentBucket();
+    if (!bucket) return;
+    try {
+      let cursor: string | undefined;
+      do {
+        const page = await bucket.list({ prefix: `${this.name}/`, cursor });
+        const keys = page.objects.map((o) => o.key);
+        if (keys.length > 0) await bucket.delete(keys);
+        cursor = page.truncated ? page.cursor : undefined;
+      } while (cursor);
+    } catch (err) {
+      console.error("Attachment cleanup failed:", err);
+    }
+  }
+
+  /**
+   * Hold room for an upload: a `reserved` row that counts against the
+   * document's budget until commit or release. Reservations older than
+   * five minutes were abandoned and are reclaimed here. The type is judged
+   * from the filename now; the bytes are sniffed by the uploader and the
+   * real content type recorded on commit.
+   */
+  reserveAttachment(args: {
+    filename: string;
+    bytes: number;
+    uploader: string;
+    uploaderName: string;
+  }): { id: string; filename: string } | { error: AttachmentError } {
+    this.ensureInitialised();
+    if (!this.docExists()) return { error: "doc_not_found" };
+    const filename = sanitizeFilename(args.filename);
+    if (!typeForFilename(filename)) return { error: "attachment_type" };
+
+    const now = Date.now();
+    this.sql`DELETE FROM attachments WHERE state = 'reserved' AND created_at < ${now - RESERVATION_TTL_MS}`;
+    const totals = this.sql<{ state: string; total: number; count: number }>`
+      SELECT state, COALESCE(SUM(bytes), 0) AS total, COUNT(*) AS count FROM attachments GROUP BY state
+    `;
+    const of = (state: string) => totals.find((t) => t.state === state);
+    const refused = budgetAllows(
+      {
+        readyBytes: of("ready")?.total ?? 0,
+        reservedBytes: of("reserved")?.total ?? 0,
+        count: totals.reduce((n, t) => n + t.count, 0),
+      },
+      args.bytes,
+    );
+    if (refused) return { error: refused };
+
+    const id = mintAttachmentId();
+    this.sql`
+      INSERT INTO attachments (id, filename, content_type, bytes, uploader, uploader_name, created_at, state)
+      VALUES (${id}, ${filename}, ${null}, ${args.bytes}, ${args.uploader}, ${args.uploaderName}, ${now}, 'reserved')
+    `;
+    return { id, filename };
+  }
+
+  commitAttachment(id: string, info: { contentType: string; bytes: number }): { ok: true } | { error: AttachmentError } {
+    this.ensureInitialised();
+    const rows = this.sql<{ id: string }>`SELECT id FROM attachments WHERE id = ${id} AND state = 'reserved'`;
+    if (rows.length === 0) return { error: "attachment_not_found" };
+    this.sql`
+      UPDATE attachments SET state = 'ready', content_type = ${info.contentType}, bytes = ${info.bytes} WHERE id = ${id}
+    `;
+    return { ok: true };
+  }
+
+  releaseAttachment(id: string): { ok: true } {
+    this.ensureInitialised();
+    this.sql`DELETE FROM attachments WHERE id = ${id} AND state = 'reserved'`;
+    return { ok: true };
+  }
+
+  /** A ready attachment's serving metadata, or null. */
+  attachmentInfo(id: string): { filename: string; contentType: string; bytes: number } | null {
+    this.ensureInitialised();
+    const rows = this.sql<{ filename: string; content_type: string; bytes: number }>`
+      SELECT filename, content_type, bytes FROM attachments WHERE id = ${id} AND state = 'ready'
+    `;
+    const row = rows[0];
+    return row ? { filename: row.filename, contentType: row.content_type, bytes: row.bytes } : null;
+  }
+
+  /** Remaining life of the document in ms, for cache headers on its attachments. */
+  async remainingLifetimeMs(): Promise<number> {
+    const alarm = await this.ctx.storage.getAlarm();
+    return alarm === null ? 0 : Math.max(0, alarm - Date.now());
   }
 
   async exportMarkdown(): Promise<{ markdown: string } | { error: AgentError }> {

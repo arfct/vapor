@@ -262,3 +262,61 @@ describe("tables", () => {
     expect(serializePmDoc(parsed.doc)).toContain("| x \\| y |");
   });
 });
+
+describe("attachments", () => {
+  const image = "![cat.png](/abcd1234/attachments/abcdefghijklmnop/cat.png)";
+  const file = "[report.pdf](/abcd1234/attachments/abcdefghijklmnop/report.pdf)";
+
+  it("parses an image alone in a paragraph at an attachment path as an image attachment", () => {
+    const parsed = parseMarkdown(image);
+    if (!parsed.ok) throw new Error(parsed.message);
+    const node = parsed.doc.firstChild!;
+    expect(node.type.name).toBe("attachment");
+    expect(node.attrs.kind).toBe("image");
+    expect(node.attrs.src).toBe("/abcd1234/attachments/abcdefghijklmnop/cat.png");
+    expect(node.attrs.alt).toBe("cat.png");
+    expect(roundTrip(image)).toBe(image);
+  });
+
+  it("parses a link alone in a paragraph at an attachment path as a file attachment", () => {
+    const parsed = parseMarkdown(file);
+    if (!parsed.ok) throw new Error(parsed.message);
+    expect(parsed.doc.firstChild!.type.name).toBe("attachment");
+    expect(parsed.doc.firstChild!.attrs.kind).toBe("file");
+    expect(roundTrip(file)).toBe(file);
+  });
+
+  it("stores the path form of an absolute attachment URL", () => {
+    const abs = "![cat.png](https://vapor.fyi/abcd1234/attachments/abcdefghijklmnop/cat.png)";
+    expect(roundTrip(abs)).toBe(image);
+  });
+
+  it("leaves a foreign image as literal text and an ordinary link as a link", () => {
+    const foreign = "![cat](https://example.com/cat.png)";
+    const parsedForeign = parseMarkdown(foreign);
+    if (!parsedForeign.ok) throw new Error(parsedForeign.message);
+    expect(parsedForeign.doc.firstChild!.type.name).toBe("paragraph");
+    expect(parsedForeign.doc.textContent).toBe(foreign);
+
+    const link = "[site](https://example.com)";
+    const parsedLink = parseMarkdown(link);
+    if (!parsedLink.ok) throw new Error(parsedLink.message);
+    expect(parsedLink.doc.firstChild!.type.name).toBe("paragraph");
+    expect(parsedLink.doc.firstChild!.firstChild!.marks[0].type.name).toBe("link");
+  });
+
+  it("keeps an attachment link inside running text as a link", () => {
+    const inline = `See ${file} for details.`;
+    const parsed = parseMarkdown(inline);
+    if (!parsed.ok) throw new Error(parsed.message);
+    expect(parsed.doc.firstChild!.type.name).toBe("paragraph");
+    expect(roundTrip(inline)).toBe(inline);
+  });
+
+  it("round-trips through a Y.Doc with its block id", () => {
+    const doc = docFromMarkdown(`# Title\n\n${image}\n\nAfter.`);
+    expect(yDocToMarkdown(doc)).toBe(`# Title\n\n${image}\n\nAfter.`);
+    expect(getBlocks(doc)[1].id).toMatch(BLOCK_ID_RE);
+  });
+});
+

@@ -15,6 +15,7 @@ import { CodeBlockCopy } from "~/lib/code-block-copy";
 import { AgentInstructions } from "~/lib/agent-instructions";
 import { CommentClickHandler } from "~/lib/comment-click";
 import { AppLinks, APP_LINK_PROTOCOL } from "~/lib/app-links";
+import { Attachment } from "~/lib/attachment";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
 import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
 
@@ -254,6 +255,7 @@ export default function Editor({
         TitleBlock.configure(placeholders),
         CommentClickHandler,
         AppLinks,
+        Attachment,
         CommentHighlight,
         ActiveCommentHighlight,
         CommentColors,

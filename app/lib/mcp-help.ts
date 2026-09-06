@@ -83,7 +83,7 @@ export function mcpHelpHtml(origin: string): string {
 
 <p>
   Every vapor document is a live, multiplayer markdown file. This MCP server lets an
-  agent read a document, insert or replace text, suggest tracked changes, comment,
+  agent read a document, insert or replace text, attach files (signed in), suggest tracked changes, comment,
   and watch for mentions — the same document a person has open in their browser,
   edited alongside them in real time.
 </p>

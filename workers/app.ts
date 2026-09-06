@@ -12,6 +12,8 @@ import {
 } from "./routes";
 import { verifyGoogleIdToken, verifySessionToken } from "../app/lib/auth.server";
 import { handleOAuth, OAUTH_CORS } from "./oauth";
+import { handleAttachmentUpload, handleAttachmentServe } from "./attachments";
+import { buildAttachmentDeps } from "./attachment-deps";
 import type Registry from "../agents/registry";
 
 export { default as DocumentAgent } from "../agents/document";
@@ -87,6 +89,19 @@ export default {
     const helpResponse = handleMcpHelp(request);
     if (helpResponse) {
       return helpResponse;
+    }
+
+    // /:id/attachments — upload (signed-in people and write-capable agents)
+    // and serve (public by URL, like the document). Only built when the
+    // path matches, so every other request skips the Registry lookup.
+    if (/^\/[a-z0-9]{8}\/attachments(\/|$)/.test(url.pathname)) {
+      const registry = (await getAgentByName(env.Registry, "global")) as unknown as Registry;
+      const deps = buildAttachmentDeps(env, registry);
+      const attachmentResponse =
+        (await handleAttachmentUpload(request, deps)) ?? (await handleAttachmentServe(request, deps));
+      if (attachmentResponse) {
+        return attachmentResponse;
+      }
     }
 
     // GET /:id.md serves a document's raw markdown, public by URL like the

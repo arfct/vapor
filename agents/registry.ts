@@ -1,6 +1,7 @@
 import { Agent } from "agents";
 import { slugifyAgentName } from "../app/shared/agent-protocol";
 import type { AgentCapability } from "../app/shared/agent-protocol";
+import { ledgerAllows, pruneLedger, type AttachmentError, type LedgerRow } from "../app/shared/attachment-policy";
 
 // Global identity registry, one instance ("global") per deployment.
 // Modeled on subpixel's server/registry.ts, adapted to the Agents SDK and
@@ -72,7 +73,47 @@ class Registry extends Agent {
         value TEXT
       )
     `;
+    // Attachment uploads per principal over a rolling day; pruned on write.
+    this.sql`
+      CREATE TABLE IF NOT EXISTS upload_ledger (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        principal TEXT,
+        created_at INTEGER,
+        bytes INTEGER
+      )
+    `;
     this.initialised = true;
+  }
+
+  // ---- Attachment budget (docs/plans/2026-09-05-attachments-plan.md) ----
+
+  /**
+   * Charge `bytes` to a principal's rolling 24-hour upload budget, or refuse.
+   * The row is written up front so concurrent uploads can't both squeeze
+   * through; a failed upload gives it back with releaseUploadBudget.
+   */
+  async reserveUploadBudget(
+    principal: string,
+    bytes: number,
+  ): Promise<{ ok: true; ledgerId: number } | { error: AttachmentError }> {
+    this.ensureTable();
+    const now = Date.now();
+    const rows = this.sql<LedgerRow & { id: number }>`
+      SELECT id, created_at, bytes FROM upload_ledger WHERE principal = ${principal}
+    `;
+    const live = new Set(pruneLedger(rows, now).map((r) => (r as LedgerRow & { id: number }).id));
+    for (const row of rows) if (!live.has(row.id)) this.sql`DELETE FROM upload_ledger WHERE id = ${row.id}`;
+    const refused = ledgerAllows(rows, bytes, now);
+    if (refused) return { error: refused };
+    this.sql`INSERT INTO upload_ledger (principal, created_at, bytes) VALUES (${principal}, ${now}, ${bytes})`;
+    const idRows = this.sql<{ id: number }>`SELECT last_insert_rowid() AS id`;
+    return { ok: true, ledgerId: idRows?.[0]?.id ?? 0 };
+  }
+
+  async releaseUploadBudget(ledgerId: number): Promise<{ ok: true }> {
+    this.ensureTable();
+    this.sql`DELETE FROM upload_ledger WHERE id = ${ledgerId}`;
+    return { ok: true };
   }
 
   private kvGet<T>(key: string): T | null {

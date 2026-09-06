@@ -16,6 +16,7 @@ import MarkdownIt from "markdown-it";
 import * as Y from "yjs";
 import { yXmlFragmentToProseMirrorRootNode } from "@tiptap/y-tiptap";
 import { blockHash, parseAnchor as parseLegacyAnchor, type DocBlock } from "./agent-protocol";
+import { parseAttachmentUrl } from "./attachment-policy";
 
 /* ---------- Schema (names must match the TipTap extensions) ---------- */
 
@@ -72,6 +73,21 @@ export const richSchema = new Schema({
       defining: true,
     },
     horizontalRule: { group: "block", attrs: blockIdAttr },
+    // A file stored in R2 under this document, addressed by a document-
+    // scoped path. `image` renders inline; `file` as a chip. Canonical
+    // markdown: an image or a link alone in a paragraph, pointing at the
+    // attachment path (docs/plans/2026-09-05-attachments-plan.md).
+    attachment: {
+      group: "block",
+      atom: true,
+      attrs: {
+        ...blockIdAttr,
+        kind: { default: "file" as "image" | "file" },
+        src: { default: "" },
+        alt: { default: "" },
+        bytes: { default: null as number | string | null },
+      },
+    },
     // GFM tables. Cells hold inline content only — one line per cell, as
     // markdown can express — so the attrs exist for prosemirror-tables'
     // commands, not for anything the serializer can write.
@@ -126,6 +142,7 @@ export const BLOCK_ID_TYPES = [
   "taskList",
   "table",
   "horizontalRule",
+  "attachment",
 ];
 
 /* ---------- markdown-it with CriticMarkup inline syntax ---------- */
@@ -237,10 +254,72 @@ function taskListRule(state: { tokens: MdToken[] }): void {
   }
 }
 
+type InlineToken = MdToken & {
+  type: string;
+  children: InlineToken[] | null;
+  attrGet: (name: string) => string | null;
+  block: boolean;
+  map: [number, number] | null;
+};
+type TokenCtor = new (type: string, tag: string, nesting: number) => InlineToken;
+
+const isBlank = (t: InlineToken) => t.type === "text" && t.content.trim() === "";
+
+/**
+ * Attachments in markdown: an image, or a link, standing alone in a
+ * paragraph and pointing at an attachment path becomes an `attachment`
+ * block token. Every other image is put back as literal text, exactly as
+ * before images were parsed at all — a public document embeds no foreign
+ * images or tracking pixels — and every other link stays a link.
+ */
+function attachmentRule(state: { tokens: InlineToken[]; Token: TokenCtor }): void {
+  const toks = state.tokens;
+  for (let i = 0; i < toks.length; i++) {
+    const inline = toks[i];
+    if (inline.type !== "inline" || !inline.children) continue;
+    const meaningful = inline.children.filter((c) => !isBlank(c));
+    const alone = toks[i - 1]?.type === "paragraph_open" && toks[i + 1]?.type === "paragraph_close";
+
+    let attachment: { kind: "image" | "file"; src: string; alt: string } | null = null;
+    if (alone && meaningful.length === 1 && meaningful[0].type === "image") {
+      const parsed = parseAttachmentUrl(meaningful[0].attrGet("src") ?? "");
+      if (parsed) attachment = { kind: "image", src: parsed.path, alt: meaningful[0].content };
+    } else if (
+      alone &&
+      meaningful.length === 3 &&
+      meaningful[0].type === "link_open" &&
+      meaningful[1].type === "text" &&
+      meaningful[2].type === "link_close"
+    ) {
+      const parsed = parseAttachmentUrl(meaningful[0].attrGet("href") ?? "");
+      if (parsed) attachment = { kind: "file", src: parsed.path, alt: meaningful[1].content };
+    }
+
+    if (attachment) {
+      const tok = new state.Token("attachment", "div", 0);
+      tok.block = true;
+      tok.map = toks[i - 1].map;
+      tok.level = toks[i - 1].level;
+      tok.attrSet("kind", attachment.kind);
+      tok.attrSet("src", attachment.src);
+      tok.attrSet("alt", attachment.alt);
+      toks.splice(i - 1, 3, tok);
+      i -= 1;
+      continue;
+    }
+
+    // Foreign images: back to the literal syntax, as text.
+    for (const child of inline.children) {
+      if (child.type !== "image") continue;
+      child.type = "text";
+      child.content = `![${child.content}](${child.attrGet("src") ?? ""})`;
+      child.children = null;
+    }
+  }
+}
+
 function makeMarkdownIt() {
   const md = new MarkdownIt({ html: false, linkify: true });
-  // Images aren't representable in the schema — leave their syntax as text.
-  md.disable(["image"]);
   md.inline.ruler.before("emphasis", "critic", criticRule as never);
   // A fence whose info string is exactly `agent` is an agent-instructions
   // block, not code. Retyping the token lets the parser map it to its own
@@ -251,6 +330,7 @@ function makeMarkdownIt() {
     }
   });
   md.core.ruler.before("inline", "task_list", taskListRule as never);
+  md.core.ruler.after("inline", "attachments", attachmentRule as never);
   // The schema has rows directly under table; markdown-it's thead/tbody
   // wrappers have no node to map to, so drop them.
   md.core.ruler.push("table_sections", ((state: { tokens: MdToken[] }) => {
@@ -291,6 +371,14 @@ export const markdownParser = new MarkdownParser(richSchema, makeMarkdownIt() as
   th: { block: "tableHeader" },
   td: { block: "tableCell" },
   hr: { node: "horizontalRule" },
+  attachment: {
+    node: "attachment",
+    getAttrs: (tok) => ({
+      kind: tok.attrGet("kind") === "image" ? "image" : "file",
+      src: tok.attrGet("src") ?? "",
+      alt: tok.attrGet("alt") ?? "",
+    }),
+  },
   hardbreak: { node: "hardBreak" },
   em: { mark: "italic" },
   strong: { mark: "bold" },
@@ -347,6 +435,12 @@ export const markdownSerializer = new MarkdownSerializer(
     },
     horizontalRule(state, node) {
       state.write("---");
+      state.closeBlock(node);
+    },
+    attachment(state, node) {
+      const alt = String(node.attrs.alt ?? "").replace(/[[\]]/g, "\\$&");
+      const src = String(node.attrs.src ?? "");
+      state.write(`${node.attrs.kind === "image" ? "!" : ""}[${alt}](${src})`);
       state.closeBlock(node);
     },
     table(state, node) {

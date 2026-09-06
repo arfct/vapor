@@ -154,6 +154,21 @@ body {
   opacity: 0.6;
   transition: filter 0.4s ease, opacity 0.4s ease;
 }
+/* Its reveal lands on that rest state rather than on solid text, so the
+   title never sharpens and then re-blurs after the cascade. */
+@keyframes condense-vapor {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+  }
+  to {
+    opacity: 0.6;
+    filter: blur(0.1em);
+  }
+}
+.tour .doc-reveal .tiptap > h1:first-child {
+  animation-name: condense-vapor;
+}
 .tour .tiptap > h1:first-child:hover,
 .tour .tiptap:focus-within > h1:first-child {
   filter: none;

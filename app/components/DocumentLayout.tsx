@@ -9,7 +9,8 @@ import type { ThreadData } from "~/shared/types";
 import Editor from "~/components/Editor";
 import Preview from "~/components/Preview";
 import ShareButton from "~/components/ShareButton";
-import CreateMenu from "~/components/CreateMenu";
+import NewDocumentDialog from "~/components/NewDocumentDialog";
+import Icon from "~/components/Icon";
 import AgentsPanel from "~/components/AgentsPanel";
 import FormatToolbar from "~/components/FormatToolbar";
 import HeaderMenu from "~/components/HeaderMenu";
@@ -58,7 +59,6 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   const navigate = useNavigate();
   // A document the visitor just created gets focus so they can type at once.
   const fresh = Boolean((useLocation().state as { fresh?: boolean } | null)?.fresh);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const railRef = useRef<HTMLElement>(null);
   // The comment sheet sits on a fixed layer pinned to the visual viewport,
   // so it stays above the keyboard while iOS pans for it.
@@ -114,8 +114,14 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   }, [isHome, threads]);
 
   const toggleComments = useCallback(() => setCommentsOpen((v) => !v), []);
-  const inviteAgent = surface.kind === "doc" ? () => setAgentsOpen(true) : undefined;
-  const pickFile = () => fileInputRef.current?.click();
+  const inviteAgent = () => setAgentsOpen(true);
+  const [newOpen, setNewOpen] = useState(false);
+  // `vapor:` links in the text are actions: the Agents panel (which on the
+  // tour shows how to connect without a roster) and the New document dialog.
+  const handleAppLink = useCallback((url: string) => {
+    if (url === "vapor://invite") setAgentsOpen(true);
+    if (url === "vapor://new") setNewOpen(true);
+  }, []);
 
   // A new document starts empty; the tour stays on the homepage.
   const createBlankDocument = useCallback(async () => {
@@ -162,17 +168,18 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
       >
         <FormatToolbar />
         {/* The tour has nothing to share; Create takes Share's place there
-            and its rows leave the menu so they aren't offered twice. */}
+            and the menu's New document row steps aside for it. */}
         {isHome ? (
-          <CreateMenu onNewDocument={createBlankDocument} onUpload={pickFile} />
+          <button className="header-button" aria-label="Create" title="Create" onClick={() => setNewOpen(true)}>
+            <Icon name="add_2" />
+          </button>
         ) : (
           <ShareButton onInviteAgent={inviteAgent} />
         )}
         <FacePile alsoOnline={demoPresence} />
         <HeaderMenu
           comments={wide ? undefined : { open: commentsOpen, onToggle: toggleComments }}
-          onNewDocument={isHome ? undefined : createBlankDocument}
-          onUpload={isHome ? undefined : pickFile}
+          onNewDocument={isHome ? undefined : () => setNewOpen(true)}
         />
       </header>
       {/* The comment sheet rides a fixed layer pinned to the visual viewport,
@@ -187,20 +194,18 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
         />
       </div>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".md"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) uploadFile(file);
-        }}
-        className="hidden"
-      />
 
-      {surface.kind === "doc" && (
-        <AgentsPanel open={agentsOpen} onClose={() => setAgentsOpen(false)} />
-      )}
+      <AgentsPanel
+        open={agentsOpen}
+        onClose={() => setAgentsOpen(false)}
+        docId={surface.kind === "doc" ? surface.id : undefined}
+      />
+      <NewDocumentDialog
+        open={newOpen}
+        onClose={() => setNewOpen(false)}
+        onBlank={createBlankDocument}
+        onFile={uploadFile}
+      />
       {/* The page itself scrolls, so mobile browsers collapse their toolbar
           and let the text run under it. Half a screen at the foot so the end
           of the document can scroll clear of the keyboard. */}
@@ -208,12 +213,10 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
         <div className="flex items-start">
           {/* `tour` scopes the demo document's own styling (app.css). */}
           <div className={isHome ? "tour min-w-0 flex-1" : "min-w-0 flex-1"}>
-            {/* Server-rendered stand-in until TipTap mounts: keeps the tour's copy indexable. */}
-            {isHome && !editorInstance && (
-              <pre className="mx-auto w-full max-w-3xl whitespace-pre-wrap p-6 font-sans text-base leading-relaxed text-ink">
-                {surface.fallbackMarkdown}
-              </pre>
-            )}
+            {/* Server-rendered stand-in until TipTap mounts: keeps the tour's
+                copy indexable, but off screen so raw markdown never flashes
+                before the document condenses in. */}
+            {isHome && !editorInstance && <pre className="sr-only">{surface.fallbackMarkdown}</pre>}
             <Editor
               yjs={yjs}
               autofocus={surface.kind === "doc" && fresh}
@@ -221,6 +224,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
               hidden={showPreview}
               onEditorReady={handleEditorReady}
               onCommentClick={handleCommentClick}
+              onAppLink={handleAppLink}
               commentHighlight={commentHighlight}
               activeCommentRange={activeCommentRange}
               commentColors={commentColors}

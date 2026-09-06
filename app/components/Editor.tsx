@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import type { CommentColorRange } from "~/shared/types";
 import { CommentColors, commentColorsKey, commentColorAt } from "~/lib/comment-colors";
 import { useEditor, EditorContent } from "@tiptap/react";
@@ -14,6 +14,7 @@ import { CodeBlock } from "~/lib/code-block";
 import { CodeBlockCopy } from "~/lib/code-block-copy";
 import { AgentInstructions } from "~/lib/agent-instructions";
 import { CommentClickHandler } from "~/lib/comment-click";
+import { AppLinks, APP_LINK_PROTOCOL } from "~/lib/app-links";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
 import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
 
@@ -175,6 +176,7 @@ export default function Editor({
   placeholders,
   onEditorReady,
   onCommentClick,
+  onAppLink,
   commentHighlight,
   activeCommentRange,
   commentColors,
@@ -190,6 +192,8 @@ export default function Editor({
   placeholders?: TitleBlockOptions;
   onEditorReady?: (editor: TiptapEditor) => void;
   onCommentClick?: (commentText: string) => void;
+  /** A `vapor:` link was clicked or tapped. */
+  onAppLink?: (url: string) => void;
   commentHighlight?: { from: number; to: number } | null;
   activeCommentRange?: { from: number; to: number } | null;
   commentColors?: CommentColorRange[];
@@ -218,6 +222,8 @@ export default function Editor({
             openOnClick: false,
             autolink: true,
             linkOnPaste: true,
+            // `vapor:` links are actions inside the app (see app-links.ts).
+            protocols: [APP_LINK_PROTOCOL],
           },
         }),
         CodeBlock,
@@ -247,6 +253,7 @@ export default function Editor({
         SuggestStructureGuard.configure({ docState }),
         TitleBlock.configure(placeholders),
         CommentClickHandler,
+        AppLinks,
         CommentHighlight,
         ActiveCommentHighlight,
         CommentColors,
@@ -279,6 +286,9 @@ export default function Editor({
   useEffect(() => {
     editor?.commands.setCommentClickHandler(onCommentClick ?? null);
   }, [editor, onCommentClick]);
+  useEffect(() => {
+    editor?.commands.setAppLinkHandler(onAppLink ?? null);
+  }, [editor, onAppLink]);
 
   // Update the comment highlight decoration when the prop changes
   useEffect(() => {
@@ -339,6 +349,17 @@ export default function Editor({
     }
   }, [editor]);
 
+  // The document condenses into view once its content has arrived: the
+  // editor is invisible until the first sync, then plays the reveal once.
+  // Later re-syncs (waking from sleep) don't replay it, and the animation
+  // class leaves afterwards so no `filter` lingers on the blocks.
+  const [reveal, setReveal] = useState<"pending" | "running" | "done">("pending");
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (yjs.synced) setReveal((r) => (r === "pending" ? "running" : r));
+  }, [yjs.synced]);
+  const revealClass = { pending: "opacity-0", running: "doc-reveal", done: "" }[reveal];
+
   if (!editor) {
     return null;
   }
@@ -346,8 +367,15 @@ export default function Editor({
   return (
     <>
       <div
-        className={`min-h-full cursor-text ${hidden ? "hidden" : ""}`}
+        className={`min-h-full cursor-text ${hidden ? "hidden" : ""} ${revealClass}`}
         onClick={handleClick}
+        onAnimationEnd={(e) => {
+          // Blocks cascade in; the class leaves once the last one has landed.
+          const block = e.target as HTMLElement;
+          if (block.parentElement?.classList.contains("tiptap") && block === block.parentElement.lastElementChild) {
+            setReveal("done");
+          }
+        }}
       >
         <div className="mx-auto w-full max-w-3xl">
           <EditorContent editor={editor} />

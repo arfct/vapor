@@ -719,6 +719,12 @@ body {
   clip-path: polygon(50% 0%, 93.3% 25%, 93.3% 75%, 50% 100%, 6.7% 75%, 6.7% 25%);
 }
 
+/* An anonymous agent's animal, white on the hexagon's colour. */
+.avatar-hexagon__animal {
+  font-size: 0.7em;
+  color: white;
+}
+
 /* CriticMarkup mark styles (rendered as <span> elements by TipTap marks) */
 .cm-addition {
   color: #22c55e;

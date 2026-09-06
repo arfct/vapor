@@ -10,11 +10,14 @@ export default function Dialog({
   open,
   onClose,
   title,
+  accessory,
   children,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
+  /** Sits right after the title: a small control that scopes the whole dialog. */
+  accessory?: ReactNode;
   children: ReactNode;
 }) {
   const titleId = useId();
@@ -44,9 +47,12 @@ export default function Dialog({
         className="squircle-[24px] max-h-[85vh] w-full max-w-lg overflow-y-auto bg-paper p-6 shadow-[0_8px_10px_1px_rgba(0,0,0,0.14),0_3px_14px_2px_rgba(0,0,0,0.12),0_5px_5px_-3px_rgba(0,0,0,0.2)]"
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 id={titleId} className="text-lg font-medium">
-            {title}
-          </h2>
+          <div className="flex items-baseline gap-2">
+            <h2 id={titleId} className="text-lg font-medium">
+              {title}
+            </h2>
+            {accessory}
+          </div>
           {/* Same round 48px cell as the toolbar, tucked into the corner padding. */}
           <button onClick={onClose} aria-label="Close" className="header-button -my-3 -mr-3 text-ink">
             <Icon name="close" />

@@ -1,4 +1,4 @@
-import { getMarkRange, type Editor as TiptapEditor } from "@tiptap/core";
+import type { Editor as TiptapEditor } from "@tiptap/core";
 import type { ThreadData } from "~/shared/types";
 
 export interface DocumentComment {
@@ -82,40 +82,6 @@ export function matchThreadsToComments(
   }
 
   return result;
-}
-
-/**
- * Find the comment text at the current cursor position.
- * Handles both direct (cursor in criticComment) and indirect
- * (cursor in criticHighlight with adjacent comment) cases.
- */
-export function findCommentTextAtCursor(editor: TiptapEditor): string | null {
-  const { from } = editor.state.selection;
-  const $from = editor.state.doc.resolve(from);
-  const commentType = editor.schema.marks.criticComment;
-  const highlightType = editor.schema.marks.criticHighlight;
-
-  // Direct: cursor inside a criticComment mark
-  if (commentType) {
-    const range = getMarkRange($from, commentType);
-    if (range) {
-      return editor.state.doc.textBetween(range.from, range.to);
-    }
-  }
-
-  // Indirect: cursor inside a criticHighlight mark → find the adjacent comment
-  if (highlightType && commentType) {
-    const hlRange = getMarkRange($from, highlightType);
-    if (hlRange) {
-      const $afterHl = editor.state.doc.resolve(hlRange.to);
-      const commentRange = getMarkRange($afterHl, commentType);
-      if (commentRange) {
-        return editor.state.doc.textBetween(commentRange.from, commentRange.to);
-      }
-    }
-  }
-
-  return null;
 }
 
 export function findOrphanedThreads(

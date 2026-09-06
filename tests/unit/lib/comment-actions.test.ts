@@ -18,7 +18,6 @@ import {
 } from "~/lib/critic-marks";
 import {
   scanDocumentComments,
-  findCommentTextAtCursor,
 } from "~/lib/comment-threads";
 
 /* ---- Editor factory ---- */
@@ -94,48 +93,3 @@ describe("scanDocumentComments", () => {
   });
 });
 
-describe("findCommentTextAtCursor", () => {
-  let editor: Editor;
-  afterEach(() => editor?.destroy());
-
-  it("returns comment text when cursor is in a standalone comment", () => {
-    editor = createEditor(`<p>text ${cm("my comment")} more</p>`);
-    // Place cursor inside "my comment" (after "text " which is 5 chars + 1 para = pos 6, so mid-comment ≈ 8)
-    editor.commands.setTextSelection(8);
-    expect(findCommentTextAtCursor(editor)).toBe("my comment");
-  });
-
-  it("returns null when cursor is in plain text", () => {
-    editor = createEditor(`<p>plain text ${cm("comment")}</p>`);
-    editor.commands.setTextSelection(3);
-    expect(findCommentTextAtCursor(editor)).toBeNull();
-  });
-
-  it("returns comment text when cursor is in the comment section of a paired comment", () => {
-    editor = createEditor(`<p>text ${hl("goodgood")}${cm("Use stronger word?")} more</p>`);
-    // Comment "Use stronger word?" starts at pos 14 (1 + 5 + 8)
-    editor.commands.setTextSelection(16);
-    expect(findCommentTextAtCursor(editor)).toBe("Use stronger word?");
-  });
-
-  it("returns comment text when cursor is in the highlight section of a paired comment", () => {
-    editor = createEditor(`<p>text ${hl("goodgood")}${cm("Use stronger word?")} more</p>`);
-    // Highlight "goodgood" starts at pos 6 (1 + 5), so mid-highlight ≈ 9
-    editor.commands.setTextSelection(9);
-    expect(findCommentTextAtCursor(editor)).toBe("Use stronger word?");
-  });
-
-  it("returns null when cursor is in a highlight with no adjacent comment", () => {
-    // A highlight without a paired comment (edge case)
-    editor = createEditor(`<p>text ${hl("highlighted")} more</p>`);
-    editor.commands.setTextSelection(9);
-    expect(findCommentTextAtCursor(editor)).toBeNull();
-  });
-
-  it("handles cursor at the boundary between highlight and comment", () => {
-    editor = createEditor(`<p>${hl("aaa")}${cm("bbb")}</p>`);
-    // Boundary is at pos 4 (1 + 3), right between highlight end and comment start
-    editor.commands.setTextSelection(4);
-    expect(findCommentTextAtCursor(editor)).toBe("bbb");
-  });
-});

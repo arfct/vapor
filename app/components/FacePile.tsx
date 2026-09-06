@@ -64,7 +64,7 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
           <button
             aria-label={label}
             title={label}
-            className="toolbar-item hidden h-[48px] cursor-pointer items-center rounded-full px-3 transition-[background-color,opacity] data-[popup-open]:bg-ink md:flex [@media(hover:hover)]:hover:bg-border"
+            className="hidden h-[48px] cursor-pointer items-center rounded-full px-3 transition-colors data-[popup-open]:bg-ink md:flex [@media(hover:hover)]:hover:bg-border"
           >
             <span className="flex items-center">
               {overflow > 0 && (

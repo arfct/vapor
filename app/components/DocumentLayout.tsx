@@ -55,8 +55,6 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     commentColors,
     openCommentInput,
     commentActive,
-    handleResolveAtCursor,
-    handleDeleteAtCursor,
   } = useDocument();
   const navigate = useNavigate();
   // A document the visitor just created gets focus so they can type at once.
@@ -203,6 +201,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           scrolled ? "border-border" : "border-transparent"
         }`}
       >
+        <FacePile alsoOnline={demoPresence} />
         <FormatToolbar onAttachFiles={isHome ? undefined : attach} />
         {/* The tour has nothing to share; Create takes Share's place there
             and the menu's New document row steps aside for it. */}
@@ -213,7 +212,6 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
         ) : (
           <ShareButton onInviteAgent={inviteAgent} />
         )}
-        <FacePile alsoOnline={demoPresence} />
         <HeaderMenu
           comments={wide ? undefined : { open: commentsOpen, onToggle: toggleComments }}
           onNewDocument={isHome ? undefined : () => setNewOpen(true)}
@@ -268,8 +266,6 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
               activeCommentRange={activeCommentRange}
               commentColors={commentColors}
               onNewComment={openCommentInput}
-              onResolveAtCursor={handleResolveAtCursor}
-              onDeleteAtCursor={handleDeleteAtCursor}
             />
             {showPreview && <Preview />}
           </div>

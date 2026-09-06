@@ -33,6 +33,7 @@
 	],
 	"vars": {
 		"GOOGLE_CLIENT_ID": "12054056676-thqs6nurgk15kjl9mtdju83r45nhigdd.apps.googleusercontent.com",
+		"APPLE_CLIENT_ID": "fyi.vapor",
 		"PUBLIC_ORIGIN": "https://vapor.fyi",
 		"REDIRECT_HOSTS": "vpr.fyi,vaporware.fyi",
 		"OPERATOR_NAME": "Artifact",

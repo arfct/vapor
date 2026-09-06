@@ -1770,6 +1770,62 @@ describe("DocumentAgent", () => {
       cleanup(client);
     });
 
+    it("records a mention typed into a brand-new paragraph, one character at a time", async () => {
+      const { agent, id } = await setup();
+      const client = connectYjsClient(agent);
+      const frag = client.doc.getXmlFragment("default");
+
+      // Enter at the end of the document: an empty paragraph element first,
+      // then the first keystroke creates its text node, then typing edits it.
+      const para = new Y.XmlElement("paragraph");
+      frag.insert(frag.length, [para]);
+      const ytext = new Y.XmlText();
+      para.insert(0, [ytext]);
+      for (const ch of "@scribe how many items?") {
+        ytext.insert(ytext.length, ch);
+      }
+
+      const result = await agent.agentAwaitEvents(id, {});
+      const events = "events" in result ? result.events : [];
+      const mentions = events.filter((e) => e.type === "mention");
+      expect(mentions).toHaveLength(1);
+      expect(mentions[0].payload).toMatchObject({ agent: "scribe", text: expect.stringContaining("@scribe") });
+
+      cleanup(client);
+    });
+
+    it("records a mention when a fresh paragraph and its text arrive in one batched update", async () => {
+      const { agent, id } = await setup();
+      const client = connectYjsClient(agent);
+      const frag = client.doc.getXmlFragment("default");
+
+      // What the server sees when a burst of keystrokes into a new paragraph
+      // is batched by the client: the paragraph, its text node, and the text
+      // all in one transaction. No text-node event ever fires for it.
+      client.doc.transact(() => {
+        const para = new Y.XmlElement("paragraph");
+        frag.insert(frag.length, [para]);
+        const ytext = new Y.XmlText();
+        para.insert(0, [ytext]);
+        ytext.insert(0, "@scribe how many items?");
+      });
+
+      const result = await agent.agentAwaitEvents(id, {});
+      const events = "events" in result ? result.events : [];
+      const mentions = events.filter((e) => e.type === "mention");
+      expect(mentions).toHaveLength(1);
+      expect(mentions[0].payload).toMatchObject({ agent: "scribe", text: expect.stringContaining("@scribe") });
+
+      // Typing on in that paragraph must not re-fire it.
+      const cursor = "cursor" in result ? result.cursor : 0;
+      const ytext = (frag.get(frag.length - 1) as Y.XmlElement).get(0) as Y.XmlText;
+      ytext.insert(ytext.length, " please");
+      const second = await agent.agentAwaitEvents(id, { cursor, timeoutMs: 20 });
+      expect(("events" in second ? second.events : []).filter((e) => e.type === "mention")).toHaveLength(0);
+
+      cleanup(client);
+    });
+
     it("re-fires a mention after it is deleted and retyped", async () => {
       const { agent, id } = await setup();
       const client = connectYjsClient(agent);

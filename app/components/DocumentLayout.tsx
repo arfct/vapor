@@ -11,6 +11,7 @@ import Preview from "~/components/Preview";
 import ShareButton from "~/components/ShareButton";
 import NewDocumentDialog from "~/components/NewDocumentDialog";
 import HistoryDialog from "~/components/HistoryDialog";
+import { useAttachments } from "~/lib/useAttachments";
 import Icon from "~/components/Icon";
 import AgentsPanel from "~/components/AgentsPanel";
 import FormatToolbar from "~/components/FormatToolbar";
@@ -118,6 +119,25 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   const inviteAgent = () => setAgentsOpen(true);
   const [newOpen, setNewOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const { attach } = useAttachments({
+    docId: surface.kind === "doc" ? surface.id : "",
+    enabled: surface.kind === "doc",
+    editor: editorInstance,
+    mode: yjs.mode,
+  });
+  // Pasted files go to the document as attachments; text keeps the editor's own paste handling.
+  useEffect(() => {
+    if (!editorInstance) return;
+    const dom = editorInstance.view.dom;
+    const onPaste = (e: ClipboardEvent) => {
+      const files = Array.from(e.clipboardData?.files ?? []);
+      if (files.length === 0) return;
+      e.preventDefault();
+      attach(files);
+    };
+    dom.addEventListener("paste", onPaste);
+    return () => dom.removeEventListener("paste", onPaste);
+  }, [editorInstance, attach]);
   // `vapor:` links in the text are actions: the Agents panel (which on the
   // tour shows how to connect without a roster) and the New document dialog.
   const handleAppLink = useCallback((url: string) => {
@@ -125,7 +145,9 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     if (url === "vapor://new") setNewOpen(true);
   }, []);
 
-  // A new document starts empty; the tour stays on the homepage.
+  // A new document starts empty; the tour stays on the homepage. (A document
+  // made from another's markdown keeps that document's attachment URLs,
+  // which stop working when it expires — accepted for v1.)
   const createBlankDocument = useCallback(async () => {
     navigate(`/${await createDocument("", [])}`, { state: { fresh: true } });
   }, [navigate]);
@@ -138,14 +160,22 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     [navigate],
   );
 
+  // On the tour a dropped .md becomes a new document; on a document, dropped
+  // files become attachments where they landed.
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
-      if (!isHome) return;
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length === 0) return;
       e.preventDefault();
-      const file = e.dataTransfer.files[0];
-      if (file && file.name.endsWith(".md")) uploadFile(file);
+      if (isHome) {
+        const file = files[0];
+        if (file && file.name.endsWith(".md")) uploadFile(file);
+        return;
+      }
+      const hit = editorInstance?.view.posAtCoords({ left: e.clientX, top: e.clientY });
+      attach(files, hit?.pos);
     },
-    [isHome, uploadFile],
+    [isHome, uploadFile, editorInstance, attach],
   );
 
   // The header's bottom stroke appears only once the document has scrolled
@@ -158,7 +188,12 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   }, []);
 
   return (
-    <div onDrop={handleDrop} onDragOver={isHome ? (e) => e.preventDefault() : undefined}>
+    <div
+      onDrop={handleDrop}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+      }}
+    >
       {/* One header at every width: Format, Share (Create on the tour),
           who's here (desktop), and the menu, right-aligned. Sticky, not
           fixed: the scroll engine holds it steady while mobile Safari's
@@ -168,7 +203,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
           scrolled ? "border-border" : "border-transparent"
         }`}
       >
-        <FormatToolbar />
+        <FormatToolbar onAttachFiles={isHome ? undefined : attach} />
         {/* The tour has nothing to share; Create takes Share's place there
             and the menu's New document row steps aside for it. */}
         {isHome ? (

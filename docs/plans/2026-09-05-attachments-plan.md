@@ -4,6 +4,8 @@
 
 **Goal:** A signed-in person drops, pastes, or picks a file and it lands in the document as an inline attachment: images render as previews, everything else as a file chip. An authenticated agent can do the same through a tool. Files live in R2, are addressed by document-scoped URLs, and disappear with the document at 99 hours. Markdown stays complete: every attachment has a GFM form, so `/:id.md`, agents, and upload/download round-trip without loss.
 
+> **Status (2026-09-06):** implemented on `feat/attachments` (tasks 2–9). Task 1 remains a user action: create the `vapor-attachments` bucket and its 5-day lifecycle rule; the `ATTACHMENTS` binding is already in `wrangler.jsonc`, so deploying before the bucket exists will fail. Deviation: upload progress is a status notice rather than a pill decoration at the drop position.
+
 **Relationship to other plans:** independent of version history (#35). Extends the schema in `app/shared/rich-markdown.ts`, which currently disables markdown-it's `image` rule because images were not representable. The formatting toolbar plan reserved an "Attach file" slot in the Insert menu. Reuses the identity stack from the [identity design](2026-08-30-identity-design.md): the `vp_session` cookie for humans, the OAuth door for agents.
 
 ## Decisions

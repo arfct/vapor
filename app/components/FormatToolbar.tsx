@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDocument } from "~/lib/DocumentContext";
 import { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from "~/components/ui/menu";
 import { Button } from "~/components/ui/button";
@@ -6,6 +6,7 @@ import { Input } from "~/components/ui/input";
 import Icon from "~/components/Icon";
 import { cn } from "~/lib/cn";
 import { showSuggestNotice } from "~/lib/suggest-notice";
+import { ACCEPTED_FILE_TYPES } from "~/shared/attachment-policy";
 
 function useEditorTick() {
   const { editorInstance: editor } = useDocument();
@@ -31,9 +32,10 @@ const triggerClass = "header-button";
  * The formatting menu in the document header — inline marks, block styles,
  * lists, and inserts in one menu so the header fits a phone.
  */
-export default function FormatToolbar() {
+export default function FormatToolbar({ onAttachFiles }: { onAttachFiles?: (files: File[]) => void } = {}) {
   const editor = useEditorTick();
   const { mode } = useDocument();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkTitle, setLinkTitle] = useState("");
@@ -153,8 +155,28 @@ export default function FormatToolbar() {
             <Icon name="table" />
             Table
           </MenuItem>
+          {onAttachFiles && (
+            <MenuItem className="gap-2" onClick={() => fileInputRef.current?.click()}>
+              <Icon name="attach_file" />
+              Attach file…
+            </MenuItem>
+          )}
         </MenuContent>
       </Menu>
+      {onAttachFiles && (
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept={ACCEPTED_FILE_TYPES}
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            e.target.value = "";
+            if (files.length) onAttachFiles(files);
+          }}
+        />
+      )}
 
       {/* Contextual: only while the selection is inside a table. */}
       {editor.isActive("table") && (

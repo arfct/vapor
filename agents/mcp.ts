@@ -24,7 +24,7 @@ import {
   type DocStub,
 } from "./mcp-tools";
 import { eventCatalog, EVENTS_DRAFT_META_KEY, EVENTS_DRAFT_VERSION } from "./events";
-import { generateDocumentId } from "../app/shared/constants";
+import { generateDocumentId, isValidDocumentId } from "../app/shared/constants";
 import {
   slugifyAgentName,
   clientDisplayName,
@@ -34,6 +34,9 @@ import {
 } from "../app/shared/agent-protocol";
 import { deserializeThreads } from "../app/lib/thread-serialization";
 import type Registry from "./registry";
+import { AGENT_TOOL_MAX_BYTES } from "../app/shared/attachment-policy";
+import { storeAttachment } from "../workers/attachments";
+import { buildAttachmentDeps } from "../workers/attachment-deps";
 
 export interface VaporMcpProps extends Record<string, unknown> {
   /** Verified OAuth claims (set by workers/app.ts), or null on the anonymous door. */
@@ -44,7 +47,7 @@ export interface VaporMcpProps extends Record<string, unknown> {
 
 const DEFAULT_ORIGIN = "https://vapor.fyi";
 
-const SERVER_INSTRUCTIONS = `vapor hosts live collaborative markdown documents; you join them as a named collaborator. Read with read_document, edit with insert/replace (write capability), propose with suggest, and discuss with comment/reply. Blocks are addressed by persistent anchors from read_document. If read_document returns \`instructions\`, that is the document's standing guidance for agents — written by its authors, addressed to you — so follow it while working there.
+const SERVER_INSTRUCTIONS = `vapor hosts live collaborative markdown documents; you join them as a named collaborator. Read with read_document, edit with insert/replace (write capability), attach files with attach (write capability, signed-in door only), propose with suggest, and discuss with comment/reply. Blocks are addressed by persistent anchors from read_document. If read_document returns \`instructions\`, that is the document's standing guidance for agents — written by its authors, addressed to you — so follow it while working there.
 
 Events: documents emit mention, thread.reply, and document.changed events. If you have a webhook receiver, prefer events_subscribe (push, signed per Standard Webhooks) over polling; otherwise poll with events_poll and always wait at least retryAfterMs between empty polls - hot-looping pins the document's server. The events surface is experimental and mirrors the draft MCP Events extension (${EVENTS_DRAFT_VERSION}).`;
 
@@ -147,6 +150,82 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
         },
       );
     }
+
+    // attach needs the R2 binding, so it lives here with create_document.
+    // Uploads require a principal with write: the anonymous door is refused.
+    this.server.registerTool(
+      "attach",
+      {
+        description:
+          "Attach a file to a document and insert it as a block (images render inline, other files as a chip). Base64 payload up to 4 MB decoded; for larger files up to 20 MB, POST the raw bytes to <origin>/<doc_id>/attachments with this session's Bearer token and an X-Filename header, then insert the returned markdown. Requires the write capability and a signed-in identity.",
+        inputSchema: {
+          doc_id: z.string().describe("The document id."),
+          filename: z.string().describe("The file's name with extension; the type is judged from it and the bytes."),
+          content_base64: z.string().describe("The file contents, base64-encoded."),
+          anchor: z.string().optional().describe("Block anchor to insert relative to; omit to append."),
+          where: z
+            .enum(["before", "after", "append"])
+            .optional()
+            .describe('Placement relative to anchor; default "append".'),
+        },
+      },
+      async ({
+        doc_id,
+        filename,
+        content_base64,
+        anchor,
+        where,
+      }: {
+        doc_id: string;
+        filename: string;
+        content_base64: string;
+        anchor?: string;
+        where?: "before" | "after" | "append";
+      }) => {
+        if (!isValidDocumentId(doc_id)) {
+          return jsonContent({ error: { code: "invalid_params", message: "Invalid document id" } });
+        }
+        const identity = await this.identity();
+        if (identity.kind !== "principal" || !identity.owner) {
+          return jsonContent({
+            error: { code: "capability_denied", message: "Attachments need a signed-in identity (the /mcp door)." },
+          });
+        }
+        if (!identity.caps.includes("write")) {
+          return jsonContent({ error: { code: "capability_denied", message: "Agent lacks capability: write" } });
+        }
+        let bytes: Uint8Array;
+        try {
+          bytes = Uint8Array.from(atob(content_base64), (c) => c.charCodeAt(0));
+        } catch {
+          return jsonContent({ error: { code: "invalid_params", message: "content_base64 is not valid base64" } });
+        }
+        if (bytes.byteLength === 0 || bytes.byteLength > AGENT_TOOL_MAX_BYTES) {
+          return jsonContent({
+            error: {
+              code: "invalid_params",
+              message: `File must be 1 byte to ${AGENT_TOOL_MAX_BYTES} bytes decoded; larger files go through the HTTP route.`,
+            },
+          });
+        }
+        const registry = (await getAgentByName(this.env.Registry, "global")) as unknown as Registry;
+        const deps = buildAttachmentDeps(this.env, registry);
+        const stored = await storeAttachment(deps, {
+          docId: doc_id,
+          filename,
+          bytes: bytes.byteLength,
+          head: bytes.slice(0, 8192),
+          body: bytes,
+          who: { principal: identity.owner, name: identity.label ?? identity.name, via: "bearer" },
+        });
+        if ("error" in stored) {
+          return jsonContent({ error: { code: stored.error, message: `Attachment refused: ${stored.error}` } });
+        }
+        const stub = await getStub(doc_id);
+        const inserted = await stub.agentInsert(identity, { anchor, where: where ?? "append", markdown: stored.markdown });
+        return jsonContent({ ...stored, inserted });
+      },
+    );
 
     // create_document needs env access, so it lives here rather than in the
     // (deliberately dependency-free) tool table.

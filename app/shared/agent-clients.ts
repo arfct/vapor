@@ -5,7 +5,7 @@
  * comment can carry the client's mark.
  */
 
-export type AgentClientId = "claude" | "chatgpt" | "codex" | "cursor" | "gemini" | "vscode" | "other";
+export type AgentClientId = "claude" | "chatgpt" | "cursor" | "gemini" | "vscode" | "other";
 
 export interface AgentClient {
   id: AgentClientId;
@@ -16,11 +16,11 @@ export interface AgentClient {
 
 export const AGENT_CLIENTS: AgentClient[] = [
   { id: "claude", label: "Claude", matches: ["claude"] },
-  { id: "chatgpt", label: "ChatGPT", matches: ["chatgpt"] },
-  { id: "codex", label: "Codex", matches: ["codex"] },
-  { id: "cursor", label: "Cursor", matches: ["cursor"] },
+  // ChatGPT and Codex are one OpenAI account, so one tab and one mark.
+  { id: "chatgpt", label: "ChatGPT", matches: ["chatgpt", "codex", "openai"] },
   { id: "gemini", label: "Gemini", matches: ["gemini"] },
-  { id: "vscode", label: "VS Code", matches: ["vscode", "visual-studio-code", "copilot"] },
+  { id: "cursor", label: "Cursor", matches: ["cursor"] },
+  { id: "vscode", label: "VSC", matches: ["vscode", "visual-studio-code", "copilot"] },
   { id: "other", label: "Other", matches: [] },
 ];
 
@@ -31,7 +31,7 @@ export function agentClient(id: string): AgentClient {
 /**
  * Which client a connecting MCP client is, from the name it declares
  * (`clientInfo.name`, e.g. "claude-code", "Cursor", "codex-cli"). Unknown or
- * missing names are "other". OpenAI's generic name maps to ChatGPT.
+ * missing names are "other".
  */
 export function agentClientFor(clientName: string | null | undefined): AgentClientId {
   const slug = (clientName ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -39,6 +39,5 @@ export function agentClientFor(clientName: string | null | undefined): AgentClie
   for (const client of AGENT_CLIENTS) {
     if (client.matches.some((m) => slug.includes(m))) return client.id;
   }
-  if (slug.includes("openai")) return "chatgpt";
   return "other";
 }

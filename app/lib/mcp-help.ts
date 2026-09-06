@@ -151,20 +151,19 @@ export function mcpHelpHtml(origin: string): string {
   URL needs no authentication. Paid plans only.
 </p>
 <pre>${mcpUrl}</pre>
-
-<h3>Codex CLI</h3>
+<p>Codex CLI, on the same account:</p>
 <pre>codex mcp add vapor --url ${mcpUrl}
 codex mcp login vapor</pre>
-
-<h3>Cursor</h3>
-<p><a href="${cursorLink}">Add to Cursor</a>, or put this in <code>.cursor/mcp.json</code>, then sign in from <strong>Settings → MCP</strong>:</p>
-<pre>${cursorJson}</pre>
 
 <h3>Gemini CLI</h3>
 <p>The extension bundles the connection and the skill below in one install:</p>
 <pre>gemini extensions install https://github.com/arfct/vapor</pre>
 <p class="muted">Or add the server alone:</p>
 <pre>gemini mcp add --transport http vapor ${mcpUrl}</pre>
+
+<h3>Cursor</h3>
+<p><a href="${cursorLink}">Add to Cursor</a>, or put this in <code>.cursor/mcp.json</code>, then sign in from <strong>Settings → MCP</strong>:</p>
+<pre>${cursorJson}</pre>
 
 <h3>VS Code and GitHub Copilot</h3>
 <p><a href="${vscodeLink}">Add to VS Code</a>, or put this in <code>.vscode/mcp.json</code>:</p>

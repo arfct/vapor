@@ -65,7 +65,7 @@ Same-origin, cookie session, in `workers/wake-routes.ts` as a pure handler wired
 
 ### UI
 
-Inside the Invite an agent dialog, in the tab the target belongs to: **Wake a routine on mentions** under Claude, **Wake a webhook on mentions** under Other. Each client tab carries its mark (`app/assets/agents`, listed in `app/shared/agent-clients.ts`, which also maps an MCP client's declared name to a mark so agent types can be shown elsewhere).
+Inside the Invite an agent dialog, in the tab the target belongs to: **Wake a routine on mentions** under Claude, **Wake a webhook on mentions** under Other. Each client tab (Claude, ChatGPT with Codex, Cursor, Gemini, VS Code, Other) carries its mark (`app/assets/agents`, listed in `app/shared/agent-clients.ts`, which also maps an MCP client's declared name to a mark so agent types can be shown elsewhere).
 
 - Signed out: one line, "Sign in, and a mention of your agent in any document can wake …".
 - Signed in, no target: URL, secret, Save. Under Claude, three short steps above the fields with links: create a routine (claude.ai/code/routines) with the canonical prompt (copy button) and the Vapor connector, add an API trigger and generate a token, paste both here.

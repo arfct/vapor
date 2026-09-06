@@ -128,10 +128,6 @@ export default function AgentsPanel({
             </p>
             <SnippetRow label="MCP server URL — sign in" text={mcpUrl} />
             <SnippetRow label="MCP server URL — anonymous" text={anonUrl} />
-          </div>
-        )}
-        {client === "codex" && (
-          <div className="space-y-4" role="tabpanel">
             <SnippetRow label="Codex CLI" text={codexCommand} />
             <p className="text-sm text-muted">
               Then <code className="font-mono">codex mcp login vapor</code> to sign in.

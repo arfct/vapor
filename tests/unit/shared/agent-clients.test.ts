@@ -23,7 +23,7 @@ describe("agent clients", () => {
     expect(agentClientFor("Claude Desktop")).toBe("claude");
     expect(agentClientFor("ChatGPT")).toBe("chatgpt");
     expect(agentClientFor("openai-mcp")).toBe("chatgpt");
-    expect(agentClientFor("codex-cli")).toBe("codex");
+    expect(agentClientFor("codex-cli")).toBe("chatgpt");
     expect(agentClientFor("Cursor")).toBe("cursor");
     expect(agentClientFor("gemini-cli")).toBe("gemini");
     expect(agentClientFor("Visual Studio Code")).toBe("vscode");

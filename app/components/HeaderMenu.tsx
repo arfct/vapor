@@ -1,38 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Popover } from "@base-ui/react/popover";
 import { useSession, notifyAuthChanged } from "~/lib/useSession";
-import { SIGN_IN_EVENT } from "~/lib/useAttachments";
 import { useTheme, type Theme } from "~/lib/useTheme";
 import { useDocument } from "~/lib/DocumentContext";
 import { hasSuggestionMarkup, processAllRanges } from "~/lib/suggestion-actions";
 import Icon from "~/components/Icon";
-import { signInWithApple } from "~/lib/apple-signin";
 
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize: (opts: { client_id: string; callback: (r: { credential: string }) => void }) => void;
-          renderButton: (el: HTMLElement, opts: Record<string, unknown>) => void;
-        };
-      };
-    };
-  }
-}
-
-// In-app webviews block Google Identity Services (disallowed_useragent): the
-// script never loads or renderButton leaves the host empty. Past this delay
-// with nothing rendered, show a note instead of an empty slot.
-const GSI_FALLBACK_DELAY_MS = 2500;
-
-// The Apple mark, from Simple Icons (CC0), for the Sign in with Apple button.
-const APPLE_MARK =
-  "M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701";
-
-// Popover width and side padding; the Google button fills the space between.
+// Popover width.
 const MENU_WIDTH_PX = 252;
-const MENU_PADDING_PX = 16;
 
 const themeOptions: { value: Theme; icon: string; label: string }[] = [
   { value: "light", icon: "light_mode", label: "Light" },
@@ -82,12 +57,15 @@ export default function HeaderMenu({
   comments,
   onNewDocument,
   onHistory,
+  onSignIn,
 }: {
   /** Phones only: the comment sheet's open state and toggle. */
   comments?: { open: boolean; onToggle: () => void };
   onNewDocument?: () => void;
   /** Documents only: open the version history. */
   onHistory?: () => void;
+  /** Opens the sign-in dialog; the row shows only while signed out. */
+  onSignIn?: () => void;
 } = {}) {
   const session = useSession();
   const { theme, setTheme } = useTheme();
@@ -139,112 +117,13 @@ export default function HeaderMenu({
     setOpen(false);
     action();
   };
-  const [signInUnavailable, setSignInUnavailable] = useState(false);
-  // Sign in with Apple is offered when the instance has APPLE_CLIENT_ID; the
-  // button is ours (Apple's JS only runs on click), so no fallback timer.
-  const [appleClientId, setAppleClientId] = useState<string | null>(null);
-  const [appleBusy, setAppleBusy] = useState(false);
-  // State, not a ref: the popover portal mounts a render after `open`
-  // flips, so the effect must re-run once the host element exists.
-  const [buttonHost, setButtonHost] = useState<HTMLDivElement | null>(null);
-
-  // Something elsewhere (a dropped file while signed out) asks for sign-in.
-  useEffect(() => {
-    const open = () => setOpen(true);
-    window.addEventListener(SIGN_IN_EVENT, open);
-    return () => window.removeEventListener(SIGN_IN_EVENT, open);
-  }, []);
-
   function handleOpenChange(next: boolean) {
-    if (next) setSignInUnavailable(false);
     setOpen(next);
   }
-
-  // Read which providers are configured, then load Google Identity Services
-  // and render its button — only while the menu is open with no session.
-  useEffect(() => {
-    if (!open || session?.signedIn || !buttonHost) return;
-    let cancelled = false;
-    const host = buttonHost;
-
-    const markUnavailable = () => {
-      if (!cancelled) setSignInUnavailable(true);
-    };
-    const fallbackTimer = window.setTimeout(() => {
-      if (host.childElementCount === 0) markUnavailable();
-    }, GSI_FALLBACK_DELAY_MS);
-
-    async function mount() {
-      let config: { googleClientId?: string; appleClientId?: string };
-      try {
-        config = (await fetch("/auth/config").then((r) => r.json())) as typeof config;
-      } catch {
-        markUnavailable();
-        return;
-      }
-      if (cancelled) return;
-      setAppleClientId(config.appleClientId || null);
-      if (!config.googleClientId) {
-        // Not configured is a server-side gap, not a webview limitation.
-        clearTimeout(fallbackTimer);
-        return;
-      }
-
-      const render = () => {
-        if (cancelled || !window.google) return;
-        window.google.accounts.id.initialize({
-          client_id: config.googleClientId as string,
-          callback: async (r) => {
-            const res = await fetch("/auth/google", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ credential: r.credential }),
-            });
-            if (res.ok) notifyAuthChanged();
-          },
-        });
-        const dark =
-          theme === "dark" ||
-          (theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-        window.google.accounts.id.renderButton(host, {
-          theme: dark ? "filled_black" : "outline",
-          width: MENU_WIDTH_PX - 2 * MENU_PADDING_PX,
-        });
-      };
-
-      if (window.google) {
-        render();
-      } else {
-        const s = document.createElement("script");
-        s.src = "https://accounts.google.com/gsi/client";
-        s.async = true;
-        s.onload = render;
-        s.onerror = markUnavailable;
-        document.head.appendChild(s);
-      }
-    }
-    mount();
-    return () => {
-      cancelled = true;
-      clearTimeout(fallbackTimer);
-    };
-  }, [open, session?.signedIn, theme, buttonHost]);
 
   async function signOut() {
     await fetch("/auth/logout", { method: "POST" });
     notifyAuthChanged();
-  }
-
-  async function appleSignIn() {
-    if (!appleClientId || appleBusy) return;
-    setAppleBusy(true);
-    try {
-      if (await signInWithApple(appleClientId)) notifyAuthChanged();
-    } catch {
-      setSignInUnavailable(true);
-    } finally {
-      setAppleBusy(false);
-    }
   }
 
   return (
@@ -359,28 +238,11 @@ export default function HeaderMenu({
                 </div>
                 <Row icon="logout" label="Sign out" onClick={run(signOut)} />
               </div>
-            ) : signInUnavailable ? (
-              <p className="border-t border-border px-4 py-3 text-sm text-muted">
-                Sign-in needs a full browser — open this page in Safari or Chrome.
-              </p>
-            ) : (
-              <div className="flex min-h-[64px] flex-col justify-center gap-2 border-t border-border px-4 py-3">
-                <div ref={setButtonHost} />
-                {appleClientId && (
-                  <button
-                    type="button"
-                    onClick={appleSignIn}
-                    disabled={appleBusy}
-                    className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded bg-ink text-sm font-medium text-paper transition-opacity hover:opacity-90 disabled:opacity-50"
-                  >
-                    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden="true">
-                      <path d={APPLE_MARK} />
-                    </svg>
-                    Sign in with Apple
-                  </button>
-                )}
+            ) : onSignIn ? (
+              <div className="border-t border-border py-1">
+                <Row icon="login" label="Sign in" onClick={run(onSignIn)} />
               </div>
-            )}
+            ) : null}
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>

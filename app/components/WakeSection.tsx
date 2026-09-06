@@ -288,7 +288,7 @@ export default function WakeSection({
 
   return (
     <section className="border-t border-border pt-4">
-      <h3 className="mb-2 text-sm uppercase tracking-wider text-muted">{title}</h3>
+      <h2 className="mb-2 text-lg font-medium">{title}</h2>
       {body}
       {signedIn && docId && target && !mine && !editing && (
         <div className="mt-3 flex items-center justify-between gap-2">

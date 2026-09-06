@@ -8,11 +8,27 @@ import WakeSection from "~/components/WakeSection";
 /** Whether the agent connects as the signed-in person or as an anonymous animal. */
 type Mode = "you" | "anonymous";
 
-/** Clients that come as an app and as a command-line tool: the pulldown under the tabs picks one. */
-type Variant = "app" | "cli";
-const VARIANTS: Partial<Record<AgentClientId, { app: string; cli: string }>> = {
-  claude: { app: "Claude app", cli: "Claude Code" },
-  chatgpt: { app: "ChatGPT app", cli: "Codex CLI" },
+/** Clients that come in several forms: the pulldown under the tabs picks one. */
+interface VariantSet {
+  options: { id: string; label: string }[];
+  initial: string;
+}
+const VARIANTS: Partial<Record<AgentClientId, VariantSet>> = {
+  claude: {
+    options: [
+      { id: "claude", label: "Claude" },
+      { id: "code-app", label: "Claude Code app" },
+      { id: "code-cli", label: "Claude Code CLI" },
+    ],
+    initial: "code-app",
+  },
+  chatgpt: {
+    options: [
+      { id: "app", label: "ChatGPT app" },
+      { id: "cli", label: "Codex CLI" },
+    ],
+    initial: "app",
+  },
 };
 
 const pulldownClass = "m-0 cursor-pointer bg-transparent p-0 text-sm text-muted hover:text-ink focus:outline-none";
@@ -60,13 +76,11 @@ export default function AgentsPanel({
   const [roster, setRoster] = useState<AgentRosterEntry[]>([]);
   const [client, setClient] = useState<AgentClientId>("claude");
   const [mode, setMode] = useState<Mode>("you");
-  const [variant, setVariant] = useState<Variant>("app");
+  const [variant, setVariant] = useState<string>(VARIANTS.claude!.initial);
   const variants = VARIANTS[client];
-  const showApp = !variants || variant === "app";
-  const showCli = !variants || variant === "cli";
   const pickClient = (id: AgentClientId) => {
     setClient(id);
-    setVariant("app");
+    setVariant(VARIANTS[id]?.initial ?? "");
   };
   const origin = typeof window !== "undefined" ? window.location.origin : "https://vapor.fyi";
 
@@ -92,6 +106,7 @@ export default function AgentsPanel({
   // One line each: the snippet rows don't keep newlines, and compact JSON still pastes.
   const mcpServersJson = JSON.stringify({ mcpServers: { vapor: { url } } });
   const vscodeJson = JSON.stringify({ servers: { vapor: { type: "http", url } } });
+  const claudeCodeJson = JSON.stringify({ mcpServers: { vapor: { type: "http", url } } });
   const cursorLink = `cursor://anysphere.cursor-deeplink/mcp/install?name=vapor&config=${btoa(JSON.stringify({ url }))}`;
   const vscodeLink = `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name: "vapor", type: "http", url }))}`;
   const geminiExtension = "gemini extensions install https://github.com/arfct/vapor";
@@ -135,17 +150,20 @@ export default function AgentsPanel({
           <select
             aria-label="App or command line"
             value={variant}
-            onChange={(e) => setVariant(e.target.value as Variant)}
-            className={pulldownClass}
+            onChange={(e) => setVariant(e.target.value)}
+            className="m-0 cursor-pointer bg-transparent p-0 text-lg font-medium text-ink focus:outline-none"
           >
-            <option value="app">{variants.app}</option>
-            <option value="cli">{variants.cli}</option>
+            {variants.options.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
           </select>
         )}
 
         {client === "claude" && (
           <div className="space-y-4" role="tabpanel">
-            {showApp && (
+            {variant === "claude" && (
               <>
                 <p className="text-sm text-muted">
                   <Nav href={claudeConnectorLink(url)}>Settings → Connectors → Add custom connector</Nav>.
@@ -153,14 +171,23 @@ export default function AgentsPanel({
                 <SnippetRow label="MCP server URL" text={url} showLabel={false} />
               </>
             )}
-            {showCli && <SnippetRow label="Claude Code" text={claudeCodeCommand} />}
+            {variant === "code-app" && (
+              <>
+                <p className="text-sm text-muted">
+                  Add this to <code className="font-mono">.mcp.json</code> at the root of the project, then start a
+                  session. The app picks it up and asks once before using it.
+                </p>
+                <SnippetRow label=".mcp.json" text={claudeCodeJson} showLabel={false} />
+              </>
+            )}
+            {variant === "code-cli" && <SnippetRow label="Claude Code" text={claudeCodeCommand} showLabel={false} />}
             {/* An anonymous agent has no owner, so nothing could be woken for it. */}
             {asYou && <WakeSection kind="claude-routine" docId={docId} roster={roster} onRoster={setRoster} />}
           </div>
         )}
         {client === "chatgpt" && (
           <div className="space-y-4" role="tabpanel">
-            {showApp && (
+            {variant === "app" && (
               <>
                 <p className="text-sm text-muted">
                   <Nav href={CHATGPT_CONNECTORS_URL}>Settings → Connectors → Advanced → Developer mode</Nav>, then{" "}
@@ -170,9 +197,9 @@ export default function AgentsPanel({
                 <SnippetRow label="MCP server URL" text={url} showLabel={false} />
               </>
             )}
-            {showCli && (
+            {variant === "cli" && (
               <>
-                <SnippetRow label="Codex CLI" text={codexCommand} />
+                <SnippetRow label="Codex CLI" text={codexCommand} showLabel={false} />
                 {asYou && (
                   <p className="text-sm text-muted">
                     Then <code className="font-mono">codex mcp login vapor</code> to sign in.

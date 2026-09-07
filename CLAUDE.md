@@ -122,6 +122,10 @@ Track-changes functionality spans multiple files:
 - `app/lib/critic-serializer.ts` — Serializes marks back to CriticMarkup delimiter syntax
 - `app/lib/critic-markup.ts` — TipTap extension that wires up the CriticMarkup marks and delimiter decorations
 
+#### Durable Object wake hygiene
+
+A Durable Object bills for every moment it is awake, and a pending timer keeps it awake, so `DocumentAgent` holds no timer longer than the 1-second persistence debounce. Everything else waits on the DO's single alarm: a `schedule` table of deadlines (`idle:<agent>` presence expiry, `snapshot` for the idle version) that `armAlarm()` serves alongside the document's 99-hour expiry; the alarm handler runs what is due, then either re-arms or expires the document. y-protocols' `Awareness` starts a 3-second `setInterval` on construction — `ensureInitialised()` clears it and `pruneOutdatedAwareness()` does that job on incoming awareness traffic. Do not add `setInterval` or a long `setTimeout` to the agent; book a scheduled task instead. See `docs/plans/2026-08-31-sleeping-tabs-plan.md` and #58.
+
 #### Version history
 
 `DocumentAgent` keeps a `versions` table of markdown snapshots (policy in `app/shared/version-policy.ts`, HTTP handler in `agents/version-routes.ts`, dialog in `app/components/HistoryDialog.tsx`). Restore is an ordinary `"agent"`-origin edit; see `docs/markdown-and-criticmarkup.md` and `docs/plans/2026-09-05-version-history-plan.md`.

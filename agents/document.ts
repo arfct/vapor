@@ -78,6 +78,32 @@ import type Registry from "./registry";
 /** A recorded document event's public shape, as returned by agentAwaitEvents. */
 type DocEventType = "mention" | "thread_reply" | "doc_changed";
 
+/**
+ * Origins of server-side Yjs transactions. A bare "agent" is a system write
+ * (import, restore) that fires no events. An object names the roster agent
+ * behind an edit: observers then emit events for it like any human edit,
+ * and each agent's poll drops what it did itself (`payload.actor`), so one
+ * agent mentioning another wakes the other without either hearing its own
+ * typing echoed back (#40). Human edits arrive with a null origin.
+ */
+type AgentOrigin = "agent" | { kind: "agent"; actor: string };
+
+function agentOrigin(actor: string): AgentOrigin {
+  return { kind: "agent", actor };
+}
+
+function isAgentOrigin(origin: unknown): origin is AgentOrigin {
+  if (origin === "agent") return true;
+  return typeof origin === "object" && origin !== null && (origin as { kind?: unknown }).kind === "agent";
+}
+
+/** The roster name behind an agent-origin transaction; null for human edits and system writes. */
+function agentActor(origin: unknown): string | null {
+  if (typeof origin !== "object" || origin === null) return null;
+  const o = origin as { kind?: unknown; actor?: unknown };
+  return o.kind === "agent" && typeof o.actor === "string" ? o.actor : null;
+}
+
 interface EventRow {
   seq: number;
   type: string;
@@ -247,7 +273,7 @@ class DocumentAgent extends Agent {
   /** Resolvers parked by agentAwaitEvents long-polls with nothing to return yet; flushed by recordEvent. */
   private eventWaiters: (() => void)[] = [];
   /** Timestamp of the last "doc_changed" digest event, to cap it at one per 30s. */
-  private lastDigestAt = 0;
+  private lastDigestAt = new Map<string, number>();
   /** Agent names already notified for a top-level block — see notifyMentions. */
   private notifiedMentions = new WeakMap<Y.AbstractType<unknown>, Set<string>>();
 
@@ -412,15 +438,15 @@ class DocumentAgent extends Agent {
       this.scheduleIdleSnapshot();
       // Agent edits are credited when dispatched (see dispatchMutation);
       // human edits are traced back to their clients' awareness here.
-      if (origin !== "agent") this.noteContributors(update);
+      if (!isAgentOrigin(origin)) this.noteContributors(update);
 
-      // Agent-originated mutations (doc.transact(fn, "agent")) never pass
+      // Agent-originated mutations (doc.transact(fn, agentOrigin(name))) never pass
       // through onMessage's relay — they mutate this DO's Y.Doc directly —
       // so without this, connected browsers never see them until their next
       // reconnect replays full state. Human-origin updates are already
       // relayed by onMessage's broadcastBinary of the raw incoming sync
       // message, so broadcasting them again here would double-send.
-      if (origin === "agent") {
+      if (isAgentOrigin(origin)) {
         const encoder = encoding.createEncoder();
         encoding.writeVarUint(encoder, MSG_SYNC);
         syncProtocol.writeUpdate(encoder, update);
@@ -445,23 +471,23 @@ class DocumentAgent extends Agent {
     for (const row of leftover) {
       try {
         const mutation = JSON.parse(row.payload) as MutationPayload;
-        this.applyMutation(mutation);
+        this.applyMutation(mutation, row.agent_name);
       } catch (err) {
         console.error(`Dropping unrecoverable performance row ${row.id}:`, err);
       }
       this.sql`DELETE FROM performances WHERE id = ${row.id}`;
     }
 
-    // Mention detection + doc_changed digests: only for human-originated
-    // changes to document content. Agent RPCs tag their own transactions
-    // with the "agent" origin (see applyMutation/performTypedInsert/
-    // performTypedSuggest) specifically so this observer can ignore them —
-    // an agent shouldn't get a "mention" notification for text it just
-    // typed itself, nor should its own edits consume the doc_changed
-    // digest window meant for humans.
+    // Mention detection + doc_changed digests for human edits and for agent
+    // edits alike. Agent RPCs tag their transactions with the acting agent
+    // (see applyMutation/performTypedInsert/performTypedSuggest); the events
+    // they produce carry that `actor`, and an agent's poll drops its own, so
+    // it never gets a "mention" for text it typed itself. System writes
+    // (the bare "agent" origin: import, restore) fire nothing.
     const frag = this.doc.getXmlFragment("default");
     frag.observeDeep((events, transaction) => {
       if (transaction.origin === "agent") return;
+      const actor = agentActor(transaction.origin);
 
       // No agents on the roster means nothing consumes events — not
       // mentions, and not doc_changed digests either. Check first, so an
@@ -469,10 +495,13 @@ class DocumentAgent extends Agent {
       const rosterNames = this.getRosterTargetsSync();
       if (rosterNames.length === 0) return;
 
+      // One digest window per actor: an agent's typing burst is one event
+      // to the others, and never eats the window meant for human edits.
       const now = Date.now();
-      if (now - this.lastDigestAt >= 30_000) {
-        this.lastDigestAt = now;
-        this.recordEvent("doc_changed", {});
+      const digestKey = actor ?? "";
+      if (now - (this.lastDigestAt.get(digestKey) ?? 0) >= 30_000) {
+        this.lastDigestAt.set(digestKey, now);
+        this.recordEvent("doc_changed", actor ? { actor } : {});
       }
 
       // Scan each touched block's *full* text, not the individual delta ops:
@@ -501,7 +530,7 @@ class DocumentAgent extends Agent {
       for (const block of blocks) {
         const text = this.blockText(block);
         if (text === null) continue; // block already gone from the fragment
-        this.notifyMentions(block, text, rosterNames);
+        this.notifyMentions(block, text, rosterNames, actor);
       }
     });
 
@@ -513,6 +542,8 @@ class DocumentAgent extends Agent {
     const threadsMap = this.doc.getMap<string>("threads");
     threadsMap.observe((event, transaction) => {
       if (transaction.origin === "agent") return;
+      const actor = agentActor(transaction.origin);
+      const tagged = actor ? { actor } : {};
 
       const rosterNames = this.getRosterTargetsSync();
       if (rosterNames.length === 0) return;
@@ -544,13 +575,13 @@ class DocumentAgent extends Agent {
         // sees it: `@agent` inside a reply is notified from here. The
         // thread's own author is covered by thread_reply below.
         for (const name of findMentions(lastReply.text ?? "", rosterNames)) {
-          if (name === lastReply.author?.name || name === thread.author?.name) continue;
-          this.recordEvent("mention", { agent: name, text: lastReply.text, threadId: thread.id });
+          if (name === actor || name === lastReply.author?.name || name === thread.author?.name) continue;
+          this.recordEvent("mention", { agent: name, text: lastReply.text, threadId: thread.id, ...tagged });
         }
 
         if (!rosterNames.some((target) => target.name === thread.author?.name)) continue;
-        if (lastReply.author?.name === thread.author.name) continue;
-        this.recordEvent("thread_reply", { agent: thread.author.name, threadId: thread.id });
+        if (lastReply.author?.name === thread.author.name || actor === thread.author.name) continue;
+        this.recordEvent("thread_reply", { agent: thread.author.name, threadId: thread.id, ...tagged });
       }
     });
 
@@ -995,8 +1026,15 @@ class DocumentAgent extends Agent {
    * the live Yjs block, so it needs no explicit clearing: entries go away
    * with the blocks (and with the whole document on expiry).
    */
-  private notifyMentions(block: Y.AbstractType<unknown>, text: string, rosterNames: MentionTarget[]): void {
+  private notifyMentions(
+    block: Y.AbstractType<unknown>,
+    text: string,
+    rosterNames: MentionTarget[],
+    actor: string | null,
+  ): void {
     const mentioned = new Set(findMentions(text, rosterNames));
+    // An agent writing its own name is not mentioning itself.
+    if (actor) mentioned.delete(actor);
 
     let notified = this.notifiedMentions.get(block);
     if (!notified) {
@@ -1011,7 +1049,7 @@ class DocumentAgent extends Agent {
     for (const name of mentioned) {
       if (notified.has(name)) continue;
       notified.add(name);
-      this.recordEvent("mention", { agent: name, text });
+      this.recordEvent("mention", { agent: name, text, ...(actor ? { actor } : {}) });
     }
   }
 
@@ -1064,7 +1102,8 @@ class DocumentAgent extends Agent {
      * Reads events past the cursor, keeping only those addressed to this
      * agent. "mention" and "thread_reply" name their target agent in the
      * payload and are nobody else's business; "doc_changed" is a broadcast
-     * digest and goes to everyone.
+     * digest and goes to everyone except the agent whose edit it digests
+     * (`payload.actor`, set when an agent rather than a person made it).
      *
      * `lastSeq` is the highest row *scanned*, not the highest returned, so an
      * agent's cursor still advances past events filtered out for it — it
@@ -1089,8 +1128,12 @@ class DocumentAgent extends Agent {
           continue;
         }
         const type = row.type as DocEventType;
+        const data = payload as { agent?: string; actor?: string };
+        // Never an agent's own doing (its edits, its comments), and
+        // addressed events only to their addressee.
+        if (data.actor === self) continue;
         if (type === "mention" || type === "thread_reply") {
-          if ((payload as { agent?: string }).agent !== self) continue;
+          if (data.agent !== self) continue;
         }
         out.push({ seq: row.seq, type, payload });
       }
@@ -1201,7 +1244,9 @@ class DocumentAgent extends Agent {
       } catch {
         continue;
       }
-      if (type.addressed && (payload as { agent?: string }).agent !== self) continue;
+      const data = payload as { agent?: string; actor?: string };
+      if (data.actor === self) continue; // its own edit or comment
+      if (type.addressed && data.agent !== self) continue;
       const occurrence = buildOccurrence({
         docId: this.name,
         seq: row.seq,
@@ -1384,11 +1429,12 @@ class DocumentAgent extends Agent {
     }
     if (subs.length === 0) return;
 
-    const addressedTo = (payload as { agent?: string } | null)?.agent;
+    const data = (payload ?? {}) as { agent?: string; actor?: string };
     const type = eventTypeByName(occurrence.name);
 
     for (const sub of subs) {
-      if (type?.addressed && addressedTo !== sub.agent_name) continue;
+      if (data.actor === sub.agent_name) continue; // the subscriber's own doing
+      if (type?.addressed && data.agent !== sub.agent_name) continue;
       const delivery = this.deliverWebhook(sub, occurrence);
       // The Agents SDK exposes the DO's state as this.ctx; guard for test
       // doubles that don't implement waitUntil.
@@ -2083,7 +2129,7 @@ class DocumentAgent extends Agent {
 
     doc.transact(() => {
       doc.getMap<string>("threads").set(id, JSON.stringify(thread));
-    }, "agent");
+    }, agentOrigin(name));
 
     return { threadId: id };
   }
@@ -2132,7 +2178,7 @@ class DocumentAgent extends Agent {
 
     doc.transact(() => {
       threadsMap.set(args.threadId, JSON.stringify(thread));
-    }, "agent");
+    }, agentOrigin(name));
 
     return { ok: true };
   }
@@ -2249,7 +2295,7 @@ class DocumentAgent extends Agent {
       return this.enqueuePerformance(agentName, effectivePace, mutation);
     }
     if (mutation.kind === "replace") this.maybeSnapshot("pre_replace", actor);
-    return this.applyMutation(mutation);
+    return this.applyMutation(mutation, agentName);
   }
 
   /** Whether any (human) WebSocket client is currently connected. */
@@ -2338,7 +2384,7 @@ class DocumentAgent extends Agent {
 
     if (item.mutation.kind === "replace") {
       this.maybeSnapshot("pre_replace", this.agentAuthor(item.agentName));
-      this.applyMutation(item.mutation);
+      this.applyMutation(item.mutation, item.agentName);
       this.deletePerformanceRow(item.id);
       return;
     }
@@ -2451,7 +2497,7 @@ class DocumentAgent extends Agent {
           }
           prevElement = el;
         }
-      }, "agent");
+      }, agentOrigin(item.agentName));
     };
 
     for (let b = 0; b < parsed.doc.childCount; b++) {
@@ -2468,7 +2514,7 @@ class DocumentAgent extends Agent {
         insertAt = Math.min(index, frag.length);
       }
 
-      doc.transact(() => frag.insert(insertAt, [element]), "agent");
+      doc.transact(() => frag.insert(insertAt, [element]), agentOrigin(item.agentName));
       if (!rowDeleted) {
         this.deletePerformanceRow(item.id);
         rowDeleted = true;
@@ -2496,7 +2542,7 @@ class DocumentAgent extends Agent {
             }
             doc.transact(
               () => fill.ytext.insert(absPos.index, tick.chunk, run.attrs as Record<string, unknown>),
-              "agent",
+              agentOrigin(item.agentName),
             );
             typedInRun += tick.chunk.length;
             const caretOffset = absPos.index + tick.chunk.length;
@@ -2542,7 +2588,7 @@ class DocumentAgent extends Agent {
     const { ytext, pos } = match;
 
     // Claim the slot now, synchronously — see the doc comment above.
-    doc.transact(() => ytext.format(pos, mutation.find.length, { criticDeletion: {} }), "agent");
+    doc.transact(() => ytext.format(pos, mutation.find.length, { criticDeletion: {} }), agentOrigin(item.agentName));
     let relPos = Y.createRelativePositionFromTypeIndex(ytext, pos + mutation.find.length);
     this.deletePerformanceRow(item.id);
 
@@ -2562,13 +2608,13 @@ class DocumentAgent extends Agent {
         const at = resolve();
         if (at === null) return;
         const rest = mutation.replacement.slice(typed);
-        doc.transact(() => ytext.insert(at, rest, { criticAddition: {} }), "agent");
+        doc.transact(() => ytext.insert(at, rest, { criticAddition: {} }), agentOrigin(item.agentName));
         return;
       }
       await sleep(tick.delayMs);
       const at = resolve();
       if (at === null) return;
-      doc.transact(() => ytext.insert(at, tick.chunk, { criticAddition: {} }), "agent");
+      doc.transact(() => ytext.insert(at, tick.chunk, { criticAddition: {} }), agentOrigin(item.agentName));
       typed += tick.chunk.length;
       const caretOffset = at + tick.chunk.length;
       relPos = Y.createRelativePositionFromTypeIndex(ytext, caretOffset);
@@ -2627,7 +2673,10 @@ class DocumentAgent extends Agent {
    * connected), eviction recovery, and the queue runner's handling of
    * `replace` mutations (which have no typing animation of their own).
    */
-  private applyMutation(m: MutationPayload): { ok: true } | { error: AgentError } {
+  private applyMutation(m: MutationPayload, actor?: string): { ok: true } | { error: AgentError } {
+    // Tagged with the acting agent so observers can credit its edits to it;
+    // a recovered row with no name falls back to the silent system origin.
+    const origin: AgentOrigin = actor ? agentOrigin(actor) : "agent";
     const { doc } = this.ensureInitialised();
 
     switch (m.kind) {
@@ -2656,7 +2705,7 @@ class DocumentAgent extends Agent {
 
         doc.transact(() => {
           insertBlockNodes(doc, index, built.nodes);
-        }, "agent");
+        }, origin);
 
         return { ok: true };
       }
@@ -2700,7 +2749,7 @@ class DocumentAgent extends Agent {
         doc.transact(() => {
           deleteBlocks(doc, fromIndex, toIndex);
           insertBlockNodes(doc, fromIndex, built.nodes);
-        }, "agent");
+        }, origin);
 
         return { ok: true };
       }
@@ -2724,7 +2773,7 @@ class DocumentAgent extends Agent {
         doc.transact(() => {
           match.ytext.format(match.pos, m.find.length, { criticDeletion: {} });
           match.ytext.insert(match.pos + m.find.length, m.replacement, { criticAddition: {} });
-        }, "agent");
+        }, origin);
 
         return { ok: true };
       }

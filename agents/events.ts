@@ -21,21 +21,21 @@ export const EVENT_TYPES = [
     name: "document.changed",
     internalType: "doc_changed",
     description:
-      "Fires when the document's content changes (digested — one event per burst of edits, not per keystroke).",
+      "Fires when the document's content changes (digested — one event per burst of edits, not per keystroke). Your own edits are not reported to you; `actor` names the agent behind an edit another agent made.",
     delivery: ["poll", "webhook"] as const,
     addressed: false,
   },
   {
     name: "mention",
     internalType: "mention",
-    description: "Fires when this agent is @mentioned in the document text.",
+    description: "Fires when this agent is @mentioned in the document text, by a person or by another agent (`actor`).",
     delivery: ["poll", "webhook"] as const,
     addressed: true,
   },
   {
     name: "thread.reply",
     internalType: "thread_reply",
-    description: "Fires when a human replies in a comment thread this agent participated in.",
+    description: "Fires when someone else — a person, or another agent (`actor`) — replies in a comment thread this agent participated in.",
     delivery: ["poll", "webhook"] as const,
     addressed: true,
   },
@@ -68,6 +68,7 @@ export function eventCatalog(): {
       type: "object",
       properties: {
         doc_id: { type: "string" },
+        actor: { type: "string", description: "The agent that caused the event, when it was an agent rather than a person." },
         ...(t.addressed ? { agent: { type: "string" } } : {}),
       },
     },

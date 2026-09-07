@@ -18,6 +18,8 @@ export function meta({ matches }: Route.MetaArgs) {
     { name: "description", content: "Shared markdown documents for people and agents" },
     { property: "og:description", content: "Shared markdown documents for people and agents" },
     { property: "og:image", content: `${origin}/logo-512.png` },
+    { property: "og:image:width", content: "512" },
+    { property: "og:image:height", content: "512" },
   ];
 }
 

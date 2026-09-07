@@ -14,6 +14,13 @@ const DEFAULT_DESCRIPTION = "A shared markdown document for people and agents";
  * A shared link unfurls as the document, not as the app: its title, its
  * first paragraph, and its canonical slugged URL. The tags are rendered on
  * the server from the loader's snapshot, which is what link previewers see.
+ *
+ * iMessage shows a description only for pages that look like a social
+ * post: `og:type=article` plus an ActivityPub alternate link (its presence
+ * is the signal; it points back at the page). Other platforms ignore the link,
+ * so it is served to everyone. The site logo is the small icon (root
+ * `links`) and the large image; a per-document image can replace the
+ * latter later. Guidance: arfct/link-previews, docs/imessage.md.
  */
 export function meta({ data, matches }: Route.MetaArgs) {
   const root = matches.find((m) => m?.id === "root") as { data?: { site?: { origin: string } } } | undefined;
@@ -30,9 +37,13 @@ export function meta({ data, matches }: Route.MetaArgs) {
     { property: "og:description", content: description },
     ...(url ? [{ property: "og:url", content: url }] : []),
     { property: "og:image", content: `${origin}/logo-512.png` },
+    { property: "og:image:width", content: "512" },
+    { property: "og:image:height", content: "512" },
+    { property: "og:image:alt", content: "vapor" },
     { name: "twitter:card", content: "summary" },
     { name: "twitter:title", content: title ?? "vapor" },
     { name: "twitter:description", content: description },
+    { tagName: "link", rel: "alternate", type: "application/activity+json", href: url ?? "" },
   ];
 }
 

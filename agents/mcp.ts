@@ -41,6 +41,7 @@ import { AGENT_TOOL_MAX_BYTES } from "../app/shared/attachment-policy";
 import { storeAttachment } from "../workers/attachments";
 import { buildAttachmentDeps } from "../workers/attachment-deps";
 import { configuredOrigin, siteWithoutRequest, type SiteEnv } from "../app/shared/site";
+import { documentPath, titleFromMarkdown } from "../app/shared/doc-url";
 
 export interface VaporMcpProps extends Record<string, unknown> {
   /** Verified OAuth claims (set by workers/app.ts), or null on the anonymous endpoint. */
@@ -297,7 +298,7 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
         await (stub as unknown as DocStub).agentJoin({ ...identity, name: creatorName });
 
         const origin = this.props?.origin ?? siteWithoutRequest(this.env).origin;
-        return jsonContent({ id, url: `${origin}/${id}` });
+        return jsonContent({ id, url: `${origin}${documentPath(id, titleFromMarkdown(markdown ?? ""))}` });
       },
     );
   }

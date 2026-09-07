@@ -54,6 +54,14 @@ describe("handleRawMarkdown", () => {
     expect(getStub).not.toHaveBeenCalled();
   });
 
+  it("accepts a slugged address and resolves by its id", async () => {
+    const getStub = vi.fn(async () => ({ exportMarkdown: async () => ({ markdown: "# Hi" }) }));
+    const res = await handleRawMarkdown(new Request("https://vapor.fyi/some-title-abcd1234.md"), getStub);
+    expect(res?.status).toBe(200);
+    expect(getStub).toHaveBeenCalledWith("abcd1234");
+    expect(await handleRawMarkdown(new Request("https://vapor.fyi/some-title.md"), getStub)).toBeNull();
+  });
+
   it("returns null for a non-.md path", async () => {
     const getStub = vi.fn();
 

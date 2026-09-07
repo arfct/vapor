@@ -422,7 +422,7 @@ describe("DocumentAgent", () => {
     it("returns exists: false for a fresh agent", async () => {
       const res = await agent.onRequest(new Request("https://do/"));
       const body = await res.json();
-      expect(body).toEqual({ exists: false, createdAt: null });
+      expect(body).toEqual({ exists: false, createdAt: null, title: null, description: null });
     });
 
     it("returns exists: true with createdAt after POST", async () => {

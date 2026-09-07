@@ -7,6 +7,7 @@
  * module stays unit-testable.
  */
 import { isValidDocumentId } from "../app/shared/constants";
+import { parseDocumentSegment } from "../app/shared/doc-url";
 import type { AgentError } from "../app/shared/agent-protocol";
 import { mcpHelpHtml, mcpHelpMarkdown } from "../app/lib/mcp-help";
 import { configuredOrigin, redirectHosts, siteForRequest, type SiteConfig, type SiteEnv } from "../app/shared/site";
@@ -32,8 +33,8 @@ export interface MarkdownStub {
  * `GET /:id.md` — a document's full markdown as `text/markdown`, public by
  * URL like the rest of vapor (no token). Returns null (letting the worker
  * fall through to the next route) for anything that isn't a GET on a
- * `/<8-char-id>.md` path; 404 for a valid-format id whose document doesn't
- * exist.
+ * `/<id>.md` or `/<slug>-<id>.md` path; 404 for a valid-format id whose
+ * document doesn't exist.
  */
 export async function handleRawMarkdown(
   request: Request,
@@ -45,8 +46,10 @@ export async function handleRawMarkdown(
   const match = /^\/([^/]+)\.md$/.exec(url.pathname);
   if (!match) return null;
 
-  const id = match[1];
-  if (!isValidDocumentId(id)) return null;
+  // `/26g5wsew.md` or `/agent-identity-plan-26g5wsew.md`; the slug is ignored.
+  const parsed = parseDocumentSegment(match[1]);
+  if (!parsed) return null;
+  const { id } = parsed;
 
   const stub = await getStub(id);
   const result = await stub.exportMarkdown();

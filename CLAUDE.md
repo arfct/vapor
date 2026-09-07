@@ -84,8 +84,8 @@ Documents render at the root path, not under `/docs`:
 |---|---|
 | `/` | `home.tsx` |
 | `/new` | `new.ts` |
-| `/:id` | `doc.$id.tsx` |
-| `/:id.md` | `workers/routes.ts` — raw markdown export |
+| `/:id` | `doc.$id.tsx` — also `/:slug-:id`; the slug is the title (`app/shared/doc-url.ts`), the id resolves |
+| `/:id.md` | `workers/routes.ts` — raw markdown export, slug optional |
 | `/mcp` | `agents/mcp.ts` (`VaporMcp`) — OAuth-gated MCP server |
 | `/mcp/anonymous` | `agents/mcp.ts` (`VaporMcp`) — tokenless MCP server |
 | `/auth/*` | `workers/routes.ts` — Google sign-in sessions |
@@ -93,7 +93,7 @@ Documents render at the root path, not under `/docs`:
 | `/oauth/*`, `/.well-known/oauth-*` | `workers/oauth.ts` — OAuth 2.1 AS for MCP |
 | `/agents/*` | `agents/document.ts` (`DocumentAgent`) — Yjs WebSocket |
 
-Root slugs share one namespace with a small reserved-word list (`app/shared/constants.ts`); the id generator and the `/:id` loader both guard against collisions.
+Root slugs share one namespace with a small reserved-word list (`app/shared/constants.ts`); the id generator and the `/:id` loader both guard against collisions. Document URLs carry the title as a slug before the id (`/agent-identity-plan-26g5wsew`); `parseDocumentSegment` reads either form, the layout rewrites the visible URL as the title changes, and the loader renders the document's title and first paragraph into the page's `<title>` and Open Graph tags.
 
 #### Import Path Alias
 

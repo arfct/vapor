@@ -45,7 +45,7 @@ describe("doc.$id loader", () => {
     vi.clearAllMocks();
     mockGetAgentByName.mockResolvedValue({ fetch: mockFetch });
     mockFetch.mockResolvedValue(
-      new Response(JSON.stringify({ exists: true, createdAt: 1000 })),
+      new Response(JSON.stringify({ exists: true, createdAt: 1000, title: "Agent identity plan", description: "A plan." })),
     );
   });
 
@@ -58,7 +58,21 @@ describe("doc.$id loader", () => {
 
   it("404s a malformed document id", async () => {
     expect(await statusOfThrow("nope")).toBe(404);
+    expect(await statusOfThrow("hello-world")).toBe(404);
+    expect(await statusOfThrow("abcd1234x")).toBe(404);
     expect(mockGetAgentByName).not.toHaveBeenCalled();
+  });
+
+  it("resolves a slugged address by its id and reports the canonical path", async () => {
+    const result = await loader(loaderArgs("some-stale-title-abcd1234"));
+    expect(mockGetAgentByName).toHaveBeenCalledWith({}, "abcd1234");
+    expect(result).toEqual({
+      id: "abcd1234",
+      createdAt: 1000,
+      title: "Agent identity plan",
+      description: "A plan.",
+      path: "/agent-identity-plan-abcd1234",
+    });
   });
 
   it("404s a well-formed id whose document doesn't exist", async () => {
@@ -68,8 +82,9 @@ describe("doc.$id loader", () => {
     expect(await statusOfThrow("abcd1234")).toBe(404);
   });
 
-  it("loads an existing document", async () => {
+  it("loads an existing document, with a bare path when it has no title", async () => {
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ exists: true, createdAt: 1000, title: null, description: null })));
     const result = await loader(loaderArgs("abcd1234"));
-    expect(result).toEqual({ id: "abcd1234", createdAt: 1000 });
+    expect(result).toEqual({ id: "abcd1234", createdAt: 1000, title: null, description: null, path: "/abcd1234" });
   });
 });

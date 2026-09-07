@@ -10,6 +10,7 @@ import { animalGlyphForLabel } from "../app/shared/anon-animals";
 import type { AgentIdentity, AgentCapability, AgentRosterEntry, AgentError, MentionTarget, Pace } from "../app/shared/agent-protocol";
 import { agentMention, anonymousAgentMention } from "../app/shared/agent-protocol";
 import { colorIndexFor } from "../app/shared/short-id";
+import { descriptionFromMarkdown, titleFromMarkdown } from "../app/shared/doc-url";
 import {
   AGENT_NAME_RE,
   findMentions,
@@ -973,7 +974,17 @@ class DocumentAgent extends Agent {
           ? new Float64Array(createdAtRows[0].value)[0]
           : null;
 
-      return new Response(JSON.stringify({ exists, createdAt }), {
+      // The title and first paragraph, for the page's <title>, its link
+      // preview, and the slug in its URL (app/shared/doc-url.ts).
+      let title: string | null = null;
+      let description: string | null = null;
+      if (exists && this.doc) {
+        const markdown = yDocToMarkdown(this.doc);
+        title = titleFromMarkdown(markdown);
+        description = descriptionFromMarkdown(markdown);
+      }
+
+      return new Response(JSON.stringify({ exists, createdAt, title, description }), {
         headers: { "Content-Type": "application/json" },
       });
     }

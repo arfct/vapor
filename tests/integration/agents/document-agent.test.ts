@@ -373,6 +373,22 @@ describe("DocumentAgent", () => {
     return { doc, awareness, socket, connection, provider, connId };
   }
 
+  /**
+   * Fires the alarm as the document's expiry. The alarm is shared with
+   * scheduled housekeeping (idle presence, snapshots), so the handler only
+   * expires the document once its 99 hours are actually up — which these
+   * tests reach by moving the clock, not by waiting.
+   */
+  async function expireDoc(target = agent) {
+    const spy = vi.spyOn(Date, "now").mockReturnValue(realNow() + DOCUMENT_TTL_MS + 60_000);
+    try {
+      await target.alarm();
+    } finally {
+      spy.mockRestore();
+    }
+  }
+  const realNow = Date.now;
+
   function cleanup(...clients: Array<{ provider: YjsProvider; doc: Y.Doc }>) {
     for (const c of clients) {
       c.provider.destroy();
@@ -589,7 +605,7 @@ describe("DocumentAgent", () => {
       await agent.onRequest(new Request("https://do/", { method: "POST" }));
       expect(mockSqlStore.size).toBeGreaterThan(0);
 
-      await agent.alarm();
+      await expireDoc(agent);
 
       expect(mockSqlStore.size).toBe(0);
     });
@@ -599,7 +615,7 @@ describe("DocumentAgent", () => {
       const conn1 = createConnection();
       const conn2 = createConnection();
 
-      await agent.alarm();
+      await expireDoc(agent);
 
       expect(conn1.closed).toBe(true);
       expect(conn1.closeCode).toBe(1000);
@@ -612,7 +628,7 @@ describe("DocumentAgent", () => {
       const client = connectYjsClient();
       cleanup(client);
 
-      await agent.alarm();
+      await expireDoc(agent);
 
       const res = await agent.onRequest(new Request("https://do/"));
       const body = (await res.json()) as { exists: boolean };
@@ -1008,7 +1024,7 @@ describe("DocumentAgent", () => {
       const id = identity();
       await agent.agentJoin(id);
 
-      await agent.alarm();
+      await expireDoc(agent);
 
       expect(await agent.getAgentRoster()).toEqual([]);
 
@@ -1647,40 +1663,90 @@ describe("DocumentAgent", () => {
       });
     });
 
-    it("removes presence automatically after 5 minutes of inactivity", async () => {
-      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    /** The deadline the most recent setAlarm booked. */
+    const lastAlarm = () => mockSetAlarm.mock.calls.at(-1)?.[0] as number;
+
+    it("removes presence after 5 idle minutes through the alarm, not a timer that pins the DO", async () => {
       const { agent, id } = await setup();
       const a = connectYjsClient(agent);
+      const joinedAt = Date.now();
       await agent.agentJoin(id);
-
-      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 1);
       expect(findAgentState(a.awareness)).toBeDefined();
 
-      await vi.advanceTimersByTimeAsync(2);
+      // The idle deadline is booked on the alarm, well before the doc's expiry.
+      expect(lastAlarm()).toBeGreaterThanOrEqual(joinedAt + 5 * 60 * 1000);
+      expect(lastAlarm()).toBeLessThan(joinedAt + 5 * 60 * 1000 + 1000);
+
+      // The alarm firing early does nothing but re-arm.
+      await agent.alarm();
+      expect(findAgentState(a.awareness)).toBeDefined();
+
+      // At the deadline it clears presence and leaves the document alone.
+      const spy = vi.spyOn(Date, "now").mockReturnValue(joinedAt + 5 * 60 * 1000 + 10);
+      await agent.alarm();
+      spy.mockRestore();
       expect(findAgentState(a.awareness)).toBeUndefined();
+      const res = await agent.onRequest(new Request("https://do/"));
+      expect(((await res.json()) as { exists: boolean }).exists).toBe(true);
+      // Nothing left to wake for but the expiry itself.
+      expect(lastAlarm()).toBeGreaterThan(joinedAt + DOCUMENT_TTL_MS - 1000);
       cleanup(a);
     });
 
-    it("resets the idle timer on every performance, keeping a busy agent present", async () => {
-      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    it("moves the idle deadline on every performance, keeping a busy agent present", async () => {
+      // Date is faked along with the timers so the typing pacer's clock and
+      // the deadlines it books agree.
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
       const { agent, id } = await setup(["write"]);
       const a = connectYjsClient(agent);
+      const joinedAt = Date.now();
       await agent.agentJoin(id);
+      const idleDue = () => (mockTables.get("schedule") ?? []).find((r) => r.key === "idle:scribe")?.due as number;
+      expect(idleDue()).toBe(joinedAt + 5 * 60 * 1000);
 
-      // Just under the idle window, perform a (quick) mutation — its
-      // typing ticks call onPerformanceCursor, which resets the timer. Only
-      // advance far enough to finish typing "hi" (well under 5 minutes) —
-      // vi.runAllTimersAsync() would also drain the *freshly reset* 5-minute
-      // idle timeout in the same call, defeating the point of the test.
+      // Four minutes on, a (quick) performance: its typing ticks call
+      // onPerformanceCursor, which re-books the idle deadline from the tick.
       await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
       await agent.agentInsert(id, { where: "append", markdown: "hi", pace: "natural" });
-      await vi.advanceTimersByTimeAsync(200);
+      // Let the whole performance play out (well under a minute of typing).
+      await vi.advanceTimersByTimeAsync(60 * 1000);
 
-      // Another 4 minutes — past the original 5-minute mark from join, but
-      // well within 5 minutes of the reset above.
-      await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
+      expect(idleDue()).toBeGreaterThanOrEqual(joinedAt + 4 * 60 * 1000 + 5 * 60 * 1000);
+      expect(idleDue()).toBeLessThan(joinedAt + 5 * 60 * 1000 + 5 * 60 * 1000);
       expect(findAgentState(a.awareness)).toBeDefined();
       cleanup(a);
+    });
+
+    it("arms no standing interval or long timer once initialised, so the DO can hibernate", async () => {
+      vi.useFakeTimers();
+      // No client here: a browser-side Awareness runs its own interval,
+      // which is its business. The server must hold nothing.
+      const { agent, id } = await setup();
+      await agent.agentJoin(id);
+      await agent.agentInsert(identity({ ...id, caps: ["write"] }), { where: "append", markdown: "edit", pace: "instant" });
+      // The persistence debounce (1s) is the only timer allowed to remain.
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("prunes awareness states no heartbeat has refreshed, on the next awareness message", async () => {
+      const { agent } = await setup();
+      const a = connectYjsClient(agent);
+      const b = connectYjsClient(agent);
+      a.awareness.setLocalStateField("user", { name: "A" });
+      b.awareness.setLocalStateField("user", { name: "B" });
+      const server = (agent as unknown as { awareness: awarenessProtocol.Awareness }).awareness;
+      await vi.waitFor(() => expect(server.getStates().has(a.awareness.clientID)).toBe(true));
+
+      // 31 seconds of silence from A (its last heartbeat aged in place — the
+      // protocol stamps heartbeats with a clock captured at import, so
+      // spying Date.now would age B's fresh update too), then any awareness
+      // traffic from B.
+      server.meta.get(a.awareness.clientID)!.lastUpdated -= awarenessProtocol.outdatedTimeout + 1000;
+      b.awareness.setLocalStateField("user", { name: "B2" });
+      await vi.waitFor(() => expect(server.getStates().has(a.awareness.clientID)).toBe(false));
+      expect(server.getStates().has(b.awareness.clientID)).toBe(true);
+      cleanup(a, b);
     });
 
     it("populates a y-tiptap-shaped cursor field during a performance, even for an agent that never joined", async () => {
@@ -1705,13 +1771,13 @@ describe("DocumentAgent", () => {
       cleanup(a);
     });
 
-    it("clears agent presence and idle timers on alarm", async () => {
+    it("clears agent presence and scheduled deadlines on expiry", async () => {
       const { agent, id } = await setup();
       const a = connectYjsClient(agent);
       await agent.agentJoin(id);
       expect(findAgentState(a.awareness)).toBeDefined();
 
-      await agent.alarm();
+      await expireDoc(agent);
 
       mockConnectionMap.clear();
       const b = connectYjsClient(agent);
@@ -2223,7 +2289,7 @@ describe("DocumentAgent", () => {
       await agent.agentAwaitEvents(id, {});
       cleanup(client);
 
-      await agent.alarm();
+      await expireDoc(agent);
 
       expect(mockTables.get("events") ?? []).toEqual([]);
     });

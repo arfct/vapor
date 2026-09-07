@@ -115,6 +115,21 @@ interface EventRow {
 const AGENT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
+ * How early an alarm may fire and still count as "due". Alarms are precise
+ * to the millisecond in practice, but a scheduled task that lands a beat
+ * before its deadline must not be re-armed for one more wake.
+ */
+const ALARM_SLACK_MS = 1_000;
+
+/** Re-writing a scheduled task whose deadline moves by less than this is not worth a storage write. */
+const SCHEDULE_JITTER_MS = 5_000;
+
+/** Prefix of the scheduled task that clears an idle agent's presence. */
+const IDLE_TASK_PREFIX = "idle:";
+/** The scheduled task that takes the idle version snapshot. */
+const SNAPSHOT_TASK = "snapshot";
+
+/**
  * Wall-clock budget for one typed performance. Typing pins this Durable
  * Object in memory for its whole duration (a real cost — see
  * docs/plans/2026-08-31-sleeping-tabs-plan.md), so past the budget the
@@ -267,8 +282,12 @@ class DocumentAgent extends Agent {
    * out) but the entry is kept so the clock keeps counting up.
    */
   private agentPresence = new Map<string, { clientId: number; clock: number; state: AgentPresenceState | null }>();
-  /** Per-agent 5-minute idle timer, reset on every join/performance-cursor update. */
-  private agentIdleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /**
+   * In-memory mirror of the `schedule` table's deadlines, so re-scheduling
+   * a task to (nearly) the same time skips the storage write. Lost on
+   * eviction, which only costs one redundant write on the next schedule.
+   */
+  private scheduledDue = new Map<string, number>();
 
   /** Resolvers parked by agentAwaitEvents long-polls with nothing to return yet; flushed by recordEvent. */
   private eventWaiters: (() => void)[] = [];
@@ -278,10 +297,11 @@ class DocumentAgent extends Agent {
   private notifiedMentions = new WeakMap<Y.AbstractType<unknown>, Set<string>>();
 
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
+  /** True while POST / sets a document up, so its writes book no snapshot. */
+  private creating = false;
 
   // ---- Version history (docs/plans/2026-09-05-version-history-plan.md) ----
   /** 60s quiet edge for an `idle` version; separate from the 1s persist timer so persistence stays cheap. */
-  private idleSnapshotTimer: ReturnType<typeof setTimeout> | null = null;
   /** Everyone whose structs landed since the last version, most recent last. */
   private contributorsSinceSnapshot = new Map<string, VersionAuthor>();
   /** Content has changed since the last version (or since creation). */
@@ -319,6 +339,12 @@ class DocumentAgent extends Agent {
 
     this.doc = new Y.Doc();
     this.awareness = new awarenessProtocol.Awareness(this.doc);
+    // Awareness starts a 3-second setInterval to expire stale peers. A
+    // standing timer keeps a Durable Object from hibernating, so every
+    // document that had ever been opened stayed awake — and billed — until
+    // eviction (#58). Clear it; pruneOutdatedAwareness does the same job on
+    // incoming traffic, and onClose removes a departing client's state.
+    clearInterval((this.awareness as unknown as { _checkInterval?: ReturnType<typeof setInterval> })._checkInterval);
     // Remember which Yjs clients each connection speaks for, so a control
     // message from a connection can be attributed to its awareness user.
     this.awareness.on(
@@ -365,6 +391,15 @@ class DocumentAgent extends Agent {
         kind TEXT,
         payload TEXT,
         created_at INTEGER
+      )
+    `;
+    // Deadlines served by the DO's single alarm (see armAlarm): idle agent
+    // presence and the idle version snapshot. A row per task, not a timer
+    // per task, because a pending setTimeout pins the DO in memory.
+    this.sql`
+      CREATE TABLE IF NOT EXISTS schedule (
+        key TEXT PRIMARY KEY,
+        due INTEGER
       )
     `;
     this.sql`
@@ -435,7 +470,9 @@ class DocumentAgent extends Agent {
     this.doc.on("update", (update: Uint8Array, origin: unknown) => {
       this.schedulePersist();
       this.dirtySinceSnapshot = true;
-      this.scheduleIdleSnapshot();
+      // System writes (import, restore) record their own versions and
+      // creation is not an edit; only a live edit books the idle snapshot.
+      if (origin !== "agent" && !this.creating) this.scheduleIdleSnapshot();
       // Agent edits are credited when dispatched (see dispatchMutation);
       // human edits are traced back to their clients' awareness here.
       if (!isAgentOrigin(origin)) this.noteContributors(update);
@@ -659,6 +696,7 @@ class DocumentAgent extends Agent {
       case MSG_AWARENESS: {
         const update = decoding.readVarUint8Array(decoder);
         awarenessProtocol.applyAwarenessUpdate(awareness, update, connection);
+        this.pruneOutdatedAwareness(awareness);
 
         // Broadcast awareness to all other clients
         this.broadcastBinary(message, connection.id);
@@ -694,17 +732,103 @@ class DocumentAgent extends Agent {
     // DO (or be lost to eviction).
     if (!this.hasHumanConnections()) {
       this.flushDocState();
-      this.clearIdleSnapshotTimer();
       this.maybeSnapshot("idle");
-      for (const timer of this.agentIdleTimers.values()) {
-        clearTimeout(timer);
-      }
-      this.agentIdleTimers.clear();
+      this.clearSchedule();
       this.agentPresence.clear();
     }
   }
 
+  /**
+   * What y-protocols' Awareness does on its 3-second interval, done on
+   * traffic instead: forget remote states no heartbeat has refreshed in
+   * `outdatedTimeout`. Clients prune their own view the same way, so no
+   * broadcast is needed.
+   */
+  private pruneOutdatedAwareness(awareness: awarenessProtocol.Awareness): void {
+    const now = Date.now();
+    const stale: number[] = [];
+    awareness.meta.forEach((meta, clientId) => {
+      if (clientId === awareness.clientID) return;
+      if (awarenessProtocol.outdatedTimeout <= now - meta.lastUpdated && awareness.states.has(clientId)) {
+        stale.push(clientId);
+      }
+    });
+    if (stale.length > 0) awarenessProtocol.removeAwarenessStates(awareness, stale, "timeout");
+  }
+
+  /* ---- Scheduled tasks on the single DO alarm ---- */
+
+  /**
+   * Arms the alarm for the earliest of the scheduled tasks and the
+   * document's expiry. The alarm is the one timer that survives
+   * hibernation, so everything that used to be a setTimeout longer than
+   * the persistence debounce goes through here.
+   */
+  private async armAlarm(): Promise<void> {
+    const rows = this.sql<{ due: number }>`SELECT due FROM schedule ORDER BY due ASC`;
+    const expiry = this.docExpiresAt();
+    const next = rows.length > 0 ? Math.min(rows[0].due, expiry) : expiry;
+    await this.ctx.storage.setAlarm(next);
+  }
+
+  /** Schedules (or moves) a task; a move of under SCHEDULE_JITTER_MS is skipped as noise. */
+  private scheduleTask(key: string, due: number): void {
+    const current = this.scheduledDue.get(key);
+    if (current !== undefined && Math.abs(current - due) < SCHEDULE_JITTER_MS) return;
+    this.sql`DELETE FROM schedule WHERE key = ${key}`;
+    this.sql`INSERT INTO schedule (key, due) VALUES (${key}, ${due})`;
+    this.scheduledDue.set(key, due);
+    void this.armAlarm().catch((err: unknown) => console.error("alarm arm failed:", err));
+  }
+
+  /** Forgets a task. The alarm is left as is: firing early is harmless (nothing due, re-armed). */
+  private unscheduleTask(key: string): void {
+    if (!this.scheduledDue.has(key)) {
+      const rows = this.sql<{ key: string }>`SELECT key FROM schedule WHERE key = ${key}`;
+      if (rows.length === 0) return;
+    }
+    this.sql`DELETE FROM schedule WHERE key = ${key}`;
+    this.scheduledDue.delete(key);
+  }
+
+  private clearSchedule(): void {
+    this.sql`DELETE FROM schedule`;
+    this.scheduledDue.clear();
+  }
+
+  /** Runs one due task. Unknown keys are dropped silently: they belong to a newer or older build. */
+  private runScheduledTask(key: string): void {
+    if (key.startsWith(IDLE_TASK_PREFIX)) {
+      this.setAgentPresence(key.slice(IDLE_TASK_PREFIX.length), null);
+    } else if (key === SNAPSHOT_TASK) {
+      this.maybeSnapshot("idle");
+    }
+  }
+
   override readonly alarm = async (): Promise<void> => {
+    this.ensureInitialised();
+    const now = Date.now();
+
+    // Housekeeping first: whatever scheduled tasks are due (idle agent
+    // presence, the idle version snapshot), then either re-arm for the
+    // next deadline or, if the document's life is up, expire it below.
+    const tasks = this.sql<{ key: string; due: number }>`SELECT key, due FROM schedule ORDER BY due ASC`;
+    for (const task of tasks) {
+      if (task.due > now + ALARM_SLACK_MS) break;
+      this.sql`DELETE FROM schedule WHERE key = ${task.key}`;
+      this.scheduledDue.delete(task.key);
+      try {
+        this.runScheduledTask(task.key);
+      } catch (err) {
+        console.error(`Scheduled task ${task.key} failed:`, err);
+      }
+    }
+    if (!this.docExists()) return; // nothing to expire, and nothing to wake for
+    if (now < this.docExpiresAt() - ALARM_SLACK_MS) {
+      await this.armAlarm();
+      return;
+    }
+
     // A pending persist must not resurrect state after the delete below.
     if (this.persistTimer) {
       clearTimeout(this.persistTimer);
@@ -727,7 +851,8 @@ class DocumentAgent extends Agent {
     this.sql`DELETE FROM subscriptions`;
     // So does its version history.
     this.sql`DELETE FROM versions`;
-    this.clearIdleSnapshotTimer();
+    // And every deadline that was waiting on this alarm.
+    this.clearSchedule();
     this.contributorsSinceSnapshot.clear();
     this.connectionClients.clear();
     this.dirtySinceSnapshot = false;
@@ -737,12 +862,7 @@ class DocumentAgent extends Agent {
     this.sql`DELETE FROM attachments`;
     for (const finish of this.eventWaiters) finish();
     this.eventWaiters = [];
-    // Agent presence belongs to a document that no longer exists — drop it
-    // and cancel every pending idle timer along with it.
-    for (const timer of this.agentIdleTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.agentIdleTimers.clear();
+    // Agent presence belongs to a document that no longer exists.
     this.agentPresence.clear();
     // Close all active WebSocket connections
     for (const conn of this.getConnections()) {
@@ -762,6 +882,7 @@ class DocumentAgent extends Agent {
     if (request.method === "POST") {
       // Create / initialise the document
       const { doc } = this.ensureInitialised();
+      this.creating = true;
       this.sql`
         INSERT INTO doc_state (key, value) VALUES ('exists', ${sqlBlob(new Uint8Array([1]))})
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
@@ -831,7 +952,7 @@ class DocumentAgent extends Agent {
       // edit: the trail starts with the first change, not with the import.
       this.dirtySinceSnapshot = false;
       this.contributorsSinceSnapshot.clear();
-      this.clearIdleSnapshotTimer();
+      this.creating = false;
       this.flushDocState();
 
       return new Response(JSON.stringify({ ok: true }), {
@@ -1649,19 +1770,14 @@ class DocumentAgent extends Agent {
   // Version history
   // ---------------------------------------------------------------------
 
+  /**
+   * Books the idle version snapshot for IDLE_SNAPSHOT_MS from now, on the
+   * alarm rather than a timer so a document can sleep while it waits.
+   * Called on every update; the jitter window in scheduleTask keeps a
+   * typing burst from rewriting the deadline per keystroke.
+   */
   private scheduleIdleSnapshot(): void {
-    this.clearIdleSnapshotTimer();
-    this.idleSnapshotTimer = setTimeout(() => {
-      this.idleSnapshotTimer = null;
-      this.maybeSnapshot("idle");
-    }, IDLE_SNAPSHOT_MS);
-  }
-
-  private clearIdleSnapshotTimer(): void {
-    if (this.idleSnapshotTimer) {
-      clearTimeout(this.idleSnapshotTimer);
-      this.idleSnapshotTimer = null;
-    }
+    this.scheduleTask(SNAPSHOT_TASK, Date.now() + IDLE_SNAPSHOT_MS);
   }
 
   /** On each persist: a version now if the document has swung in size or gone long enough without one. */
@@ -1992,8 +2108,9 @@ class DocumentAgent extends Agent {
 
   /** Remaining life of the document in ms, for cache headers on its attachments. */
   async remainingLifetimeMs(): Promise<number> {
-    const alarm = await this.ctx.storage.getAlarm();
-    return alarm === null ? 0 : Math.max(0, alarm - Date.now());
+    this.ensureInitialised();
+    if (!this.docExists()) return 0;
+    return Math.max(0, this.docExpiresAt() - Date.now());
   }
 
   async exportMarkdown(): Promise<{ markdown: string } | { error: AgentError }> {
@@ -2240,25 +2357,17 @@ class DocumentAgent extends Agent {
   }
 
   /**
-   * (Re)starts an agent's 5-minute idle timer. Called on join and on every
-   * performance-cursor update; firing removes the agent's presence (a
-   * broadcast null state) without touching its token.
+   * (Re)books an agent's 5-minute idle deadline on the alarm. Called on
+   * join and on every performance-cursor update; when it falls due the
+   * agent's presence is removed (a broadcast null state) without touching
+   * its token.
    */
   private resetAgentIdleTimer(name: string): void {
-    this.clearAgentIdleTimer(name);
-    const timer = setTimeout(() => {
-      this.agentIdleTimers.delete(name);
-      this.setAgentPresence(name, null);
-    }, AGENT_IDLE_TIMEOUT_MS);
-    this.agentIdleTimers.set(name, timer);
+    this.scheduleTask(`${IDLE_TASK_PREFIX}${name}`, Date.now() + AGENT_IDLE_TIMEOUT_MS);
   }
 
   private clearAgentIdleTimer(name: string): void {
-    const timer = this.agentIdleTimers.get(name);
-    if (timer) {
-      clearTimeout(timer);
-      this.agentIdleTimers.delete(name);
-    }
+    this.unscheduleTask(`${IDLE_TASK_PREFIX}${name}`);
   }
 
   /**

@@ -42,6 +42,8 @@ A tab disconnects when it's clearly not in use and reconnects instantly on retur
 
 ## Phase 2 — DO wake hygiene (server, M)
 
+> **Status (2026-09-07, #58):** done, with one finding the list below missed. y-protocols' `Awareness` starts a **3-second `setInterval`** the moment it is constructed, and `ensureInitialised()` constructs one — so every document that had ever been touched held a standing timer until eviction, which is exactly the "awake for hours on modest traffic" shape in the DO duration graph. The interval is now cleared and its job (forgetting peers whose heartbeat lapsed) runs on incoming awareness traffic instead. The 5-minute agent-idle `setTimeout`s and the 60-second idle-snapshot timer moved onto the DO alarm (a `schedule` table of deadlines; the alarm serves the earliest of them and the document's expiry). The long-poll is capped at 15s. The only timer left is the 1-second persistence debounce.
+
 Make the DO's awake time proportional to actual work, so hibernation between messages does the saving:
 
 - **Bound `agentAwaitEvents`**: cap the hold at ~20s (from 50s) *and* return a `retry_after_ms` hint so well-behaved agents poll on a cadence instead of hot-looping; document the cadence in the tool description. Longer term, mention delivery can move to a DO alarm + queued events so idle agents cost nothing.

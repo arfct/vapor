@@ -4,6 +4,7 @@ import type { Route } from "./+types/new";
 import { generateDocumentId } from "~/shared/constants";
 import { getCloudflare } from "~/lib/cloudflare.server";
 import { deserializeThreads } from "~/lib/thread-serialization";
+import { documentPath, titleFromMarkdown } from "~/shared/doc-url";
 
 const MAX_CONTENT_BYTES = 1_000_000; // 1 MB
 
@@ -59,7 +60,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     }
 
     const url = new URL(request.url);
-    return new Response(`${url.origin}/${id}\n`, {
+    return new Response(`${url.origin}${documentPath(id, titleFromMarkdown(content))}\n`, {
       status: 201,
       headers: { "Content-Type": "text/plain" },
     });

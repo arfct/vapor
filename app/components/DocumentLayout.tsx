@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router";
 import { useDocument } from "~/lib/DocumentContext";
 import { deserializeThreads } from "~/lib/thread-serialization";
 import { generateDocumentId } from "~/shared/constants";
+import { documentPath, titleFromMarkdown } from "~/shared/doc-url";
 import { placeholderPreset } from "~/lib/placeholder-presets";
 import { useVisualViewportFrame } from "~/lib/useVisualViewportFrame";
 import type { ThreadData } from "~/shared/types";
@@ -61,8 +62,22 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     mentionTargetsKey,
     slashActions,
     refreshRoster,
+    markdown,
   } = useDocument();
   const navigate = useNavigate();
+
+  // The address follows the title: `/agent-identity-plan-26g5wsew`. The id
+  // is what resolves, so this only rewrites the visible URL (and the tab
+  // title) as the first heading changes; the router isn't involved.
+  const title = useMemo(() => titleFromMarkdown(markdown), [markdown]);
+  useEffect(() => {
+    if (surface.kind !== "doc") return;
+    document.title = title ? `${title} · vapor` : "vapor";
+    const path = documentPath(surface.id, title);
+    if (window.location.pathname !== path) {
+      window.history.replaceState(window.history.state, "", `${path}${window.location.search}${window.location.hash}`);
+    }
+  }, [surface, title]);
   // A document the visitor just created gets focus so they can type at once.
   const fresh = Boolean((useLocation().state as { fresh?: boolean } | null)?.fresh);
   const railRef = useRef<HTMLElement>(null);

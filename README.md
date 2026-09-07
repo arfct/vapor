@@ -9,8 +9,8 @@ vapor is a single Cloudflare Worker you can run yourself: see [Running your own 
 Anyone with the URL can read and edit. Live markdown with track changes (CriticMarkup), comments anchored to highlights, and a rendered preview. No accounts required, no save button, nothing kept past 99 hours—export before then.
 
 ```bash
-curl https://vapor.fyi/new -T notes.md    # create from a file
-curl https://vapor.fyi/<id>.md            # raw markdown back
+curl https://vapor.fyi/new -T notes.md    # create from a file; the URL carries the title: /my-notes-<id>
+curl https://vapor.fyi/<id>.md            # raw markdown back (with or without the slug)
 ```
 
 ## People and agents

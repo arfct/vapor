@@ -1936,6 +1936,80 @@ describe("DocumentAgent", () => {
       cleanup(client);
     });
 
+    describe("events between agents (#40)", () => {
+      it("an agent's mention of another agent reaches the other, tagged with the actor, and never itself", async () => {
+        const { agent, id: scribe } = await setup(["suggest", "comment"]);
+        const drafter = identity({ id: "email:drafter@x.com", name: "drafter", caps: ["write"] });
+        await agent.agentJoin(drafter);
+
+        const result = await agent.agentInsert(drafter, {
+          where: "append",
+          markdown: "Over to you, @scribe.",
+          pace: "instant",
+        });
+        expect(result).toEqual({ ok: true });
+
+        const forScribe = await agent.agentAwaitEvents(scribe, { timeoutMs: 20 });
+        const scribeEvents = "events" in forScribe ? forScribe.events : [];
+        expect(scribeEvents.find((e) => e.type === "mention")).toMatchObject({
+          payload: { agent: "scribe", actor: "drafter", text: expect.stringContaining("@scribe") },
+        });
+        expect(scribeEvents.find((e) => e.type === "doc_changed")).toMatchObject({ payload: { actor: "drafter" } });
+
+        // The drafter hears nothing about its own edit, and its cursor still advances past it.
+        const forDrafter = await agent.agentAwaitEvents(drafter, { timeoutMs: 20 });
+        expect("events" in forDrafter ? forDrafter.events : null).toEqual([]);
+        expect("cursor" in forDrafter && forDrafter.cursor).toBe(scribeEvents[scribeEvents.length - 1].seq);
+      });
+
+      it("an agent writing its own name is not a mention of itself", async () => {
+        const { agent, id: scribe } = await setup(["suggest", "comment", "write"]);
+        await agent.agentInsert(scribe, { where: "append", markdown: "Signed, @scribe.", pace: "instant" });
+        const result = await agent.agentAwaitEvents(scribe, { timeoutMs: 20 });
+        expect(("events" in result ? result.events : []).filter((e) => e.type === "mention")).toEqual([]);
+      });
+
+      it("an agent's reply in another agent's thread fires thread_reply for the author only", async () => {
+        const { agent, id: scribe } = await setup(["comment"]);
+        const muse = identity({ id: "email:muse@x.com", name: "muse", caps: ["comment"] });
+        await agent.agentJoin(muse);
+
+        const read = await agent.agentRead(scribe);
+        const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
+        const created = await agent.agentComment(scribe, { anchor, text: "thoughts?" });
+        const threadId = "threadId" in created ? created.threadId : "";
+        const before = await agent.agentAwaitEvents(muse, { timeoutMs: 20 });
+
+        const replied = await agent.agentReply(muse, { threadId, text: "a few" });
+        expect(replied).toMatchObject({ ok: true });
+
+        const forScribe = await agent.agentAwaitEvents(scribe, { timeoutMs: 20 });
+        expect(("events" in forScribe ? forScribe.events : []).find((e) => e.type === "thread_reply")).toMatchObject({
+          payload: { agent: "scribe", threadId, actor: "muse" },
+        });
+        // The replier hears nothing about its own reply.
+        const museCursor = "cursor" in before ? before.cursor : 0;
+        const forMuse = await agent.agentAwaitEvents(muse, { cursor: museCursor, timeoutMs: 20 });
+        expect("events" in forMuse ? forMuse.events : null).toEqual([]);
+      });
+
+      it("events_poll applies the same filter and carries the actor on the wire", async () => {
+        const { agent, id: scribe } = await setup(["suggest", "comment"]);
+        const drafter = identity({ id: "email:drafter@x.com", name: "drafter", caps: ["write"] });
+        await agent.agentJoin(drafter);
+        await agent.agentInsert(drafter, { where: "append", markdown: "New paragraph.", pace: "instant" });
+
+        const forScribe = await agent.eventsPoll(scribe, { name: "document.changed" });
+        expect("events" in forScribe ? forScribe.events : []).toHaveLength(1);
+        expect(("events" in forScribe ? forScribe.events : [])[0].data).toMatchObject({ actor: "drafter" });
+
+        const forDrafter = await agent.eventsPoll(drafter, { name: "document.changed" });
+        expect("events" in forDrafter ? forDrafter.events : null).toEqual([]);
+        // Filtered out, not left behind: the cursor moved past the row.
+        expect("cursor" in forDrafter && forDrafter.cursor).toBe("cursor" in forScribe ? forScribe.cursor : "");
+      });
+    });
+
     it("delivers a thread_reply only to the agent that authored the thread", async () => {
       const { agent, id } = await setup(["comment"]);
       const museId = identity({ id: "email:muse@x.com", name: "muse", caps: ["comment"] });

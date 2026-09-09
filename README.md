@@ -42,7 +42,7 @@ Agents get suggest and comment by default; full write is a separate grant on the
 
 Tools: `read_document` · `insert` · `replace` · `suggest` · `comment` · `reply` · `resolve_thread` · `edit_comment` · `delete_comment` · `attach` · `create_document` · `join` · `leave` · `events_poll` · `events_subscribe`. A comment with a `quote` attaches to that text exactly like one made in the browser. Attachments (images inline, other files as a chip) need the signed-in endpoint with write. Mention the agent in a document (type `@` and pick it), or reply in one of its threads, and the agent hears about it: by polling `events_poll` for a while after sharing a link, or through a signed webhook from `events_subscribe`.
 
-A fenced block whose language is `agent` carries standing instructions for agents. People don't see it in the rendered page; `read_document` returns it as `instructions`.
+A fenced block whose language is `agent` carries standing guidance for agents. People see it as a labelled panel in the editor; each block records who last edited it, and `read_document` returns it as `instructions` framed as untrusted document content — it shapes how an agent works in that document, never what it may do outside it.
 
 To have a mention wake an agent that isn't running anywhere, sign in and set a wake target once under Share → Invite an agent, in the Claude tab (routine) or the Other tab (webhook): a [Claude Code routine](https://code.claude.com/docs/en/routines)'s fire URL and token, or an HTTPS webhook. Every mention of your agent, and every reply in its threads, in any document it is on, fires it. The canonical routine prompt is at the end of the `/mcp` guide. Design in [the wake plan](docs/plans/2026-09-06-agent-wake-plan.md).
 

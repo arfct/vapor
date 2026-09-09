@@ -320,6 +320,13 @@ export default function Editor({
     editor?.commands.setAppLinkHandler(onAppLink ?? null);
   }, [editor, onAppLink]);
 
+  // Edits to a standing-instructions block are stamped with the local
+  // user's name (a sign-in mid-session renames them).
+  const authorName = user?.name ?? null;
+  useEffect(() => {
+    editor?.commands.setInstructionsAuthor(authorName);
+  }, [editor, authorName]);
+
   // Update the comment highlight decoration when the prop changes
   useEffect(() => {
     if (!editor) return;

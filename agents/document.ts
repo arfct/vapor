@@ -21,6 +21,7 @@ import {
 import {
   getBlocks,
   getAgentInstructions,
+  instructionsForAgents,
   yDocToMarkdown,
   resolveAnchor,
   buildMarkdownBlocks,
@@ -1812,6 +1813,7 @@ class DocumentAgent extends Agent {
         blocks: { anchor: string; text: string }[];
         /** Standing per-document guidance addressed to agents; null when the document has none. */
         instructions: string | null;
+        instruction_sources: { edited_by: string | null; edited_at: string | null }[];
         presence: { name: string; isAgent: boolean; mention?: string }[];
         threads: ThreadData[];
       }
@@ -1825,7 +1827,9 @@ class DocumentAgent extends Agent {
     const markdown = yDocToMarkdown(doc);
     const blocks = getBlocks(doc).map((b) => ({ anchor: formatAnchor(b), text: b.text }));
     const instructionBlocks = getAgentInstructions(doc);
-    const instructions = instructionBlocks.length > 0 ? instructionBlocks.join("\n\n") : null;
+    // Framed as untrusted document guidance, with each block's editor (#82).
+    const instructions = instructionsForAgents(instructionBlocks);
+    const instruction_sources = instructionBlocks.map((b) => ({ edited_by: b.editedBy, edited_at: b.editedAt }));
 
     // One entry per person, not per tab: awareness has a state per connected
     // client, and the same person with two windows (or a reconnecting one)
@@ -1862,7 +1866,7 @@ class DocumentAgent extends Agent {
       }
     });
 
-    return { markdown, blocks, instructions, presence, threads };
+    return { markdown, blocks, instructions, instruction_sources, presence, threads };
   }
 
   /**

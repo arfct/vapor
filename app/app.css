@@ -941,13 +941,21 @@ body {
   box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
 }
 
-/* The one-paragraph comment editor: no prose styling, no outline. */
+/* The one-paragraph comment editor: no prose styling, no outline. Its root
+   also carries TipTap's `tiptap` class, so the body editor's rules above
+   (100px top padding, 1.15rem type, 65ch paragraphs) would apply — that was
+   the 300px-tall comment box (#73). Everything sizing-related is reset here;
+   this block must stay below the `.tiptap` rules to win the cascade. */
 .comment-editor {
   outline: none;
   min-height: 1.5em;
+  padding: 0;
+  font-size: inherit;
+  line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .comment-editor p {
   margin: 0;
+  max-width: none;
 }

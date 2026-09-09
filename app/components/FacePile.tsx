@@ -187,12 +187,15 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
                   +{overflow}
                 </span>
               )}
+              {/* Each wrapper is a flex box, not an inline span: an inline-flex
+                  face on a span's text baseline gets descender space under it
+                  and rides high in the pill. */}
               {shown.map((person, i) => (
-                <span key={person.key} className={i === 0 && overflow === 0 ? "" : "-ml-2"}>
+                <span key={person.key} className={`flex ${i === 0 && overflow === 0 ? "" : "-ml-2"}`}>
                   <Face user={person.user} isAgent={person.isAgent} away={person.status !== "online"} className="h-7 w-7" ring />
                 </span>
               ))}
-              <span className={shown.length > 0 || overflow > 0 ? "ml-1.5" : ""} data-self-face>
+              <span className={`flex ${shown.length > 0 || overflow > 0 ? "ml-1.5" : ""}`} data-self-face>
                 <Face user={self} isAgent={false} away={false} className="h-7 w-7" ring />
               </span>
             </span>

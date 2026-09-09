@@ -17,13 +17,16 @@ import {
 import { consentPageHtml } from "../app/lib/oauth-pages";
 import { DEFAULT_CAPABILITIES } from "../app/shared/agent-protocol";
 import type { AgentCapability } from "../app/shared/agent-protocol";
-import type { AuthCode, OAuthClient, RefreshGrant } from "../agents/registry";
+import type { AuthCode, OAuthClient, RefreshGrant, TokenReplay } from "../agents/registry";
 
 export interface OAuthRegistry {
   registerClient(info: { name: string; redirectUris: string[] }): Promise<{ client: OAuthClient }>;
   getClient(clientId: string): Promise<{ client: OAuthClient | null }>;
   putCode(data: Omit<AuthCode, "exp">): Promise<{ code: string }>;
+  peekCode(code: string): Promise<{ data: AuthCode | null }>;
   takeCode(code: string): Promise<{ data: AuthCode | null }>;
+  putReplay(code: string, data: Omit<TokenReplay, "exp">): Promise<{ ok: true }>;
+  getReplay(code: string): Promise<{ data: TokenReplay | null }>;
   putRefresh(data: Omit<RefreshGrant, "exp">): Promise<{ token: string }>;
   rotateRefresh(
     oldToken: string,
@@ -50,7 +53,14 @@ async function sha256Base64Url(input: string): Promise<string> {
     .replace(/=+$/, "");
 }
 
-// https redirects only; localhost/127.0.0.1 excepted for native + dev clients
+/** Loopback hosts, as URL.hostname renders them (IPv6 keeps its brackets). */
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+function isLoopback(parsed: URL): boolean {
+  return parsed.protocol === "http:" && LOOPBACK_HOSTS.has(parsed.hostname);
+}
+
+// https redirects only; loopback (localhost, 127.0.0.1, [::1]) excepted for native + dev clients
 function validRedirectUri(uri: unknown): uri is string {
   if (typeof uri !== "string" || uri.length > 512) return false;
   let parsed: URL;
@@ -60,10 +70,33 @@ function validRedirectUri(uri: unknown): uri is string {
     return false;
   }
   if (parsed.protocol === "https:") return true;
-  return (
-    parsed.protocol === "http:" &&
-    (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1")
-  );
+  return isLoopback(parsed);
+}
+
+/**
+ * Whether a requested redirect_uri is covered by a registered one. Exact
+ * match, except that a loopback URI matches on any port: native clients
+ * bind an ephemeral port at request time, and RFC 8252 §7.3 requires the
+ * server to accept it (#79). A registered loopback URI with no port covers
+ * every port; scheme, host, path, and query must still agree.
+ */
+export function redirectUriMatches(registered: string, requested: string): boolean {
+  if (registered === requested) return true;
+  let a: URL;
+  let b: URL;
+  try {
+    a = new URL(registered);
+    b = new URL(requested);
+  } catch {
+    return false;
+  }
+  if (!isLoopback(a) || !isLoopback(b)) return false;
+  return a.hostname === b.hostname && a.pathname === b.pathname && a.search === b.search;
+}
+
+/** Whether the caller is a browser that should see an HTML page rather than an OAuth JSON error. */
+function wantsHtml(request: Request): boolean {
+  return (request.headers.get("Accept") ?? "").includes("text/html");
 }
 
 function oauthError(status: number, error: string, description: string): Response {
@@ -198,17 +231,23 @@ async function handleAuthorize(request: Request, deps: OAuthDeps): Promise<Respo
 
   const clientId = params.get("client_id") ?? "";
   const redirectUri = params.get("redirect_uri") ?? "";
+  // Neither of these may redirect (open redirector), so the answer is a
+  // page for a browser and an OAuth error for anything else — and in both
+  // cases it says what was received and what would have been accepted, so
+  // a client can see which side of the mismatch it is on (#80).
+  const refuse = (clientName: string, detail: string): Response =>
+    wantsHtml(request)
+      ? consentResponse({ clientName, email: null, params: {}, error: detail })
+      : oauthError(400, "invalid_request", detail);
   const client = await resolveClient(clientId, deps);
   if (!client) {
-    return consentResponse({ clientName: "unknown", email: null, params: {}, error: "unknown client_id" });
+    return refuse("unknown", `unknown client_id: ${clientId || "(none)"}`);
   }
-  if (!client.redirectUris.includes(redirectUri)) {
-    return consentResponse({
-      clientName: client.name,
-      email: null,
-      params: {},
-      error: "redirect_uri is not registered for this client",
-    });
+  if (!client.redirectUris.some((registered) => redirectUriMatches(registered, redirectUri))) {
+    return refuse(
+      client.name,
+      `redirect_uri ${redirectUri || "(none)"} is not registered for this client; registered: ${client.redirectUris.join(", ")} (loopback URIs match on any port)`,
+    );
   }
 
   const state = params.get("state");
@@ -301,15 +340,51 @@ async function handleToken(request: Request, deps: OAuthDeps): Promise<Response>
   if (grantType === "authorization_code") {
     const code = params.get("code") ?? "";
     const verifier = params.get("code_verifier") ?? "";
-    const { data } = code ? await deps.registry.takeCode(code) : { data: null };
+    if (!code) return oauthError(400, "invalid_grant", "code is required");
+    const verifierHash = verifier ? await sha256Base64Url(verifier) : "";
+
+    // A retry after a dropped response: the same code and verifier from the
+    // same client get the same tokens for a minute (#78). Anyone else
+    // presenting a spent code is refused like before.
+    const replayFor = async (): Promise<Response | null> => {
+      const { data: replay } = await deps.registry.getReplay(code);
+      if (!replay) return null;
+      if (replay.clientId !== params.get("client_id") || verifierHash !== replay.codeChallenge) {
+        return oauthError(400, "invalid_grant", "unknown, expired, or already-used code");
+      }
+      return new Response(replay.body, { headers: { "Content-Type": "application/json" } });
+    };
+    const replayed = await replayFor();
+    if (replayed) return replayed;
+
+    // Validate against the stored code *before* spending it, so a client's
+    // slip (wrong client_id, redirect_uri, or verifier) leaves the code
+    // usable for a corrected retry rather than sending the person back
+    // through the browser (#78).
+    const { data } = await deps.registry.peekCode(code);
     if (!data) return oauthError(400, "invalid_grant", "unknown, expired, or already-used code");
-    if (data.clientId !== params.get("client_id") || data.redirectUri !== params.get("redirect_uri")) {
-      return oauthError(400, "invalid_grant", "code is bound to a different client or redirect_uri");
+    if (data.clientId !== params.get("client_id")) {
+      return oauthError(400, "invalid_grant", "code is bound to a different client");
     }
-    if (!verifier || (await sha256Base64Url(verifier)) !== data.codeChallenge) {
+    const redirectUri = params.get("redirect_uri");
+    if (redirectUri !== null && !redirectUriMatches(data.redirectUri, redirectUri)) {
+      return oauthError(400, "invalid_grant", "code is bound to a different redirect_uri");
+    }
+    if (!verifier || verifierHash !== data.codeChallenge) {
       return oauthError(400, "invalid_grant", "PKCE verification failed");
     }
-    return mintTokens(deps, data);
+
+    // Spend it. Losing the race to a concurrent exchange of the same code
+    // means the other request is minting; hand back its response if it has
+    // landed, else the usual refusal.
+    const taken = await deps.registry.takeCode(code);
+    if (!taken.data) {
+      return (await replayFor()) ?? oauthError(400, "invalid_grant", "unknown, expired, or already-used code");
+    }
+    const response = await mintTokens(deps, taken.data);
+    const body = await response.clone().text();
+    await deps.registry.putReplay(code, { clientId: taken.data.clientId, codeChallenge: taken.data.codeChallenge, body });
+    return response;
   }
 
   if (grantType === "refresh_token") {

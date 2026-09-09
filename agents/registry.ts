@@ -62,6 +62,18 @@ export interface AuthCode {
   exp: number;
 }
 
+/**
+ * A token response remembered for a minute after a successful code exchange
+ * (#78). A client that lost the response to a dropped connection retries with
+ * the same code and verifier and gets the same tokens instead of a burned code.
+ */
+export interface TokenReplay {
+  clientId: string;
+  codeChallenge: string;
+  body: string;
+  exp: number;
+}
+
 /** A stored wake target (docs/plans/2026-09-06-agent-wake-plan.md). The secret is sealed; see wake-crypto. */
 interface WakeRecord {
   kind: WakeKind;
@@ -91,6 +103,8 @@ export interface RefreshGrant {
 }
 
 const CODE_TTL_MS = 10 * 60 * 1000;
+/** How long a spent code's token response can be replayed to a retrying client (#78). */
+const REPLAY_TTL_MS = 60 * 1000;
 const REFRESH_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
 async function sha256Hex(input: string): Promise<string> {
@@ -426,11 +440,33 @@ class Registry extends Agent {
     return { code };
   }
 
+  /** Reads a code without consuming it, so the exchange can be validated before the code is spent (#78). */
+  async peekCode(code: string): Promise<{ data: AuthCode | null }> {
+    const data = this.kvGet<AuthCode>(`code:${code}`);
+    if (!data || data.exp < Date.now()) return { data: null };
+    return { data };
+  }
+
   /** Single use: the code is deleted whether or not it is still valid. */
   async takeCode(code: string): Promise<{ data: AuthCode | null }> {
     const data = this.kvGet<AuthCode>(`code:${code}`);
     this.kvDelete(`code:${code}`);
     if (!data || data.exp < Date.now()) return { data: null };
+    return { data };
+  }
+
+  /** Remembers a successful exchange's response for REPLAY_TTL_MS, keyed by the (spent) code. */
+  async putReplay(code: string, data: Omit<TokenReplay, "exp">): Promise<{ ok: true }> {
+    this.kvPut(`replay:${code}`, { ...data, exp: Date.now() + REPLAY_TTL_MS } satisfies TokenReplay);
+    return { ok: true };
+  }
+
+  async getReplay(code: string): Promise<{ data: TokenReplay | null }> {
+    const data = this.kvGet<TokenReplay>(`replay:${code}`);
+    if (!data || data.exp < Date.now()) {
+      if (data) this.kvDelete(`replay:${code}`);
+      return { data: null };
+    }
     return { data };
   }
 

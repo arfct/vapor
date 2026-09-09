@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import { handleOAuth, type OAuthRegistry } from "../../../workers/oauth";
+import { handleOAuth, redirectUriMatches, type OAuthRegistry } from "../../../workers/oauth";
 import { mintSessionToken, verifySessionToken, SESSION_COOKIE } from "../../../app/lib/auth.server";
-import type { AuthCode, OAuthClient, RefreshGrant } from "../../../agents/registry";
+import type { AuthCode, OAuthClient, RefreshGrant, TokenReplay } from "../../../agents/registry";
 
 const SECRET = "oauth-test-secret";
 
@@ -10,6 +10,7 @@ function fakeRegistry(): OAuthRegistry & { codes: Map<string, AuthCode> } {
   const clients = new Map<string, OAuthClient>();
   const codes = new Map<string, AuthCode>();
   const refresh = new Map<string, RefreshGrant>();
+  const replays = new Map<string, TokenReplay>();
   let n = 0;
   return {
     codes,
@@ -31,10 +32,20 @@ function fakeRegistry(): OAuthRegistry & { codes: Map<string, AuthCode> } {
       codes.set(code, { ...data, exp: Date.now() + 60_000 });
       return { code };
     },
+    async peekCode(code) {
+      return { data: codes.get(code) ?? null };
+    },
     async takeCode(code) {
       const data = codes.get(code) ?? null;
       codes.delete(code);
       return { data };
+    },
+    async putReplay(code, data) {
+      replays.set(code, { ...data, exp: Date.now() + 60_000 });
+      return { ok: true };
+    },
+    async getReplay(code) {
+      return { data: replays.get(code) ?? null };
     },
     async putRefresh(data) {
       const token = `refresh-${++n}`;
@@ -220,21 +231,16 @@ describe("oauth authorization server", () => {
     expect(replay?.status).toBe(400);
   });
 
-  it("wrong PKCE verifier and code reuse both fail", async () => {
-    const registry = fakeRegistry();
-    const clientId = await registeredClient(registry);
-    const { verifier, challenge } = await pkcePair();
-    const session = await mintSessionToken(
-      { principal: "email:a@x.com", email: "a@x.com" },
-      SECRET,
-    );
+  /** Approves a grant for `clientId` at `redirect` and returns the code. */
+  async function approvedCode(registry: OAuthRegistry, clientId: string, challenge: string, redirect = REDIRECT) {
+    const session = await mintSessionToken({ principal: "email:a@x.com", email: "a@x.com" }, SECRET);
     const approve = await handleOAuth(
       new Request("https://vapor.fyi/oauth/authorize", {
         method: "POST",
         headers: { Cookie: `${SESSION_COOKIE}=${session}` },
         body: new URLSearchParams({
           client_id: clientId,
-          redirect_uri: REDIRECT,
+          redirect_uri: redirect,
           response_type: "code",
           code_challenge: challenge,
           code_challenge_method: "S256",
@@ -243,38 +249,112 @@ describe("oauth authorization server", () => {
       }),
       deps(registry),
     );
-    const code = new URL(approve?.headers.get("Location") ?? "").searchParams.get("code") ?? "";
+    return new URL(approve?.headers.get("Location") ?? "").searchParams.get("code") ?? "";
+  }
 
-    const wrongVerifier = await handleOAuth(
+  function exchange(registry: OAuthRegistry, fields: Record<string, string>) {
+    return handleOAuth(
       new Request("https://vapor.fyi/oauth/token", {
         method: "POST",
-        body: new URLSearchParams({
-          grant_type: "authorization_code",
-          code,
-          code_verifier: "w".repeat(43),
-          client_id: clientId,
-          redirect_uri: REDIRECT,
-        }).toString(),
+        body: new URLSearchParams({ grant_type: "authorization_code", ...fields }).toString(),
       }),
       deps(registry),
     );
+  }
+
+  it("a wrong verifier, client, or redirect_uri is refused without spending the code (#78)", async () => {
+    const registry = fakeRegistry();
+    const clientId = await registeredClient(registry);
+    const { verifier, challenge } = await pkcePair();
+    const code = await approvedCode(registry, clientId, challenge);
+
+    const wrongVerifier = await exchange(registry, { code, code_verifier: "w".repeat(43), client_id: clientId, redirect_uri: REDIRECT });
     expect(wrongVerifier?.status).toBe(400);
+    expect(((await wrongVerifier?.json()) as { error_description: string }).error_description).toBe("PKCE verification failed");
+    const wrongClient = await exchange(registry, { code, code_verifier: verifier, client_id: "someone-else", redirect_uri: REDIRECT });
+    expect(wrongClient?.status).toBe(400);
+    const wrongRedirect = await exchange(registry, { code, code_verifier: verifier, client_id: clientId, redirect_uri: "https://evil.example/cb" });
+    expect(wrongRedirect?.status).toBe(400);
 
-    // the code was consumed by the failed attempt (single use)
-    const reuse = await handleOAuth(
-      new Request("https://vapor.fyi/oauth/token", {
+    // The code is still there, so the corrected retry succeeds.
+    expect(registry.codes.has(code)).toBe(true);
+    const ok = await exchange(registry, { code, code_verifier: verifier, client_id: clientId, redirect_uri: REDIRECT });
+    expect(ok?.status).toBe(200);
+    expect(registry.codes.has(code)).toBe(false);
+  });
+
+  it("a retry of a spent code with the same verifier replays the same tokens; anyone else is refused (#78)", async () => {
+    const registry = fakeRegistry();
+    const clientId = await registeredClient(registry);
+    const { verifier, challenge } = await pkcePair();
+    const code = await approvedCode(registry, clientId, challenge);
+
+    const first = await exchange(registry, { code, code_verifier: verifier, client_id: clientId, redirect_uri: REDIRECT });
+    const firstBody = (await first?.json()) as { access_token: string; refresh_token: string };
+    // The response was lost on the wire; the client sends the identical request again.
+    const retry = await exchange(registry, { code, code_verifier: verifier, client_id: clientId, redirect_uri: REDIRECT });
+    expect(retry?.status).toBe(200);
+    expect(await retry?.json()).toEqual(firstBody);
+
+    const otherVerifier = await exchange(registry, { code, code_verifier: "w".repeat(43), client_id: clientId, redirect_uri: REDIRECT });
+    expect(otherVerifier?.status).toBe(400);
+    const otherClient = await exchange(registry, { code, code_verifier: verifier, client_id: "someone-else", redirect_uri: REDIRECT });
+    expect(otherClient?.status).toBe(400);
+  });
+
+  it("loopback redirect URIs match on any port, non-loopback ones exactly (#79)", async () => {
+    expect(redirectUriMatches("http://localhost/callback", "http://localhost:58514/callback")).toBe(true);
+    expect(redirectUriMatches("http://localhost:1234/callback", "http://localhost:58514/callback")).toBe(true);
+    expect(redirectUriMatches("http://127.0.0.1/callback", "http://127.0.0.1:9000/callback")).toBe(true);
+    expect(redirectUriMatches("http://[::1]/callback", "http://[::1]:9000/callback")).toBe(true);
+    expect(redirectUriMatches("http://localhost/callback", "http://127.0.0.1:58514/callback")).toBe(false);
+    expect(redirectUriMatches("http://localhost/callback", "http://localhost:58514/other")).toBe(false);
+    expect(redirectUriMatches("https://claude.ai/cb", "https://claude.ai:8443/cb")).toBe(false);
+    expect(redirectUriMatches("https://claude.ai/cb", "https://claude.ai/cb")).toBe(true);
+    expect(redirectUriMatches("http://localhost/cb", "not a url")).toBe(false);
+  });
+
+  it("a client registered with an ephemeral loopback port authorizes and exchanges on a new port (#79)", async () => {
+    const registry = fakeRegistry();
+    const reg = await handleOAuth(
+      new Request("https://vapor.fyi/oauth/register", {
         method: "POST",
-        body: new URLSearchParams({
-          grant_type: "authorization_code",
-          code,
-          code_verifier: verifier,
-          client_id: clientId,
-          redirect_uri: REDIRECT,
-        }).toString(),
+        body: JSON.stringify({ client_name: "cli", redirect_uris: ["http://localhost:41000/callback", "http://[::1]:41000/callback"] }),
       }),
       deps(registry),
     );
-    expect(reuse?.status).toBe(400);
+    const { client_id: clientId } = (await reg?.json()) as { client_id: string };
+    const { verifier, challenge } = await pkcePair();
+    const later = "http://localhost:58514/callback";
+    const code = await approvedCode(registry, clientId, challenge, later);
+    expect(code).not.toBe("");
+    const ok = await exchange(registry, { code, code_verifier: verifier, client_id: clientId, redirect_uri: later });
+    expect(ok?.status).toBe(200);
+  });
+
+  it("an unregistered redirect_uri names both sides: JSON for clients, the page for browsers (#80)", async () => {
+    const registry = fakeRegistry();
+    const clientId = await registeredClient(registry);
+    const query = new URLSearchParams({ client_id: clientId, redirect_uri: "https://evil.example/cb", response_type: "code" });
+
+    const asClient = await handleOAuth(new Request(`https://vapor.fyi/oauth/authorize?${query}`), deps(registry));
+    expect(asClient?.status).toBe(400);
+    expect(asClient?.headers.get("Content-Type")).toContain("application/json");
+    const body = (await asClient?.json()) as { error: string; error_description: string };
+    expect(body.error).toBe("invalid_request");
+    expect(body.error_description).toContain("https://evil.example/cb");
+    expect(body.error_description).toContain(REDIRECT);
+
+    const asBrowser = await handleOAuth(
+      new Request(`https://vapor.fyi/oauth/authorize?${query}`, { headers: { Accept: "text/html,*/*" } }),
+      deps(registry),
+    );
+    expect(asBrowser?.status).toBe(400);
+    expect(asBrowser?.headers.get("Content-Type")).toContain("text/html");
+    const html = (await asBrowser?.text()) ?? "";
+    expect(html).toContain("https://evil.example/cb");
+    expect(html).toContain(REDIRECT);
+    expect(html).not.toContain("<script>alert");
   });
 
   it("deny redirects with access_denied; default caps are suggest+comment", async () => {

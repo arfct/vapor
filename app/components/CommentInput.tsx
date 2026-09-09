@@ -30,6 +30,11 @@ export default function CommentInput() {
     const highlightType = editor.schema.marks.criticHighlight;
     if (!commentType || !highlightType) return;
 
+    // Before the marks land: the editor update they cause runs the thread
+    // reconcile synchronously, and only the client that knows it authored
+    // the comment creates the thread on the spot (#81).
+    onCommentInserted(comment);
+
     editor
       .chain()
       .focus()
@@ -48,7 +53,6 @@ export default function CommentInput() {
       })
       .run();
 
-    onCommentInserted(comment);
     onActiveChange(false);
   }, [editor, selection, onCommentInserted, onActiveChange]);
 

@@ -42,6 +42,8 @@ export function useThreads({
   const reconcilingRef = useRef(false);
   /** Delayed fallback creations for marks whose author hasn't written a thread yet. */
   const fallbackTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  /** The latest reconcile, for the fallback timers to call once they have written a thread. */
+  const reconcileRef = useRef<() => void>(() => {});
 
   // Reconcile: scan document marks, auto-create Y.Map entries for new comments,
   // then match all threads to positions and update state
@@ -106,6 +108,10 @@ export function useThreads({
               } satisfies ThreadData),
             );
             reconcilingRef.current = false;
+            // The map observer skipped this write (the guard above), so
+            // nothing else would show the new thread until the next edit
+            // or a reload (#81). Reconcile now.
+            reconcileRef.current();
           }, 3000);
           fallbackTimersRef.current.set(id, timer);
         }
@@ -164,6 +170,10 @@ export function useThreads({
       timers.clear();
     };
   }, []);
+
+  useEffect(() => {
+    reconcileRef.current = reconcile;
+  }, [reconcile]);
 
   // Observe Y.Map changes (from remote clients)
   useEffect(() => {

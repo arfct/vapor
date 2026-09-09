@@ -605,6 +605,12 @@ body {
   position: absolute;
   top: -1.4em;
   left: -1px;
+  /* One row: avatar (or animal, or agent badge) then the name. Tailwind's
+     preflight makes <img> block-level, which used to push the name onto a
+     second line (#89); a flex row keeps them side by side and centred. */
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
   font-size: 0.75rem;
   font-family: var(--font-sans);
   white-space: nowrap;
@@ -675,16 +681,15 @@ body {
 }
 
 .tiptap .collaboration-cursor__animal {
-  margin-right: 0.3em;
   font-size: 0.9em;
+  line-height: 1;
 }
 
 .tiptap .collaboration-cursor__avatar {
   width: 1em;
   height: 1em;
+  flex: none;
   border-radius: 50%;
-  margin-right: 0.3em;
-  vertical-align: -0.15em;
   object-fit: cover;
 }
 
@@ -708,8 +713,7 @@ body {
   display: inline-block;
   width: 0.9em;
   height: 0.9em;
-  margin-right: 0.3em;
-  vertical-align: -0.12em;
+  flex: none;
 }
 
 .tiptap .collaboration-cursor__badge svg {

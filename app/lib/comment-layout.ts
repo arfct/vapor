@@ -10,7 +10,9 @@ export interface LayoutItem {
  * to sit level with its anchor; cards that would overlap stack downward.
  * The active card is pinned exactly to its anchor, and cards above it give
  * way upward so it never has to move. Cards with no known anchor follow
- * the last anchored one. Returns each id's top.
+ * the last anchored one; when such a card is the active one it is pinned
+ * where the stack already put it, so selecting it never sends it to the
+ * top. Returns each id's top.
  */
 export function layoutComments(
   items: LayoutItem[],
@@ -46,6 +48,11 @@ export function layoutComments(
   if (active === -1) {
     stackDown(0);
   } else {
+    if (!Number.isFinite(items.find((item) => item.id === activeId)?.anchor)) {
+      // No anchor of its own: its natural place in the stack is the anchor.
+      stackDown(0);
+      sorted[active].anchor = tops[active];
+    }
     tops[active] = sorted[active].anchor;
     for (let i = active - 1; i >= 0; i--) {
       const ceiling = tops[i + 1] - gap - sorted[i].height;

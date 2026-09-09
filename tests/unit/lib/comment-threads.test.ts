@@ -110,4 +110,37 @@ describe("threadIdForComment (duplicate-thread regression)", () => {
     // Different comments get different keys.
     expect(threadIdForComment({ commentText: "nice", highlightText: "fled" })).not.toBe(a);
   });
+
+  describe("findTextPosition", () => {
+    it("finds a quoted passage inside a block and maps it to a document position", async () => {
+      const { parseMarkdown } = await import("~/shared/rich-markdown");
+      const { findTextPosition } = await import("~/lib/comment-threads");
+      const parsed = parseMarkdown("# Title\n\nTo Nicholas — from **Clarence**, set up for Jon Wiley.\n\nAnother paragraph.");
+      if (!parsed.ok) throw new Error(parsed.message);
+      const doc = parsed.doc;
+
+      const pos = findTextPosition(doc, "Jon Wiley");
+      expect(pos).not.toBeNull();
+      expect(doc.textBetween(pos!, pos! + "Jon Wiley".length)).toBe("Jon Wiley");
+
+      // Across an inline mark boundary the offset still lands on the right characters.
+      const across = findTextPosition(doc, "from Clarence, set");
+      expect(across).not.toBeNull();
+      expect(doc.textBetween(across!, across! + "from Clarence, set".length)).toBe("from Clarence, set");
+
+      // The first block wins when a passage appears more than once.
+      const another = findTextPosition(doc, "Another");
+      expect(doc.textBetween(another!, another! + 7)).toBe("Another");
+      expect(another!).toBeGreaterThan(pos!);
+    });
+
+    it("is null for an absent passage or an empty one", async () => {
+      const { parseMarkdown } = await import("~/shared/rich-markdown");
+      const { findTextPosition } = await import("~/lib/comment-threads");
+      const parsed = parseMarkdown("Hello there.");
+      if (!parsed.ok) throw new Error(parsed.message);
+      expect(findTextPosition(parsed.doc, "Goodbye")).toBeNull();
+      expect(findTextPosition(parsed.doc, "")).toBeNull();
+    });
+  });
 });

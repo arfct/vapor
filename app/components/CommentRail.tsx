@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { getMarkRange } from "@tiptap/core";
 import { useDocument } from "~/lib/DocumentContext";
 import { layoutComments, type LayoutItem } from "~/lib/comment-layout";
+import { findTextPosition } from "~/lib/comment-threads";
 import ThreadPanel from "~/components/ThreadPanel";
 import CommentInput from "~/components/CommentInput";
 
@@ -72,9 +73,16 @@ export default function CommentRail({ originRef }: { originRef: RefObject<HTMLEl
     };
     // A thread's position is its (hidden) comment text; the card should
     // line up with the highlighted phrase just before it when there is one.
+    // A thread with no marks in the text (an import whose passage changed,
+    // an agent comment from before they anchored) still knows what it
+    // quoted: sit level with the first place that passage occurs, rather
+    // than leaving the card anchorless and headed for the top of the rail.
     const highlight = editor.schema.marks.criticHighlight;
     const anchorPos = (thread: (typeof threads)[number]): number | undefined => {
-      if (thread.position === undefined) return undefined;
+      if (thread.position === undefined) {
+        const quoted = thread.highlightText ? findTextPosition(editor.state.doc, thread.highlightText) : null;
+        return quoted ?? undefined;
+      }
       if (highlight && thread.highlightText && thread.position > 0) {
         const $pos = editor.state.doc.resolve(Math.min(thread.position - 1, editor.state.doc.content.size));
         const range = getMarkRange($pos, highlight);

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react";
 import { stripMentionIds } from "~/shared/agent-protocol";
 import type { ThreadData } from "~/shared/types";
 import CommentEditor from "~/components/CommentEditor";
@@ -78,6 +78,9 @@ function CommentRow({
   );
 }
 
+/** Tallest a collapsed card gets before its text is clipped; selecting it shows everything. */
+export const THREAD_PREVIEW_MAX_PX = 480;
+
 interface ThreadPanelProps {
   thread: ThreadData & { position?: number };
   active: boolean;
@@ -101,6 +104,14 @@ export default function ThreadPanel({
   const [menuOpen, setMenuOpen] = useState(false);
   const [showReplyInput, setShowReplyInput] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  // Whether the collapsed preview is actually cut off, so the fade only
+  // shows on cards with more to see.
+  const [clipped, setClipped] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = previewRef.current;
+    setClipped(!active && !!el && el.scrollHeight > el.clientHeight + 1);
+  }, [active, thread.commentText, thread.replies]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -179,25 +190,35 @@ export default function ThreadPanel({
         </div>
       </div>
 
-      <CommentRow
-        author={thread.author}
-        timestamp={thread.createdAt}
-        text={stripMentionIds(thread.commentText)}
-        connectTo={thread.replies[0]?.author.color}
-        showMeta={active}
-        reserveActions={active || menuOpen}
-      />
-
-      {thread.replies.map((reply, i) => (
+      {/* A collapsed card is a preview: long comments and reply chains are
+          clipped at THREAD_PREVIEW_MAX_PX with a fade, and open to full
+          height when selected. */}
+      <div
+        ref={previewRef}
+        data-preview={active ? undefined : "true"}
+        className={active ? undefined : `overflow-hidden ${clipped ? "thread-preview" : ""}`}
+        style={active ? undefined : { maxHeight: THREAD_PREVIEW_MAX_PX }}
+      >
         <CommentRow
-          key={reply.id}
-          author={reply.author}
-          timestamp={reply.createdAt}
-          text={stripMentionIds(reply.text)}
-          connectTo={thread.replies[i + 1]?.author.color}
+          author={thread.author}
+          timestamp={thread.createdAt}
+          text={stripMentionIds(thread.commentText)}
+          connectTo={thread.replies[0]?.author.color}
           showMeta={active}
+          reserveActions={active || menuOpen}
         />
-      ))}
+
+        {thread.replies.map((reply, i) => (
+          <CommentRow
+            key={reply.id}
+            author={reply.author}
+            timestamp={reply.createdAt}
+            text={stripMentionIds(reply.text)}
+            connectTo={thread.replies[i + 1]?.author.color}
+            showMeta={active}
+          />
+        ))}
+      </div>
 
       {/* Reply link, shown only while the thread is selected; input appears on click */}
       {active && (

@@ -103,6 +103,8 @@ Document content with {==highlighted passage==}{>>This needs a citation<<} goes 
 
 Threads are matched to comment marks in the document by comparing the `comment` field in the frontmatter with the comment text in the body. When a highlight is present, the `highlight` field records which passage the comment refers to.
 
+An agent's `comment` over MCP lays down the same marks the browser does — a `criticHighlight` over the quoted span (when `quote` is given) and the comment text as a hidden `criticComment` run right after it, or a bare marker at the end of the block without a quote — so its thread is placed and exported exactly like a person's. `resolve_thread` and `delete_comment` lift those marks again, as the browser's Resolve and Delete do; `edit_comment` rewrites the hidden run along with the thread's text, since the text is the match key.
+
 ### Thread fields
 
 | Field | Required | Description |

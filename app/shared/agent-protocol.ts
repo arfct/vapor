@@ -71,6 +71,9 @@ export type AgentErrorCode =
   | "rate_limited"
   | "invalid_name"
   | "thread_not_found"
+  | "reply_not_found"
+  /** Editing or deleting a comment someone else wrote. */
+  | "not_author"
   /** Markdown the editor's mark model can't represent (CriticMarkup substitution). */
   | "unsupported_markup"
   /** Events polyfill: a referenced event type or subscription doesn't exist (sketch -32011). */

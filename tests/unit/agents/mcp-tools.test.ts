@@ -139,6 +139,32 @@ describe("mcp tool table", () => {
     expect(stub.agentReply).toHaveBeenCalledWith(ID, { threadId: "t1", text: "because" });
   });
 
+  it("maps resolve_thread, edit_comment, and delete_comment onto their RPCs", async () => {
+    const stub = {
+      agentResolveThread: vi.fn(async () => ({ ok: true, resolved: false })),
+      agentEditComment: vi.fn(async () => ({ ok: true })),
+      agentDeleteComment: vi.fn(async () => ({ ok: true })),
+    };
+    const deps = { getStub: async () => stub as never, identity: ID };
+    const run = (name: string, args: Record<string, unknown>) =>
+      TOOLS.find((t) => t.name === name)!.run(deps, { doc_id: "abcd1234", ...args });
+
+    expect(await run("resolve_thread", { thread_id: "t1", resolved: false })).toEqual({ ok: true, resolved: false });
+    expect(stub.agentResolveThread).toHaveBeenCalledWith(ID, { threadId: "t1", resolved: false });
+    await run("resolve_thread", { thread_id: "t1" });
+    expect(stub.agentResolveThread).toHaveBeenLastCalledWith(ID, { threadId: "t1", resolved: undefined });
+
+    await run("edit_comment", { thread_id: "t1", reply_id: "r1", text: "fixed" });
+    expect(stub.agentEditComment).toHaveBeenCalledWith(ID, { threadId: "t1", replyId: "r1", text: "fixed" });
+    await run("edit_comment", { thread_id: "t1", text: "fixed" });
+    expect(stub.agentEditComment).toHaveBeenLastCalledWith(ID, { threadId: "t1", replyId: undefined, text: "fixed" });
+
+    await run("delete_comment", { thread_id: "t1", reply_id: "r1" });
+    expect(stub.agentDeleteComment).toHaveBeenCalledWith(ID, { threadId: "t1", replyId: "r1" });
+    await run("delete_comment", { thread_id: "t1" });
+    expect(stub.agentDeleteComment).toHaveBeenLastCalledWith(ID, { threadId: "t1", replyId: undefined });
+  });
+
   it("maps join/leave onto presence RPCs", async () => {
     const stub = {
       agentJoin: vi.fn(async () => ({ ok: true })),

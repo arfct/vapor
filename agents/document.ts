@@ -71,7 +71,8 @@ import {
   typeForFilename,
   type AttachmentError,
 } from "../app/shared/attachment-policy";
-import type { ThreadData, ThreadReply } from "../app/shared/types";
+import type { ThreadData, ThreadReply, UserInfo } from "../app/shared/types";
+import { threadIdForComment } from "../app/shared/thread-id";
 import type { WakeEvent } from "../app/shared/wake-policy";
 import { configuredOrigin } from "../app/shared/site";
 import type Registry from "./registry";
@@ -173,6 +174,79 @@ function findInBlock(
     if (pos !== -1) return { ytext, pos };
   }
   return null;
+}
+
+/**
+ * A comment's inline footprint in a block: the hidden `criticComment` run
+ * carrying the comment text and, when the comment was made on a selection,
+ * the `criticHighlight` run that immediately precedes it — the same two
+ * marks the UI's CommentInput lays down, and what the client's
+ * scanDocumentComments reads back to place the thread.
+ */
+interface CommentRun {
+  ytext: Y.XmlText;
+  pos: number;
+  length: number;
+  highlight: { pos: number; length: number } | null;
+}
+
+type DeltaOp = { insert: string; attributes?: Record<string, unknown> };
+
+function findCommentRun(el: Y.XmlElement, commentText: string): CommentRun | null {
+  for (const ytext of textNodesUnder(el)) {
+    const ops = ytext.toDelta() as DeltaOp[];
+    let offset = 0;
+    let run: { pos: number; text: string; highlight: CommentRun["highlight"] } | null = null;
+    let highlight: CommentRun["highlight"] = null;
+    const done = () =>
+      run && run.text === commentText
+        ? { ytext, pos: run.pos, length: run.text.length, highlight: run.highlight }
+        : null;
+    for (const op of ops) {
+      const len = op.insert.length;
+      if (op.attributes?.criticComment) {
+        // Consecutive comment ops (the text may carry other marks) are one run.
+        if (run) run.text += op.insert;
+        else run = { pos: offset, text: op.insert, highlight: highlight && highlight.pos + highlight.length === offset ? highlight : null };
+      } else {
+        const found = done();
+        if (found) return found;
+        run = null;
+        if (op.attributes?.criticHighlight) {
+          if (highlight && highlight.pos + highlight.length === offset) highlight.length += len;
+          else highlight = { pos: offset, length: len };
+        } else {
+          highlight = null;
+        }
+      }
+      offset += len;
+    }
+    const found = done();
+    if (found) return found;
+  }
+  return null;
+}
+
+/** The comment run for a thread anywhere in the document, by its comment text. */
+function findCommentRunInDoc(doc: Y.Doc, commentText: string): CommentRun | null {
+  const frag = doc.getXmlFragment("default");
+  for (let i = 0; i < frag.length; i++) {
+    const el = frag.get(i);
+    if (!(el instanceof Y.XmlElement)) continue;
+    const run = findCommentRun(el, commentText);
+    if (run) return run;
+  }
+  return null;
+}
+
+/**
+ * Deletes a comment's hidden text and lifts its highlight, keeping the
+ * highlighted words — what useThreads.removeInlineComment does on resolve
+ * and delete. Call inside a transaction.
+ */
+function removeCommentRun(run: CommentRun): void {
+  run.ytext.delete(run.pos, run.length);
+  if (run.highlight) run.ytext.format(run.highlight.pos, run.highlight.length, { criticHighlight: null });
 }
 
 function sleep(ms: number): Promise<void> {
@@ -2227,6 +2301,53 @@ class DocumentAgent extends Agent {
    * matching how the client's own comment threads are shaped
    * (app/lib/comment-threads.ts / useThreads.ts). Requires `comment`.
    */
+  /**
+   * How an agent signs its comments and replies. `id` is the roster name,
+   * which is public already (it is the mention token), never the principal;
+   * it is what edit_comment and delete_comment check ownership against.
+   */
+  private agentAuthorInfo(entry: { name: string; label?: string | null; color: string }, identity: AgentIdentity): UserInfo {
+    const display = entry.label ?? entry.name;
+    return {
+      id: `agent:${entry.name}`,
+      name: display,
+      color: entry.color,
+      colorLight: entry.color,
+      animal: animalGlyphForLabel(display),
+      agentClient: identity.client,
+    };
+  }
+
+  /** Whether this agent wrote a comment or reply. Legacy agent authors carried no id; their name and client stand in. */
+  private isAgentAuthor(author: UserInfo | undefined, entry: { name: string; label?: string | null }): boolean {
+    if (!author) return false;
+    if (author.id) return author.id === `agent:${entry.name}`;
+    return author.agentClient !== undefined && author.name === (entry.label ?? entry.name);
+  }
+
+  /** A thread from the shared map, or the typed error every thread RPC returns for a missing or unreadable one. */
+  private loadThread(threadsMap: Y.Map<string>, threadId: string): { thread: ThreadData } | { error: AgentError } {
+    const raw = threadsMap.get(threadId);
+    if (!raw) return { error: { code: "thread_not_found", message: "thread not found" } };
+    // An unparseable thread is no more usable than a missing one — same
+    // typed error, rather than a throw through the RPC.
+    try {
+      const thread = JSON.parse(raw) as ThreadData;
+      if (!Array.isArray(thread?.replies)) return { error: { code: "thread_not_found", message: "thread is unreadable" } };
+      return { thread };
+    } catch {
+      return { error: { code: "thread_not_found", message: "thread is unreadable" } };
+    }
+  }
+
+  /**
+   * Opens a comment thread. With `quote` — an exact substring of the
+   * block's text — the comment is attached to that span the way a comment
+   * made in the browser is: a `criticHighlight` over the words and the
+   * comment text right after it as a hidden `criticComment` run, which is
+   * what every client places the thread by. Without a quote the marker sits
+   * at the end of the block. Requires `comment`.
+   */
   async agentComment(
     identity: AgentIdentity,
     args: { anchor: string; quote?: string; text: string },
@@ -2234,6 +2355,9 @@ class DocumentAgent extends Agent {
     const verified = await this.verifyIdentity(identity, "comment");
     if ("error" in verified) return verified;
 
+    if (typeof args.text !== "string" || args.text.trim().length === 0) {
+      return { error: { code: "invalid_params", message: "text must not be empty" } };
+    }
     const rateLimited = await this.checkRateLimit(identity.id, args.text.length);
     if (rateLimited) return rateLimited;
 
@@ -2242,24 +2366,179 @@ class DocumentAgent extends Agent {
     if ("error" in resolved) {
       return { error: { code: resolved.error, message: "Anchor not found", snippet: resolved.snippet } };
     }
+    const el = doc.getXmlFragment("default").get(resolved.index);
 
-    const { name, label, color } = verified.entry;
-    const id = crypto.randomUUID();
+    // Where the marks go: the quoted span, or the end of the block's text.
+    const quote = args.quote && args.quote.length > 0 ? args.quote : undefined;
+    let target: { ytext: Y.XmlText; pos: number } | null = null;
+    if (el instanceof Y.XmlElement) {
+      if (quote) {
+        target = findInBlock(el, quote);
+        if (!target) {
+          const snippet = textNodesUnder(el)
+            .map((t) => (t.toDelta() as DeltaOp[]).map((op) => op.insert).join(""))
+            .join("")
+            .slice(0, 200);
+          return { error: { code: "find_not_matched", message: "quote is not text in this block", snippet } };
+        }
+      } else {
+        const last = textNodesUnder(el).at(-1);
+        if (last) target = { ytext: last, pos: last.length };
+      }
+    }
+
+    const { name } = verified.entry;
+    const threadsMap = doc.getMap<string>("threads");
+    // The same deterministic id a client would mint for this mark, so a
+    // browser that scans the mark first converges on this key; a second
+    // thread with identical text gets a fresh id.
+    let id = threadIdForComment({ commentText: args.text, highlightText: quote });
+    if (threadsMap.has(id)) id = crypto.randomUUID();
     const thread: ThreadData = {
       id,
       commentText: args.text,
-      highlightText: args.quote,
-      author: { name: label ?? name, color, colorLight: color, animal: animalGlyphForLabel(label ?? name), agentClient: identity.client },
+      highlightText: quote,
+      author: this.agentAuthorInfo(verified.entry, identity),
       createdAt: Date.now(),
       resolved: false,
       replies: [],
     };
 
     doc.transact(() => {
-      doc.getMap<string>("threads").set(id, JSON.stringify(thread));
+      if (target) {
+        if (quote) target.ytext.format(target.pos, quote.length, { criticHighlight: { threadId: id } });
+        target.ytext.insert(target.pos + (quote?.length ?? 0), args.text, { criticComment: {} });
+      }
+      threadsMap.set(id, JSON.stringify(thread));
     }, agentOrigin(name));
 
     return { threadId: id };
+  }
+
+  /**
+   * Resolves a thread (or reopens it with `resolved: false`). Resolving lifts
+   * the highlight and marker from the text, as the browser does; reopening
+   * leaves the text alone. Anyone in the document may resolve, as in the
+   * UI. Requires `comment`.
+   */
+  async agentResolveThread(
+    identity: AgentIdentity,
+    args: { threadId: string; resolved?: boolean },
+  ): Promise<{ ok: true; resolved: boolean } | { error: AgentError }> {
+    const verified = await this.verifyIdentity(identity, "comment");
+    if ("error" in verified) return verified;
+
+    const { doc } = this.ensureInitialised();
+    const threadsMap = doc.getMap<string>("threads");
+    const loaded = this.loadThread(threadsMap, args.threadId);
+    if ("error" in loaded) return loaded;
+    const { thread } = loaded;
+    const resolved = args.resolved ?? true;
+
+    doc.transact(() => {
+      if (resolved && !thread.resolved) {
+        const run = findCommentRunInDoc(doc, thread.commentText);
+        if (run) removeCommentRun(run);
+      }
+      thread.resolved = resolved;
+      threadsMap.set(args.threadId, JSON.stringify(thread));
+    }, agentOrigin(verified.entry.name));
+
+    return { ok: true, resolved };
+  }
+
+  /**
+   * Rewrites the text of a comment or reply this agent wrote. The opening
+   * comment's hidden run in the text is rewritten too, since that is what
+   * clients match the thread by. Requires `comment`.
+   */
+  async agentEditComment(
+    identity: AgentIdentity,
+    args: { threadId: string; replyId?: string; text: string },
+  ): Promise<{ ok: true } | { error: AgentError }> {
+    const verified = await this.verifyIdentity(identity, "comment");
+    if ("error" in verified) return verified;
+
+    if (typeof args.text !== "string" || args.text.trim().length === 0) {
+      return { error: { code: "invalid_params", message: "text must not be empty" } };
+    }
+    const rateLimited = await this.checkRateLimit(identity.id, args.text.length);
+    if (rateLimited) return rateLimited;
+
+    const { doc } = this.ensureInitialised();
+    const threadsMap = doc.getMap<string>("threads");
+    const loaded = this.loadThread(threadsMap, args.threadId);
+    if ("error" in loaded) return loaded;
+    const { thread } = loaded;
+
+    if (args.replyId !== undefined) {
+      const reply = thread.replies.find((r) => r.id === args.replyId);
+      if (!reply) return { error: { code: "reply_not_found", message: "reply not found" } };
+      if (!this.isAgentAuthor(reply.author, verified.entry)) {
+        return { error: { code: "not_author", message: "only the reply's author may edit it" } };
+      }
+      reply.text = args.text;
+      doc.transact(() => {
+        threadsMap.set(args.threadId, JSON.stringify(thread));
+      }, agentOrigin(verified.entry.name));
+      return { ok: true };
+    }
+
+    if (!this.isAgentAuthor(thread.author, verified.entry)) {
+      return { error: { code: "not_author", message: "only the comment's author may edit it" } };
+    }
+    doc.transact(() => {
+      const run = findCommentRunInDoc(doc, thread.commentText);
+      if (run) {
+        run.ytext.delete(run.pos, run.length);
+        run.ytext.insert(run.pos, args.text, { criticComment: {} });
+      }
+      thread.commentText = args.text;
+      threadsMap.set(args.threadId, JSON.stringify(thread));
+    }, agentOrigin(verified.entry.name));
+    return { ok: true };
+  }
+
+  /**
+   * Deletes a reply this agent wrote (`replyId`), or a whole thread this
+   * agent opened — its highlight and marker leave the text too. Requires
+   * `comment`.
+   */
+  async agentDeleteComment(
+    identity: AgentIdentity,
+    args: { threadId: string; replyId?: string },
+  ): Promise<{ ok: true } | { error: AgentError }> {
+    const verified = await this.verifyIdentity(identity, "comment");
+    if ("error" in verified) return verified;
+
+    const { doc } = this.ensureInitialised();
+    const threadsMap = doc.getMap<string>("threads");
+    const loaded = this.loadThread(threadsMap, args.threadId);
+    if ("error" in loaded) return loaded;
+    const { thread } = loaded;
+
+    if (args.replyId !== undefined) {
+      const index = thread.replies.findIndex((r) => r.id === args.replyId);
+      if (index === -1) return { error: { code: "reply_not_found", message: "reply not found" } };
+      if (!this.isAgentAuthor(thread.replies[index].author, verified.entry)) {
+        return { error: { code: "not_author", message: "only the reply's author may delete it" } };
+      }
+      thread.replies.splice(index, 1);
+      doc.transact(() => {
+        threadsMap.set(args.threadId, JSON.stringify(thread));
+      }, agentOrigin(verified.entry.name));
+      return { ok: true };
+    }
+
+    if (!this.isAgentAuthor(thread.author, verified.entry)) {
+      return { error: { code: "not_author", message: "only the thread's author may delete it" } };
+    }
+    doc.transact(() => {
+      const run = findCommentRunInDoc(doc, thread.commentText);
+      if (run) removeCommentRun(run);
+      threadsMap.delete(args.threadId);
+    }, agentOrigin(verified.entry.name));
+    return { ok: true };
   }
 
   /**
@@ -2278,27 +2557,14 @@ class DocumentAgent extends Agent {
 
     const { doc } = this.ensureInitialised();
     const threadsMap = doc.getMap<string>("threads");
-    const raw = threadsMap.get(args.threadId);
-    if (!raw) {
-      return { error: { code: "thread_not_found", message: "thread not found" } };
-    }
+    const loaded = this.loadThread(threadsMap, args.threadId);
+    if ("error" in loaded) return loaded;
+    const { thread } = loaded;
 
-    // An unparseable thread is no more replyable than a missing one — same
-    // typed error, rather than a throw through the RPC.
-    let thread: ThreadData;
-    try {
-      thread = JSON.parse(raw) as ThreadData;
-    } catch {
-      return { error: { code: "thread_not_found", message: "thread is unreadable" } };
-    }
-    if (!Array.isArray(thread?.replies)) {
-      return { error: { code: "thread_not_found", message: "thread is unreadable" } };
-    }
-
-    const { name, label, color } = verified.entry;
+    const { name } = verified.entry;
     const reply: ThreadReply = {
       id: crypto.randomUUID(),
-      author: { name: label ?? name, color, colorLight: color, animal: animalGlyphForLabel(label ?? name), agentClient: identity.client },
+      author: this.agentAuthorInfo(verified.entry, identity),
       text: args.text,
       createdAt: Date.now(),
     };

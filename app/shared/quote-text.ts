@@ -12,5 +12,5 @@ export function stripInlineMarkdown(text: string): string {
     .replace(/(^|[^A-Za-z0-9])_(?=\S)([^_]*?\S)_(?![A-Za-z0-9])/g, "$1$2") // _em_, but not snake_case
     .replace(/~~(?=\S)([\s\S]*?\S)~~/g, "$1") // ~~strike~~
     .replace(/`([^`]*)`/g, "$1") // `code`
-    .replace(/\\([\\`*_{}\[\]()#+\-.!~>])/g, "$1"); // \[ escaped punctuation
+    .replace(/\\([\\`*_{}[\]()#+\-.!~>])/g, "$1"); // \[ escaped punctuation
 }

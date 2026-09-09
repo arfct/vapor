@@ -22,6 +22,7 @@ import {
   createDocumentAgentName,
   anonymousAgentLabel,
   type DocStub,
+  createDocumentNote,
 } from "./mcp-tools";
 import { eventCatalog, EVENTS_DRAFT_META_KEY, EVENTS_DRAFT_VERSION } from "./events";
 import { generateDocumentId, isValidDocumentId } from "../app/shared/constants";
@@ -259,7 +260,7 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
       "create_document",
       {
         description:
-          "Create a new vapor document, optionally with starting markdown. Returns its id and URL; the calling identity is enrolled as the document's first agent. To revise a document that already exists, use replace on it instead: one document per draft, so the URL its readers have stays valid.",
+          "Create a new vapor document, optionally with starting markdown. Returns its id, URL, and this identity's capabilities on it; the calling identity is enrolled as the document's first agent. Editing afterwards (insert, replace) needs the write capability, which the anonymous endpoint never has — there, revise by suggest, or connect signed in. To revise a document that already exists, use replace on it instead: one document per draft, so the URL its readers have stays valid.",
         inputSchema: {
           markdown: z.string().optional().describe("Optional starting markdown for the document."),
         },
@@ -298,7 +299,13 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
         await (stub as unknown as DocStub).agentJoin({ ...identity, name: creatorName });
 
         const origin = this.props?.origin ?? siteWithoutRequest(this.env).origin;
-        return jsonContent({ id, url: `${origin}${documentPath(id, titleFromMarkdown(markdown ?? ""))}` });
+        const note = createDocumentNote(identity);
+        return jsonContent({
+          id,
+          url: `${origin}${documentPath(id, titleFromMarkdown(markdown ?? ""))}`,
+          capabilities: identity.caps,
+          ...(note ? { note } : {}),
+        });
       },
     );
   }

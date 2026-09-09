@@ -1607,6 +1607,22 @@ describe("DocumentAgent", () => {
       ) as { user: { name: string; isAgent: boolean }; status?: string; cursor?: { anchor: unknown; head: unknown } } | undefined;
     }
 
+    it("read_document lists a person once however many tabs they have open (#88)", async () => {
+      const { agent, id } = await setup();
+      const a = connectYjsClient(agent);
+      const b = connectYjsClient(agent);
+      const c = connectYjsClient(agent);
+      a.awareness.setLocalStateField("user", { id: "u-ada", name: "Ada", color: "#000", colorLight: "#000" });
+      b.awareness.setLocalStateField("user", { id: "u-ada", name: "Ada", color: "#000", colorLight: "#000" });
+      c.awareness.setLocalStateField("user", { name: "Anonymous Otter", color: "#000", colorLight: "#000" });
+      await vi.waitFor(async () => {
+        const read = await agent.agentRead(id);
+        const presence = "presence" in read ? read.presence : [];
+        expect(presence.filter((p) => !p.isAgent).map((p) => p.name).sort()).toEqual(["Ada", "Anonymous Otter"]);
+      });
+      cleanup(a, b, c);
+    });
+
     it("broadcasts a presence state every connected client can decode", async () => {
       const { agent, id } = await setup();
       const a = connectYjsClient(agent);
@@ -2228,6 +2244,29 @@ describe("DocumentAgent", () => {
         const { created, markdown } = await commentOn("Goodbye");
         expect(created).toMatchObject({ error: { code: "find_not_matched", snippet: "Hello there." } });
         expect(await markdown()).toBe("Hello there.");
+      });
+
+      it("a quote copied from read_document's markdown still matches the words on the page (#90)", async () => {
+        const { agent, id } = await setup(["comment"]);
+        const read = await agent.agentRead(id);
+        const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
+        // The block reads "Hello there."; an agent quoting it as markdown adds syntax the text lacks.
+        const created = await agent.agentComment(id, { anchor, quote: "**Hello** `there`", text: "why hello" });
+        expect("threadId" in created).toBe(true);
+        const out = await agent.exportMarkdown();
+        expect("markdown" in out ? out.markdown : "").toBe("{==Hello there==}{>>why hello<<}.");
+        const after = await agent.agentRead(id);
+        expect(("threads" in after ? after.threads : [])[0]).toMatchObject({ highlightText: "Hello there" });
+      });
+
+      it("suggest's find tolerates copied markdown syntax too (#90)", async () => {
+        const { agent, id } = await setup(["suggest", "comment"]);
+        const read = await agent.agentRead(id);
+        const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
+        const result = await agent.agentSuggest(id, { anchor, find: "`Hello`", replacement: "Hi", pace: "instant" });
+        expect(result).toEqual({ ok: true });
+        const out = await agent.exportMarkdown();
+        expect("markdown" in out ? out.markdown : "").toBe("{--Hello--}{++Hi++} there.");
       });
 
       it("a second comment with identical text gets its own thread id", async () => {

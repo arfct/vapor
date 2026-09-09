@@ -85,6 +85,20 @@ export function validateNewDocumentMarkdown(
  * (rather than inline in agents/mcp.ts, which can't be imported in plain
  * Vitest) so the naming rule is unit-testable directly.
  */
+/**
+ * What a fresh document's creator can do with it, said at create time so
+ * the anonymous path does not sell a draft-and-revise loop it then breaks
+ * at the first `insert` (#86). Null when the identity can write.
+ */
+export function createDocumentNote(identity: Pick<AgentIdentity, "kind" | "caps">): string | null {
+  if (identity.caps.includes("write")) return null;
+  const how =
+    identity.kind === "anonymous"
+      ? "you are on the anonymous endpoint, which can suggest and comment but not edit — connect through the signed-in endpoint (/mcp) and approve write on the consent screen to revise directly"
+      : "this grant can suggest and comment but not edit — reconnect and approve write on the consent screen to revise directly";
+  return `You can create this document but not edit it: ${how}. Propose changes with suggest, which people accept or reject in the browser.`;
+}
+
 export function createDocumentAgentName(clientName: string | undefined): string {
   return slugifyAgentName(clientName ?? "agent");
 }
@@ -214,7 +228,9 @@ export const TOOLS: ToolDef[] = [
       quote: z
         .string()
         .optional()
-        .describe("The exact text within the block the comment refers to; find_not_matched if it isn't there verbatim."),
+        .describe(
+          "The text within the block the comment refers to, as it appears in the block (inline markdown syntax copied from read_document, like backticks or **, is ignored); find_not_matched if it isn't there.",
+        ),
       text: z.string().describe("The comment body."),
     },
     call: (stub, identity, args) =>

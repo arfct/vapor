@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { TOOLS, validateNewDocumentMarkdown, createDocumentAgentName } from "../../../agents/mcp-tools";
+import { TOOLS, validateNewDocumentMarkdown, createDocumentAgentName, createDocumentNote } from "../../../agents/mcp-tools";
 import type { AgentIdentity } from "../../../app/shared/agent-protocol";
 
 const ID: AgentIdentity = {
@@ -252,5 +252,13 @@ describe("anonymousAgentLabel", () => {
     expect(a).toMatch(/^Agentic /);
     expect(ANON_ANIMALS.map((x) => `Agentic ${x.name}`)).toContain(a);
     expect(anonymousAgentLabel("anon:other-session")).toMatch(/^Agentic /);
+  });
+});
+
+describe("createDocumentNote", () => {
+  it("warns an identity without write, in words for its endpoint, and says nothing to one that can edit (#86)", () => {
+    expect(createDocumentNote({ kind: "anonymous", caps: ["suggest", "comment"] })).toMatch(/anonymous endpoint.*suggest and comment but not edit/);
+    expect(createDocumentNote({ kind: "principal", caps: ["suggest", "comment"] })).toMatch(/this grant can suggest and comment but not edit/);
+    expect(createDocumentNote({ kind: "principal", caps: ["suggest", "comment", "write"] })).toBeNull();
   });
 });

@@ -73,6 +73,7 @@ import {
 } from "../app/shared/attachment-policy";
 import type { ThreadData, ThreadReply, UserInfo } from "../app/shared/types";
 import { threadIdForComment } from "../app/shared/thread-id";
+import { stripInlineMarkdown } from "../app/shared/quote-text";
 import type { WakeEvent } from "../app/shared/wake-policy";
 import { configuredOrigin } from "../app/shared/site";
 import type Registry from "./registry";
@@ -164,14 +165,25 @@ function textNodesUnder(el: Y.XmlElement): Y.XmlText[] {
   return out;
 }
 
+/**
+ * Locates `find` in a block's text: the exact string first, then — since
+ * agents copy quotes out of read_document's markdown — the string with its
+ * inline markdown syntax removed. Returns the node, offset, and the length
+ * of what actually matched, which is what a mark must cover.
+ */
 function findInBlock(
   el: Y.XmlElement,
   find: string,
-): { ytext: Y.XmlText; pos: number } | null {
+): { ytext: Y.XmlText; pos: number; length: number } | null {
+  const candidates = [find];
+  const plain = stripInlineMarkdown(find);
+  if (plain !== find && plain.length > 0) candidates.push(plain);
   for (const ytext of textNodesUnder(el)) {
     const text = (ytext.toDelta() as { insert: string }[]).map((op) => op.insert).join("");
-    const pos = text.indexOf(find);
-    if (pos !== -1) return { ytext, pos };
+    for (const candidate of candidates) {
+      const pos = text.indexOf(candidate);
+      if (pos !== -1) return { ytext, pos, length: candidate.length };
+    }
   }
   return null;
 }
@@ -1815,10 +1827,18 @@ class DocumentAgent extends Agent {
     const instructionBlocks = getAgentInstructions(doc);
     const instructions = instructionBlocks.length > 0 ? instructionBlocks.join("\n\n") : null;
 
+    // One entry per person, not per tab: awareness has a state per connected
+    // client, and the same person with two windows (or a reconnecting one)
+    // appears twice (#88). Key by the user's stable id, else their name.
     const presence: { name: string; isAgent: boolean; mention?: string }[] = [];
+    const seen = new Set<string>();
     for (const state of awareness.getStates().values()) {
-      const user = (state as { user?: { name?: string } }).user;
-      if (user?.name) presence.push({ name: user.name, isAgent: false });
+      const user = (state as { user?: { name?: string; id?: string; isAgent?: boolean } }).user;
+      if (!user?.name || user.isAgent) continue;
+      const key = user.id ?? user.name;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      presence.push({ name: user.name, isAgent: false });
     }
 
     const now = Date.now();
@@ -2371,10 +2391,15 @@ class DocumentAgent extends Agent {
     // Where the marks go: the quoted span, or the end of the block's text.
     const quote = args.quote && args.quote.length > 0 ? args.quote : undefined;
     let target: { ytext: Y.XmlText; pos: number } | null = null;
+    // Length of the highlighted span: what matched, which may be the quote
+    // with its markdown syntax stripped.
+    let quoted = 0;
     if (el instanceof Y.XmlElement) {
       if (quote) {
-        target = findInBlock(el, quote);
-        if (!target) {
+        const match = findInBlock(el, quote);
+        target = match;
+        quoted = match?.length ?? 0;
+        if (!match) {
           const snippet = textNodesUnder(el)
             .map((t) => (t.toDelta() as DeltaOp[]).map((op) => op.insert).join(""))
             .join("")
@@ -2392,12 +2417,16 @@ class DocumentAgent extends Agent {
     // The same deterministic id a client would mint for this mark, so a
     // browser that scans the mark first converges on this key; a second
     // thread with identical text gets a fresh id.
-    let id = threadIdForComment({ commentText: args.text, highlightText: quote });
+    // The highlight recorded on the thread is the text on the page (the
+    // quote minus any markdown syntax it was copied with), since that is
+    // what clients match the mark by.
+    const highlightText = target && quote ? stripInlineMarkdown(quote) : quote;
+    let id = threadIdForComment({ commentText: args.text, highlightText });
     if (threadsMap.has(id)) id = crypto.randomUUID();
     const thread: ThreadData = {
       id,
       commentText: args.text,
-      highlightText: quote,
+      highlightText,
       author: this.agentAuthorInfo(verified.entry, identity),
       createdAt: Date.now(),
       resolved: false,
@@ -2406,8 +2435,8 @@ class DocumentAgent extends Agent {
 
     doc.transact(() => {
       if (target) {
-        if (quote) target.ytext.format(target.pos, quote.length, { criticHighlight: { threadId: id } });
-        target.ytext.insert(target.pos + (quote?.length ?? 0), args.text, { criticComment: {} });
+        if (quoted) target.ytext.format(target.pos, quoted, { criticHighlight: { threadId: id } });
+        target.ytext.insert(target.pos + quoted, args.text, { criticComment: {} });
       }
       threadsMap.set(id, JSON.stringify(thread));
     }, agentOrigin(name));
@@ -2971,11 +3000,11 @@ class DocumentAgent extends Agent {
       this.deletePerformanceRow(item.id);
       return;
     }
-    const { ytext, pos } = match;
+    const { ytext, pos, length: found } = match;
 
     // Claim the slot now, synchronously — see the doc comment above.
-    doc.transact(() => ytext.format(pos, mutation.find.length, { criticDeletion: {} }), agentOrigin(item.agentName));
-    let relPos = Y.createRelativePositionFromTypeIndex(ytext, pos + mutation.find.length);
+    doc.transact(() => ytext.format(pos, found, { criticDeletion: {} }), agentOrigin(item.agentName));
+    let relPos = Y.createRelativePositionFromTypeIndex(ytext, pos + found);
     this.deletePerformanceRow(item.id);
 
     const deadline = Date.now() + PERFORMANCE_WALL_BUDGET_MS;
@@ -3157,8 +3186,8 @@ class DocumentAgent extends Agent {
         }
 
         doc.transact(() => {
-          match.ytext.format(match.pos, m.find.length, { criticDeletion: {} });
-          match.ytext.insert(match.pos + m.find.length, m.replacement, { criticAddition: {} });
+          match.ytext.format(match.pos, match.length, { criticDeletion: {} });
+          match.ytext.insert(match.pos + match.length, m.replacement, { criticAddition: {} });
         }, origin);
 
         return { ok: true };

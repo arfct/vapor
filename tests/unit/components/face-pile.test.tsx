@@ -52,6 +52,10 @@ describe("FacePile", () => {
     expect(titles).toEqual(["Ada Lovelace", "Curious Ladybug"]);
     const selfWrap = trigger.querySelector("[data-self-face]") as HTMLElement;
     expect(selfWrap.className).toContain("ml-1.5");
+    // Face wrappers are flex boxes so the faces centre in the pill instead of sitting on a text baseline.
+    for (const wrap of Array.from(trigger.querySelectorAll("[title]")).map((el) => el.parentElement!.parentElement!)) {
+      expect(wrap.className.split(" ")).toContain("flex");
+    }
 
     fireEvent.click(trigger);
     const list = screen.getByText("You · here now").closest("div")!;

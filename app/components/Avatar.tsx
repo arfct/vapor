@@ -57,13 +57,14 @@ export default function Avatar({
     );
   }
   if (avatar) {
-    return <img className={`${className} shrink-0 rounded-full object-cover`} src={avatar} alt="" />;
+    return <img className={`${className} shrink-0 rounded-full object-cover`} src={avatar} alt="" title={name} />;
   }
   if (glyph) {
     return (
       <span
         className={`${className} anon-animal flex shrink-0 items-center justify-center rounded-full text-2xl`}
         style={{ color }}
+        title={name}
       >
         {glyph}
       </span>
@@ -73,6 +74,7 @@ export default function Avatar({
     <span
       className={`${className} flex shrink-0 select-none items-center justify-center rounded-full text-xs font-medium text-white`}
       style={{ backgroundColor: color ?? "var(--color-muted)" }}
+      title={name}
     >
       {initials(name)}
     </span>

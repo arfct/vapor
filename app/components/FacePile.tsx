@@ -82,16 +82,20 @@ function agentHandle(entry: AgentRosterEntry): string {
 }
 
 /**
- * Who else is on this document: connected people in colour, past
- * commenters and viewers grey and dimmed, at most a few faces with a
- * "+N" for the rest. Opens a list with each person's status. Agents on the
- * document's roster are listed too, present or not, each with a menu to
- * mention or revoke them; this is where agents are managed. Header space is
- * tight on phones, so it shows from md up.
+ * Who is on this document: connected people in colour, past commenters
+ * and viewers grey and dimmed, at most a few faces with a "+N" for the
+ * rest — and the viewer's own face last, set slightly apart, so they can
+ * see how they appear to everyone else (their animal or signed-in face and
+ * colour) and that they are signed in. Opens a list with each person's
+ * status. Agents on the document's roster are listed too, present or not,
+ * each with a menu to mention or revoke them; this is where agents are
+ * managed. Header space is tight on phones, so it shows from md up.
  */
 export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }) {
   const { yjs, threads, docId, editorInstance } = useDocument();
   const people = usePeople(yjs, threads, alsoOnline);
+  // The local user: usePeople leaves them out, the pile puts them last.
+  const self: PresenceUser = yjs.user;
   const [open, setOpen] = useState(false);
   const [roster, setRoster] = useState<AgentRosterEntry[]>([]);
   const hasRoster = isValidDocumentId(docId);
@@ -132,8 +136,6 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
     [editorInstance],
   );
 
-  if (people.length === 0 && roster.length === 0) return null;
-
   // Present agents match their roster entry by display name (presence
   // carries the label, the roster the slug); enrolled agents who aren't
   // connected right now are added as away rows.
@@ -159,12 +161,16 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
     });
   }
 
+  rows.push({ key: "self", user: self, isAgent: false, away: false, status: "You · here now" });
+
   // Oldest on the left, newest on the right; the newest faces are the
-  // ones shown, with the older remainder counted at the left.
+  // ones shown, with the older remainder counted at the left. You are
+  // always the last face, a step apart from the others.
   const shown = people.slice(-MAX_FACES);
   const overflow = people.length - shown.length;
   const online = people.filter((p) => p.status === "online").length;
-  const label = `${people.length} ${people.length === 1 ? "person" : "people"}, ${online} here now`;
+  const label =
+    people.length === 0 ? "Only you here" : `${people.length + 1} people, ${online + 1} here now (including you)`;
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -186,6 +192,9 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
                   <Face user={person.user} isAgent={person.isAgent} away={person.status !== "online"} className="h-7 w-7" ring />
                 </span>
               ))}
+              <span className={shown.length > 0 || overflow > 0 ? "ml-1.5" : ""} data-self-face>
+                <Face user={self} isAgent={false} away={false} className="h-7 w-7" ring />
+              </span>
             </span>
           </button>
         }

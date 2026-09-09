@@ -6,19 +6,12 @@ import {
   matchThreadsToComments,
   type MatchedThread,
 } from "~/lib/comment-threads";
-import { blockHash } from "~/shared/agent-protocol";
+import { threadIdForComment } from "~/shared/thread-id";
+
+export { threadIdForComment };
 
 function generateId(): string {
   return Math.random().toString(36).slice(2, 10);
-}
-
-/**
- * Deterministic thread id for a comment mark, so every client that decides
- * to create a thread for the same mark writes the SAME Y.Map key and the
- * writes converge instead of duplicating.
- */
-export function threadIdForComment(comment: { commentText: string; highlightText?: string }): string {
-  return `t-${blockHash(`${comment.commentText}|${comment.highlightText ?? ""}`)}`;
 }
 
 function readAllThreads(map: { forEach: (cb: (val: string, key: string) => void) => void }): ThreadData[] {

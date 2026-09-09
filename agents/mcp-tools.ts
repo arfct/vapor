@@ -19,6 +19,9 @@ export interface DocStub {
   agentSuggest(identity: AgentIdentity, args: unknown): Promise<unknown>;
   agentComment(identity: AgentIdentity, args: unknown): Promise<unknown>;
   agentReply(identity: AgentIdentity, args: unknown): Promise<unknown>;
+  agentResolveThread(identity: AgentIdentity, args: unknown): Promise<unknown>;
+  agentEditComment(identity: AgentIdentity, args: unknown): Promise<unknown>;
+  agentDeleteComment(identity: AgentIdentity, args: unknown): Promise<unknown>;
   agentJoin(identity: AgentIdentity, status?: string): Promise<unknown>;
   agentLeave(identity: AgentIdentity): Promise<unknown>;
   agentAwaitEvents(identity: AgentIdentity, args: unknown): Promise<unknown>;
@@ -205,10 +208,13 @@ export const TOOLS: ToolDef[] = [
   docTool({
     name: "comment",
     description:
-      "Open a comment thread anchored to a block. Requires the comment capability.",
+      "Open a comment thread on a block. With quote — an exact substring of the block's text — the comment attaches to that span, highlighted, exactly like a comment made in the browser; without it, a marker sits at the end of the block. Requires the comment capability.",
     schema: {
       anchor: z.string().describe(anchorDesc),
-      quote: z.string().optional().describe("The text within the block the comment refers to."),
+      quote: z
+        .string()
+        .optional()
+        .describe("The exact text within the block the comment refers to; find_not_matched if it isn't there verbatim."),
       text: z.string().describe("The comment body."),
     },
     call: (stub, identity, args) =>
@@ -230,6 +236,53 @@ export const TOOLS: ToolDef[] = [
       stub.agentReply(identity, {
         threadId: args.thread_id as string,
         text: args.text as string,
+      }),
+  }),
+
+  docTool({
+    name: "resolve_thread",
+    description:
+      "Resolve a comment thread, or reopen one with resolved: false. Resolving lifts the thread's highlight and marker from the text, as the browser does. Anyone in the document may resolve. Requires the comment capability.",
+    schema: {
+      thread_id: z.string().describe("The thread id, as returned by comment or read_document."),
+      resolved: z.boolean().optional().describe("true (default) to resolve, false to reopen."),
+    },
+    call: (stub, identity, args) =>
+      stub.agentResolveThread(identity, {
+        threadId: args.thread_id as string,
+        resolved: args.resolved as boolean | undefined,
+      }),
+  }),
+
+  docTool({
+    name: "edit_comment",
+    description:
+      "Rewrite the text of a comment or reply you wrote. Pass reply_id to edit a reply; without it the thread's opening comment is edited (and its marker in the text with it). Someone else's comment returns not_author. Requires the comment capability.",
+    schema: {
+      thread_id: z.string().describe("The thread id."),
+      reply_id: z.string().optional().describe("A reply's id from read_document; omit to edit the opening comment."),
+      text: z.string().describe("The new text."),
+    },
+    call: (stub, identity, args) =>
+      stub.agentEditComment(identity, {
+        threadId: args.thread_id as string,
+        replyId: args.reply_id as string | undefined,
+        text: args.text as string,
+      }),
+  }),
+
+  docTool({
+    name: "delete_comment",
+    description:
+      "Delete a reply you wrote (reply_id), or a whole thread you opened (no reply_id) — its highlight and marker leave the text too. Someone else's returns not_author. Requires the comment capability.",
+    schema: {
+      thread_id: z.string().describe("The thread id."),
+      reply_id: z.string().optional().describe("A reply's id from read_document; omit to delete the whole thread."),
+    },
+    call: (stub, identity, args) =>
+      stub.agentDeleteComment(identity, {
+        threadId: args.thread_id as string,
+        replyId: args.reply_id as string | undefined,
       }),
   }),
 

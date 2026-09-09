@@ -204,4 +204,25 @@ describe("ThreadPanel", () => {
     fireEvent.click(getByLabelText("Resolve"));
     expect(props.onSelect).not.toHaveBeenCalled();
   });
+
+  it("clips a collapsed card at the preview height and shows everything once selected", () => {
+    const long = makeThread({
+      commentText: "x".repeat(4000),
+      replies: Array.from({ length: 12 }, (_, i) => ({
+        id: `r${i}`,
+        author: { name: "Bob", color: "#000", colorLight: "#000" },
+        text: "y".repeat(400),
+        createdAt: Date.now(),
+      })),
+    });
+    const collapsed = render(createElement(ThreadPanel, { ...defaultProps(), thread: long }));
+    const preview = collapsed.container.querySelector("[data-preview]") as HTMLElement | null;
+    expect(preview).not.toBeNull();
+    expect(preview!.style.maxHeight).toBe("480px");
+    expect(preview!.className).toContain("overflow-hidden");
+    collapsed.unmount();
+
+    const open = render(createElement(ThreadPanel, { ...defaultProps(), thread: long, active: true }));
+    expect(open.container.querySelector("[data-preview]")).toBeNull();
+  });
 });

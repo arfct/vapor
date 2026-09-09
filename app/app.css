@@ -651,6 +651,10 @@ body {
   border-radius: 4px;
   transition: box-shadow 0.15s ease;
 }
+/* A collapsed card's clipped body fades out at the bottom so the cut reads as "more". */
+.thread-preview {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent);
+}
 .thread-card.is-active {
   box-shadow:
     0 0 0 1px var(--author-color),

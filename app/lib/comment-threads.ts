@@ -1,4 +1,5 @@
 import type { Editor as TiptapEditor } from "@tiptap/core";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import type { ThreadData } from "~/shared/types";
 
 export interface DocumentComment {
@@ -92,4 +93,36 @@ export function findOrphanedThreads(
   return matched
     .filter((t) => t.position === undefined)
     .map(({ position: _, ...rest }) => rest);
+}
+
+/**
+ * The document position where `text` first occurs inside a single text
+ * block, or null. Offsets in a block's text are mapped back through its
+ * inline children, so a mention chip or an image between words doesn't
+ * skew the answer. Used to place a thread whose marks are gone (or never
+ * existed — a comment imported with a highlight the body no longer has,
+ * or an agent's comment from before comments anchored) level with the
+ * passage it quotes rather than at the top of the rail.
+ */
+export function findTextPosition(doc: PMNode, text: string): number | null {
+  if (!text) return null;
+  let found: number | null = null;
+  doc.descendants((node, pos) => {
+    if (found !== null) return false;
+    if (!node.isTextblock) return true;
+    const index = node.textContent.indexOf(text);
+    if (index === -1) return false;
+    // Walk the inline children to turn a textContent offset into a position.
+    let offset = 0;
+    let childPos = pos + 1;
+    node.forEach((child) => {
+      if (found !== null) return;
+      const len = child.isText ? (child.text?.length ?? 0) : child.textContent.length;
+      if (index >= offset && index < offset + len) found = childPos + (index - offset);
+      offset += len;
+      childPos += child.nodeSize;
+    });
+    return false;
+  });
+  return found;
 }

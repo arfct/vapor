@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
 import { DOCUMENT_TTL_MS, DOC_FORMAT_VERSION } from "~/shared/constants";
+import { threadIdForComment } from "~/shared/thread-id";
 import { YjsProvider } from "~/lib/yjs-provider";
 import { MAX_AGENTS_PER_DOC, type AgentCapability, type AgentIdentity } from "~/shared/agent-protocol";
 import { yDocToMarkdown } from "~/shared/rich-markdown";
@@ -2194,6 +2195,131 @@ describe("DocumentAgent", () => {
       const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
       const result = await agent.agentComment(id, { anchor, text: "hi" });
       expect(result).toMatchObject({ error: { code: "capability_denied" } });
+    });
+
+    describe("anchored comments and the thread lifecycle (#70, #71)", () => {
+      async function commentOn(quote?: string, text = "needs work") {
+        const { agent, id } = await setup(["comment"]);
+        const read = await agent.agentRead(id);
+        const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
+        const created = await agent.agentComment(id, { anchor, quote, text });
+        const threadId = "threadId" in created ? created.threadId : "";
+        const markdown = async () => {
+          const out = await agent.exportMarkdown();
+          return "markdown" in out ? out.markdown : "";
+        };
+        return { agent, id, anchor, created, threadId, markdown };
+      }
+
+      it("with a quote lays down the browser's marks: highlight over the words, hidden comment after", async () => {
+        const { created, threadId, markdown } = await commentOn("Hello");
+        expect("threadId" in created).toBe(true);
+        expect(threadId).toBe(threadIdForComment({ commentText: "needs work", highlightText: "Hello" }));
+        expect(await markdown()).toBe("{==Hello==}{>>needs work<<} there.");
+      });
+
+      it("without a quote leaves a marker at the end of the block", async () => {
+        const { markdown, threadId } = await commentOn(undefined, "hi");
+        expect(await markdown()).toBe("Hello there.{>>hi<<}");
+        expect(threadId).toBe(threadIdForComment({ commentText: "hi" }));
+      });
+
+      it("a quote that is not in the block is find_not_matched, with the block's text to retry from", async () => {
+        const { created, markdown } = await commentOn("Goodbye");
+        expect(created).toMatchObject({ error: { code: "find_not_matched", snippet: "Hello there." } });
+        expect(await markdown()).toBe("Hello there.");
+      });
+
+      it("a second comment with identical text gets its own thread id", async () => {
+        const { agent, id, anchor, threadId } = await commentOn("Hello");
+        const again = await agent.agentComment(id, { anchor, quote: "Hello", text: "needs work" });
+        expect("threadId" in again && again.threadId).not.toBe(threadId);
+      });
+
+      it("resolve lifts the marks and keeps the words; reopen leaves the text alone", async () => {
+        const { agent, id, threadId, markdown } = await commentOn("Hello");
+        expect(await agent.agentResolveThread(id, { threadId })).toEqual({ ok: true, resolved: true });
+        expect(await markdown()).toBe("Hello there.");
+        let read = await agent.agentRead(id);
+        expect(("threads" in read ? read.threads : [])[0]).toMatchObject({ id: threadId, resolved: true });
+
+        expect(await agent.agentResolveThread(id, { threadId, resolved: false })).toEqual({ ok: true, resolved: false });
+        read = await agent.agentRead(id);
+        expect(("threads" in read ? read.threads : [])[0]).toMatchObject({ resolved: false });
+        expect(await markdown()).toBe("Hello there.");
+      });
+
+      it("edit_comment rewrites the author's comment and its marker; anyone else is not_author", async () => {
+        const { agent, id, threadId, markdown } = await commentOn("Hello");
+        const muse = identity({ id: "email:muse@x.com", name: "muse", caps: ["comment"] });
+
+        expect(await agent.agentEditComment(muse, { threadId, text: "mine now" })).toMatchObject({
+          error: { code: "not_author" },
+        });
+        expect(await agent.agentEditComment(id, { threadId, text: "needs a citation" })).toEqual({ ok: true });
+        expect(await markdown()).toBe("{==Hello==}{>>needs a citation<<} there.");
+        const read = await agent.agentRead(id);
+        expect(("threads" in read ? read.threads : [])[0]).toMatchObject({ commentText: "needs a citation" });
+        expect(await agent.agentEditComment(id, { threadId, text: "   " })).toMatchObject({ error: { code: "invalid_params" } });
+      });
+
+      it("replies: the author may edit or delete their own, nobody else's", async () => {
+        const { agent, id, threadId } = await commentOn("Hello");
+        const muse = identity({ id: "email:muse@x.com", name: "muse", caps: ["comment"] });
+        await agent.agentReply(muse, { threadId, text: "a few thoughts" });
+        const replyId = (("threads" in (await agent.agentRead(id)) ? (await agent.agentRead(id) as { threads: { replies: { id: string }[] }[] }).threads : [])[0].replies[0]).id;
+
+        expect(await agent.agentEditComment(id, { threadId, replyId, text: "x" })).toMatchObject({ error: { code: "not_author" } });
+        expect(await agent.agentEditComment(muse, { threadId, replyId, text: "a few more thoughts" })).toEqual({ ok: true });
+        expect(await agent.agentEditComment(muse, { threadId, replyId: "nope", text: "x" })).toMatchObject({ error: { code: "reply_not_found" } });
+        expect(await agent.agentDeleteComment(id, { threadId, replyId })).toMatchObject({ error: { code: "not_author" } });
+        expect(await agent.agentDeleteComment(muse, { threadId, replyId })).toEqual({ ok: true });
+        const read = await agent.agentRead(id);
+        expect(("threads" in read ? read.threads : [])[0].replies).toEqual([]);
+      });
+
+      it("delete_comment removes the author's thread with its marks; anyone else is not_author", async () => {
+        const { agent, id, threadId, markdown } = await commentOn("Hello");
+        const muse = identity({ id: "email:muse@x.com", name: "muse", caps: ["comment"] });
+        expect(await agent.agentDeleteComment(muse, { threadId })).toMatchObject({ error: { code: "not_author" } });
+        expect(await agent.agentDeleteComment(id, { threadId })).toEqual({ ok: true });
+        expect(await markdown()).toBe("Hello there.");
+        const read = await agent.agentRead(id);
+        expect("threads" in read ? read.threads : null).toEqual([]);
+        expect(await agent.agentDeleteComment(id, { threadId })).toMatchObject({ error: { code: "thread_not_found" } });
+      });
+
+      it("a person's thread: an agent may resolve it, not edit or delete it", async () => {
+        const { agent, id } = await setup(["comment"]);
+        const client = connectYjsClient(agent);
+        client.doc.getMap<string>("threads").set(
+          "t-human",
+          JSON.stringify({
+            id: "t-human",
+            commentText: "hmm",
+            author: { name: "Nick", color: "#000", colorLight: "#000", id: "anon-1" },
+            createdAt: Date.now(),
+            resolved: false,
+            replies: [],
+          }),
+        );
+        expect(await agent.agentEditComment(id, { threadId: "t-human", text: "x" })).toMatchObject({ error: { code: "not_author" } });
+        expect(await agent.agentDeleteComment(id, { threadId: "t-human" })).toMatchObject({ error: { code: "not_author" } });
+        expect(await agent.agentResolveThread(id, { threadId: "t-human" })).toEqual({ ok: true, resolved: true });
+        cleanup(client);
+      });
+
+      it("every lifecycle RPC needs the comment capability", async () => {
+        const { agent } = await setup(["comment"]);
+        const suggestOnly = identity({ id: "email:s@x.com", name: "sugg", caps: ["suggest"] });
+        for (const call of [
+          agent.agentResolveThread(suggestOnly, { threadId: "x" }),
+          agent.agentEditComment(suggestOnly, { threadId: "x", text: "y" }),
+          agent.agentDeleteComment(suggestOnly, { threadId: "x" }),
+        ]) {
+          expect(await call).toMatchObject({ error: { code: "capability_denied" } });
+        }
+      });
     });
 
     it("agentReply appends a reply, attributed to the replying agent", async () => {

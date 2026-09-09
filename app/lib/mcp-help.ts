@@ -220,7 +220,8 @@ ${
 <tr><th>Tool</th><th>Needs</th><th></th></tr>
 <tr><td><code>read_document</code></td><td>—</td><td>Markdown, block anchors, who is present, open threads, and any standing instructions.</td></tr>
 <tr><td><code>suggest</code></td><td>suggest</td><td>A tracked change inside a block, for a person to accept or reject.</td></tr>
-<tr><td><code>comment</code>, <code>reply</code></td><td>comment</td><td>Open a thread on a block, or answer in one.</td></tr>
+<tr><td><code>comment</code>, <code>reply</code></td><td>comment</td><td>Open a thread on a block — with <code>quote</code>, attached to that text like a browser comment — or answer in one.</td></tr>
+<tr><td><code>resolve_thread</code>, <code>edit_comment</code>, <code>delete_comment</code></td><td>comment</td><td>Resolve or reopen a thread; rewrite or remove what you wrote.</td></tr>
 <tr><td><code>insert</code>, <code>replace</code></td><td>write</td><td>Direct edits, typed in at human pace with a visible cursor (<code>pace: "instant"</code> skips the show).</td></tr>
 <tr><td><code>attach</code></td><td>write, signed in</td><td>Upload a file (base64, up to 4 MB) and insert it: images render inline, other files as a chip. Images, PDF, text, CSV, JSON, zip, and office formats.</td></tr>
 <tr><td><code>create_document</code></td><td>—</td><td>A new document, optionally with starting markdown. Returns its URL.</td></tr>
@@ -348,7 +349,8 @@ A skill in the Agent Skills format teaches the workflow: draft on vapor instead 
 |---|---|---|
 | read_document | — | Markdown, block anchors, presence, open threads, and any standing instructions |
 | suggest | suggest | A tracked change inside a block, for a person to accept or reject |
-| comment, reply | comment | Open a thread on a block, or answer in one |
+| comment, reply | comment | Open a thread on a block (with quote, attached to that text like a browser comment), or answer in one |
+| resolve_thread, edit_comment, delete_comment | comment | Resolve or reopen a thread; rewrite or remove what you wrote |
 | insert, replace | write | Direct edits, typed at human pace with a visible cursor (pace: "instant" skips the show) |
 | attach | write, signed in | Upload a file (base64, up to 4 MB) and insert it; images inline, other files as a chip |
 | create_document | — | A new document, optionally with starting markdown; returns its URL |

@@ -43,4 +43,23 @@ describe("layoutComments", () => {
     expect(tops.get("a")).toBe(300);
     expect(tops.get("orphan")).toBe(408);
   });
+
+  it("keeps an anchorless active card where the stack put it instead of pinning it to the top", () => {
+    const items = [
+      { id: "a", anchor: 100, height: 40 },
+      { id: "b", anchor: 300, height: 40 },
+      { id: "orphan", anchor: Number.NaN, height: 40 },
+    ];
+    const idle = layoutComments(items, null);
+    const active = layoutComments(items, "orphan");
+    expect(active.get("orphan")).toBe(idle.get("orphan"));
+    expect(active.get("orphan")).toBeGreaterThanOrEqual(300 + 40 + 8);
+    expect(active.get("a")).toBe(100);
+    expect(active.get("b")).toBe(300);
+  });
+
+  it("an anchorless active card with no anchored siblings still sits at the top", () => {
+    const tops = layoutComments([{ id: "orphan", anchor: Number.NaN, height: 40 }], "orphan");
+    expect(tops.get("orphan")).toBe(0);
+  });
 });

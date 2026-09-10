@@ -266,6 +266,56 @@ function removeCommentRun(run: CommentRun): void {
   if (run.highlight) run.ytext.format(run.highlight.pos, run.highlight.length, { criticHighlight: null });
 }
 
+/**
+ * Resolves every anchor a caller read for a range; null when all still
+ * match, else a stale_block error naming the blocks that changed with their
+ * current anchors, so the caller can re-read just those (#59).
+ */
+function staleAnchors(doc: Y.Doc, anchors: string[]): AgentError | null {
+  const changed: string[] = [];
+  const blocks = getBlocks(doc);
+  for (const anchor of anchors) {
+    const resolved = resolveAnchor(doc, anchor);
+    if ("error" in resolved) {
+      const id = anchor.split("-")[0];
+      const current = blocks.find((b) => b.id === id);
+      changed.push(current ? `${anchor} is now ${formatAnchor(current)}: ${current.text.slice(0, 60)}` : `${anchor} is gone`);
+    }
+  }
+  if (changed.length === 0) return null;
+  return {
+    code: "stale_block",
+    message: `${changed.length} of the ${anchors.length} blocks in the range changed since you read them. Re-read them and retry; the replace was not applied.`,
+    snippet: changed.join("\n"),
+  };
+}
+
+/**
+ * What a replace costs against the hourly character budget: the length of
+ * the lines in the new markdown that are not already lines of the range it
+ * replaces (a line-level delta — cheap, and fair to a patch that re-states
+ * most of a document to change a little). Unresolvable ranges cost the
+ * whole markdown; a rewrite always costs at least one character.
+ */
+function replaceCharge(doc: Y.Doc, from: string, to: string | undefined, markdown: string): number {
+  const fromResolved = resolveAnchor(doc, from);
+  const toResolved = resolveAnchor(doc, to ?? from);
+  if ("error" in fromResolved || "error" in toResolved || toResolved.index < fromResolved.index) return markdown.length;
+  const blocks = getBlocks(doc).slice(fromResolved.index, toResolved.index + 1);
+  const existing = new Set(
+    blocks
+      .flatMap((b) => b.text.split("\n"))
+      .map((line) => line.trim())
+      .filter(Boolean),
+  );
+  let added = 0;
+  for (const line of markdown.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed && !existing.has(trimmed)) added += line.length + 1;
+  }
+  return Math.max(1, Math.min(added, markdown.length));
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -273,7 +323,7 @@ function sleep(ms: number): Promise<void> {
 /** The Yjs-application-only part of a mutation, shared by all three RPCs. */
 type MutationPayload =
   | { kind: "insert"; anchor?: string; where: "before" | "after" | "append"; markdown: string }
-  | { kind: "replace"; from: string; to?: string; markdown: string }
+  | { kind: "replace"; from: string; to?: string; markdown: string; anchors?: string[] }
   | { kind: "suggest"; anchor: string; find: string; replacement: string };
 
 /**
@@ -2358,7 +2408,7 @@ class DocumentAgent extends Agent {
    */
   async agentReplace(
     identity: AgentIdentity,
-    args: { from: string; to?: string; markdown: string; pace?: Pace },
+    args: { from: string; to?: string; markdown: string; pace?: Pace; anchors?: string[] },
   ): Promise<{ ok: true } | { error: AgentError }> {
     const verified = await this.verifyIdentity(identity, "write");
     if ("error" in verified) return verified;
@@ -2370,7 +2420,22 @@ class DocumentAgent extends Agent {
       };
     }
 
-    const rateLimited = await this.checkRateLimit(identity.id, args.markdown.length);
+    // Every block in the range the caller read, checked before anything is
+    // charged or queued: the endpoints' hashes alone let an edit someone
+    // made in the middle of the range vanish under the rewrite (#59).
+    const { doc } = this.ensureInitialised();
+    if (args.anchors && args.anchors.length > 0) {
+      const stale = staleAnchors(doc, args.anchors);
+      if (stale) return { error: stale };
+    }
+
+    // Charged for what the rewrite adds, not for everything it re-states:
+    // a whole-document replace that changes one paragraph should cost that
+    // paragraph, or in-place revision of a long document is unaffordable
+    // (#59). A range that doesn't resolve is charged in full and fails
+    // properly at dispatch.
+    const charge = replaceCharge(doc, args.from, args.to, args.markdown);
+    const rateLimited = await this.checkRateLimit(identity.id, charge);
     if (rateLimited) return rateLimited;
 
     return this.dispatchMutation(verified.entry.name, args.pace, {
@@ -2378,6 +2443,7 @@ class DocumentAgent extends Agent {
       from: args.from,
       to: args.to,
       markdown: args.markdown,
+      ...(args.anchors ? { anchors: args.anchors } : {}),
     });
   }
 
@@ -3218,6 +3284,12 @@ class DocumentAgent extends Agent {
       }
 
       case "replace": {
+        // A queued replace lands later than it was checked; the range's
+        // blocks are verified again here so nothing typed meanwhile is lost.
+        if (m.anchors && m.anchors.length > 0) {
+          const stale = staleAnchors(doc, m.anchors);
+          if (stale) return { error: stale };
+        }
         const fromResolved = resolveAnchor(doc, m.from);
         if ("error" in fromResolved) {
           return { error: { code: fromResolved.error, message: "Anchor not found", snippet: fromResolved.snippet } };

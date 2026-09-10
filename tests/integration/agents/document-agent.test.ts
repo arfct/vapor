@@ -1143,6 +1143,71 @@ describe("DocumentAgent", () => {
       expect(row.recent_mutations ?? null).toBeNull();
     });
 
+    describe("range replace safety (#59)", () => {
+      async function threeBlocks() {
+        const a = makeAgent();
+        await a.onRequest(new Request("https://do/", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: "First paragraph.\n\nSecond paragraph.\n\nThird paragraph." }),
+        }));
+        const id = identity({ caps: ["write"] });
+        const read = await a.agentRead(id);
+        const anchors = ("blocks" in read ? read.blocks : []).map((b) => b.anchor);
+        return { a, id, anchors };
+      }
+
+      it("with every anchor supplied, a block edited in the middle since the read stops the replace and is named", async () => {
+        const { a, id, anchors } = await threeBlocks();
+        // Someone edits the middle block after the agent's read.
+        const client = connectYjsClient(a);
+        const para = client.doc.getXmlFragment("default").get(1) as Y.XmlElement;
+        (para.get(0) as Y.XmlText).insert(0, "EDITED ");
+        cleanup(client);
+
+        const result = await a.agentReplace(id, {
+          from: anchors[0],
+          to: anchors[2],
+          anchors,
+          markdown: "Rewritten.",
+          pace: "instant",
+        });
+        expect(result).toMatchObject({ error: { code: "stale_block" } });
+        const snippet = "error" in result ? (result.error.snippet ?? "") : "";
+        expect(snippet).toContain(anchors[1]);
+        expect(snippet).toContain("EDITED Second paragraph.");
+        const after = await a.exportMarkdown();
+        expect("markdown" in after ? after.markdown : "").toContain("EDITED Second paragraph.");
+        expect("markdown" in after ? after.markdown : "").not.toContain("Rewritten.");
+      });
+
+      it("with every anchor fresh, the range replace applies", async () => {
+        const { a, id, anchors } = await threeBlocks();
+        const result = await a.agentReplace(id, { from: anchors[0], to: anchors[2], anchors, markdown: "Rewritten.", pace: "instant" });
+        expect(result).toEqual({ ok: true });
+        const after = await a.exportMarkdown();
+        expect("markdown" in after ? after.markdown : "").toBe("Rewritten.");
+      });
+
+      it("charges the hourly budget for the lines a replace adds, not for the lines it re-states", async () => {
+        const { a, id, anchors } = await threeBlocks();
+        const markdown = "First paragraph.\n\nSecond paragraph, now longer and different.\n\nThird paragraph.";
+        await a.agentReplace(id, { from: anchors[0], to: anchors[2], anchors, markdown, pace: "instant" });
+        const row = (mockTables.get("roster") ?? []).find((r) => r.name === "scribe")!;
+        const log = JSON.parse(row.recent_mutations as string) as { chars: number }[];
+        expect(log).toHaveLength(1);
+        expect(log[0].chars).toBe("Second paragraph, now longer and different.".length + 1);
+      });
+
+      it("a whole-document rewrite with nothing in common is charged in full", async () => {
+        const { a, id, anchors } = await threeBlocks();
+        const markdown = "Entirely new text.\n\nNothing shared.";
+        await a.agentReplace(id, { from: anchors[0], to: anchors[2], markdown, pace: "instant" });
+        const row = (mockTables.get("roster") ?? []).find((r) => r.name === "scribe")!;
+        const log = JSON.parse(row.recent_mutations as string) as { chars: number }[];
+        expect(log[0].chars).toBe(markdown.length);
+      });
+    });
+
     it("stale anchor errors after concurrent edit", async () => {
       const { agent, id } = await setup(["write"]);
       const read = await agent.agentRead(id);

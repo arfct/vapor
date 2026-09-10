@@ -178,13 +178,17 @@ export const TOOLS: ToolDef[] = [
   docTool({
     name: "replace",
     description:
-      "Replace a range of blocks with new markdown, in one transaction. Requires the write capability.",
+      "Replace a range of blocks with new markdown, in one transaction. Requires the write capability. Prefer the smallest range that covers the change: replace the blocks that differ, leave the rest alone (their ids and comments survive). When the range spans several blocks, pass every anchor in it as `anchors` so an edit someone made in the middle since your read is caught (stale_block names the changed blocks) instead of overwritten. The hourly character budget is charged for the lines you add, not for lines the range already had.",
     schema: {
       from_anchor: z.string().describe(`First block to replace. ${anchorDesc}`),
       to_anchor: z
         .string()
         .optional()
         .describe(`Last block to replace; defaults to from_anchor. ${anchorDesc}`),
+      anchors: z
+        .array(z.string())
+        .optional()
+        .describe("Every anchor in the range, as read_document returned them; each is verified before the replace is applied."),
       markdown: z.string().describe("The markdown that replaces the range."),
       pace,
     },
@@ -194,6 +198,7 @@ export const TOOLS: ToolDef[] = [
         to: args.to_anchor as string | undefined,
         markdown: args.markdown as string,
         pace: args.pace as string | undefined,
+        anchors: args.anchors as string[] | undefined,
       }),
   }),
 

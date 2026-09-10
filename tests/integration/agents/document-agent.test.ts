@@ -467,10 +467,13 @@ describe("DocumentAgent", () => {
       await agent.onRequest(new Request("https://do/", { method: "POST" }));
       const after = Date.now();
 
-      expect(mockSetAlarm).toHaveBeenCalledOnce();
+      // The expiry first, then the alarm moves up to the document.expiring
+      // deadline six hours before it (#83) — the one alarm serves both.
+      expect(mockSetAlarm).toHaveBeenCalledTimes(2);
       const alarmTime = mockSetAlarm.mock.calls[0][0] as number;
       expect(alarmTime).toBeGreaterThanOrEqual(before + DOCUMENT_TTL_MS);
       expect(alarmTime).toBeLessThanOrEqual(after + DOCUMENT_TTL_MS);
+      expect(mockSetAlarm.mock.calls[1][0]).toBe(alarmTime - 6 * 60 * 60 * 1000);
     });
 
     it("imports plain text content", async () => {
@@ -927,6 +930,43 @@ describe("DocumentAgent", () => {
 
       const [entry] = await agent.getAgentRoster();
       expect(entry.lastSeenAt).not.toBeNull();
+    });
+
+    it("read_document and documentSummary carry the document's lifetime (#83)", async () => {
+      const before = Date.now();
+      await agent.onRequest(new Request("https://do/", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "# A plan\n\nBody." }),
+      }));
+      const read = await agent.agentRead(identity({ caps: ["suggest", "comment"] }));
+      if ("error" in read) throw new Error(read.error.message);
+      const created = Date.parse(read.created_at);
+      expect(created).toBeGreaterThanOrEqual(before);
+      expect(Date.parse(read.expires_at) - created).toBe(DOCUMENT_TTL_MS);
+
+      const summary = await agent.documentSummary();
+      expect(summary).toEqual({ exists: true, title: "A plan", createdAt: read.created_at, expiresAt: read.expires_at });
+      expect(await makeAgent().documentSummary()).toEqual({ exists: false, title: null, createdAt: null, expiresAt: null });
+    });
+
+    it("books document.expiring six hours before deletion and delivers it by poll when it fires (#83)", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+      const expiring = (mockTables.get("schedule") ?? []).find((r) => r.key === "expiring");
+      expect(expiring).toBeDefined();
+      const summary = await agent.documentSummary();
+      expect(expiring!.due).toBe(Date.parse(summary.expiresAt!) - 6 * 60 * 60 * 1000);
+
+      const id = identity({ caps: ["suggest", "comment"] });
+      await agent.agentJoin(id);
+      // The alarm fires at the deadline: the event is recorded, the document lives on.
+      const spy = vi.spyOn(Date, "now").mockReturnValue((expiring!.due as number) + 10);
+      await agent.alarm();
+      spy.mockRestore();
+      expect(await agent.documentSummary()).toMatchObject({ exists: true });
+      const polled = await agent.eventsPoll(id, { name: "document.expiring" });
+      const events = "events" in polled ? polled.events : [];
+      expect(events).toHaveLength(1);
+      expect(events[0].data).toMatchObject({ doc_id: "test-doc", expires_at: summary.expiresAt });
     });
 
     it("read_document returns the document's agent instructions", async () => {
@@ -1708,8 +1748,10 @@ describe("DocumentAgent", () => {
       expect(findAgentState(a.awareness)).toBeUndefined();
       const res = await agent.onRequest(new Request("https://do/"));
       expect(((await res.json()) as { exists: boolean }).exists).toBe(true);
-      // Nothing left to wake for but the expiry itself.
-      expect(lastAlarm()).toBeGreaterThan(joinedAt + DOCUMENT_TTL_MS - 1000);
+      // Nothing left to wake for before the document.expiring warning six
+      // hours ahead of the expiry itself.
+      expect(lastAlarm()).toBeGreaterThan(joinedAt + DOCUMENT_TTL_MS - 6 * 60 * 60 * 1000 - 1000);
+      expect(lastAlarm()).toBeLessThan(joinedAt + DOCUMENT_TTL_MS);
       cleanup(a);
     });
 
@@ -2506,6 +2548,7 @@ describe("DocumentAgent", () => {
       expect("events" in r && r.events.map((e) => e.name)).toEqual([
         "document.changed",
         "mention",
+        "document.expiring",
         "thread.reply",
       ]);
     });

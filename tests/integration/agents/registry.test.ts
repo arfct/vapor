@@ -250,4 +250,31 @@ describe("Registry wake targets", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect((await other.getWakeTarget(PRINCIPAL)).target?.lastError).toMatch(/save the target again/);
   });
+
+  describe("enrollments (#84)", () => {
+    it("records, lists most recent first, and forgets a principal's documents", async () => {
+      const registry = makeRegistry();
+      const spy = vi.spyOn(Date, "now");
+      spy.mockReturnValue(1_000);
+      await registry.addEnrollment("google:1", "aaaaaaaa");
+      spy.mockReturnValue(2_000);
+      await registry.addEnrollment("google:1", "bbbbbbbb");
+      spy.mockReturnValue(3_000);
+      await registry.addEnrollment("google:1", "aaaaaaaa"); // re-enrolling refreshes, no duplicate
+      spy.mockRestore();
+      expect(await registry.listEnrollments("google:1")).toEqual({
+        docs: [
+          { docId: "aaaaaaaa", enrolledAt: 3_000 },
+          { docId: "bbbbbbbb", enrolledAt: 2_000 },
+        ],
+      });
+      expect(await registry.listEnrollments("google:2")).toEqual({ docs: [] });
+
+      await registry.removeEnrollment("google:1", "aaaaaaaa");
+      expect((await registry.listEnrollments("google:1")).docs.map((d) => d.docId)).toEqual(["bbbbbbbb"]);
+      await registry.removeEnrollment("google:1", "bbbbbbbb");
+      await registry.removeEnrollment("google:1", "never-there");
+      expect(await registry.listEnrollments("google:1")).toEqual({ docs: [] });
+    });
+  });
 });

@@ -105,6 +105,8 @@ export interface RefreshGrant {
 const CODE_TTL_MS = 10 * 60 * 1000;
 /** How long a spent code's token response can be replayed to a retrying client (#78). */
 const REPLAY_TTL_MS = 60 * 1000;
+/** Documents remembered per principal for list_documents; they expire within 99 hours anyway. */
+const MAX_ENROLLMENTS = 200;
 const REFRESH_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
 async function sha256Hex(input: string): Promise<string> {
@@ -438,6 +440,39 @@ class Registry extends Agent {
     const code = randomToken("vac_");
     this.kvPut(`code:${code}`, { ...data, exp: Date.now() + CODE_TTL_MS } satisfies AuthCode);
     return { code };
+  }
+
+  /* ---- Which documents a principal's agent is enrolled on (#84) ---- */
+
+  /** Records that `principal`'s agent joined `docId`'s roster. Bounded; the oldest entries fall off. */
+  async addEnrollment(principal: string, docId: string): Promise<{ ok: true }> {
+    const key = `docs:${principal}`;
+    const docs = this.kvGet<Record<string, number>>(key) ?? {};
+    docs[docId] = Date.now();
+    const entries = Object.entries(docs).sort((a, b) => b[1] - a[1]).slice(0, MAX_ENROLLMENTS);
+    this.kvPut(key, Object.fromEntries(entries));
+    return { ok: true };
+  }
+
+  async removeEnrollment(principal: string, docId: string): Promise<{ ok: true }> {
+    const key = `docs:${principal}`;
+    const docs = this.kvGet<Record<string, number>>(key);
+    if (docs && docId in docs) {
+      delete docs[docId];
+      if (Object.keys(docs).length === 0) this.kvDelete(key);
+      else this.kvPut(key, docs);
+    }
+    return { ok: true };
+  }
+
+  /** The documents a principal's agent is enrolled on, most recent first. */
+  async listEnrollments(principal: string): Promise<{ docs: { docId: string; enrolledAt: number }[] }> {
+    const docs = this.kvGet<Record<string, number>>(`docs:${principal}`) ?? {};
+    return {
+      docs: Object.entries(docs)
+        .map(([docId, enrolledAt]) => ({ docId, enrolledAt }))
+        .sort((a, b) => b.enrolledAt - a.enrolledAt),
+    };
   }
 
   /** Reads a code without consuming it, so the exchange can be validated before the code is spent (#78). */

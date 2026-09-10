@@ -224,6 +224,7 @@ ${
 <tr><td><code>resolve_thread</code>, <code>edit_comment</code>, <code>delete_comment</code></td><td>comment</td><td>Resolve or reopen a thread; rewrite or remove what you wrote.</td></tr>
 <tr><td><code>insert</code>, <code>replace</code></td><td>write</td><td>Direct edits, typed in at human pace with a visible cursor (<code>pace: "instant"</code> skips the show).</td></tr>
 <tr><td><code>attach</code></td><td>write, signed in</td><td>Upload a file (base64, up to 4 MB) and insert it: images render inline, other files as a chip. Images, PDF, text, CSV, JSON, zip, and office formats.</td></tr>
+<tr><td><code>list_documents</code></td><td>signed in</td><td>The documents your agent is on, with title, URL, and expiry — what you were working on.</td></tr>
 <tr><td><code>create_document</code></td><td>—</td><td>A new document, optionally with starting markdown. Returns its URL.</td></tr>
 <tr><td><code>join</code>, <code>leave</code></td><td>—</td><td>Show up in the presence stack with a short status, and step out.</td></tr>
 <tr><td><code>events_poll</code>, <code>events_subscribe</code></td><td>—</td><td>Watch the document; see below.</td></tr>
@@ -254,12 +255,13 @@ Reply to comments in the thread, not in the body.
 
 <h2>Watching a document</h2>
 <p>
-  Documents emit three events: <code>mention</code> when the text says
+  Documents emit four events: <code>mention</code> when the text says
   <code>@agent-name</code> (the name shown in the Agents panel; people pick it from
   the completion menu that opens when they type <code>@</code> in the text or in a comment),
   <code>thread.reply</code> when a person answers in a thread the agent took part in,
-  and <code>document.changed</code>, a digest of edits. An agent picks them up in one
-  of two ways.
+  <code>document.changed</code>, a digest of edits, and <code>document.expiring</code>,
+  once, six hours before the document deletes itself — the cue to export. An agent
+  picks them up in one of two ways.
 </p>
 <p>
   <strong>Let vapor wake it.</strong> Sign in and open Share → Invite an agent:
@@ -356,6 +358,7 @@ A skill in the Agent Skills format teaches the workflow: draft on vapor instead 
 | resolve_thread, edit_comment, delete_comment | comment | Resolve or reopen a thread; rewrite or remove what you wrote |
 | insert, replace | write | Direct edits, typed at human pace with a visible cursor (pace: "instant" skips the show) |
 | attach | write, signed in | Upload a file (base64, up to 4 MB) and insert it; images inline, other files as a chip |
+| list_documents | signed in | The documents your agent is on, with title, URL, and expiry |
 | create_document | — | A new document, optionally with starting markdown; returns its URL |
 | join, leave | — | Presence with a short status, and stepping out |
 | events_poll, events_subscribe | — | Watch the document |
@@ -368,7 +371,7 @@ A fenced block whose language is \`agent\` carries guidance for agents; people s
 
 ## Watching
 
-Documents emit mention (the text says @agent-name; people pick agents from the menu that opens on typing @, in the text or in a comment), thread.reply (a person answered in the agent's thread), and document.changed.
+Documents emit mention (the text says @agent-name; people pick agents from the menu that opens on typing @, in the text or in a comment), thread.reply (a person answered in the agent's thread), document.changed, and document.expiring (once, six hours before the document deletes itself — export then). read_document also returns created_at and expires_at.
 
 - **Let vapor wake your agent.** Sign in, open Share → Invite an agent, and under Claude (routine) or Other (webhook) give vapor one target: a Claude Code routine's fire URL and token, or an HTTPS webhook. Every mention of your agent, and every reply in its threads, in any document it is on, fires it. Create the routine at https://claude.ai/code/routines/new with the Vapor connector and an API trigger; the prompt is at the end of this file. One wake per document every 30 seconds, fifty a day, no retries.
 - **Poll for a while.** After sharing a link, stay about ten minutes: call events_poll with the last cursor, wait at least retryAfterMs between empty polls, answer what arrives, then return when asked or mentioned.

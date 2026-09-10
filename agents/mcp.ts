@@ -178,6 +178,49 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
       );
     }
 
+    // list_documents reads the Registry, so it lives here too. Signed-in
+    // only: an anonymous session has no identity to keep a list for (#84).
+    this.server.registerTool(
+      "list_documents",
+      {
+        description:
+          "The documents this signed-in identity's agent is enrolled on (joined, or touched with any tool), most recent first, each with its title, URL, created_at, and expires_at — for an agent starting cold that wants to know what it was working on. Documents that have since expired are dropped. Empty on the anonymous endpoint.",
+        inputSchema: {},
+      },
+      async () => {
+        const identity = await this.identity();
+        if (identity.kind !== "principal") {
+          return jsonContent({
+            error: { code: "capability_denied", message: "list_documents needs the signed-in endpoint (/mcp)." },
+          });
+        }
+        const registry = (await getAgentByName(this.env.Registry, "global")) as unknown as Registry;
+        const { docs } = await registry.listEnrollments(identity.id);
+        const origin = this.props?.origin ?? siteWithoutRequest(this.env).origin;
+        const documents: { id: string; url: string; title: string | null; created_at: string | null; expires_at: string | null; enrolled_at: string }[] = [];
+        await Promise.all(
+          docs.map(async ({ docId, enrolledAt }) => {
+            const summary = await (await getStub(docId)).documentSummary();
+            if (!summary.exists) {
+              // Expired (or never materialised): forget it, don't list it.
+              await registry.removeEnrollment(identity.id, docId);
+              return;
+            }
+            documents.push({
+              id: docId,
+              url: `${origin}${documentPath(docId, summary.title)}`,
+              title: summary.title,
+              created_at: summary.createdAt,
+              expires_at: summary.expiresAt,
+              enrolled_at: new Date(enrolledAt).toISOString(),
+            });
+          }),
+        );
+        documents.sort((a, b) => b.enrolled_at.localeCompare(a.enrolled_at));
+        return jsonContent({ documents });
+      },
+    );
+
     // attach needs the R2 binding, so it lives here with create_document.
     // Uploads require a principal with write: the anonymous endpoint is refused.
     this.server.registerTool(
@@ -260,7 +303,7 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
       "create_document",
       {
         description:
-          "Create a new vapor document, optionally with starting markdown. Returns its id, URL, and this identity's capabilities on it; the calling identity is enrolled as the document's first agent. Editing afterwards (insert, replace) needs the write capability, which the anonymous endpoint never has — there, revise by suggest, or connect signed in. To revise a document that already exists, use replace on it instead: one document per draft, so the URL its readers have stays valid.",
+          "Create a new vapor document, optionally with starting markdown. Returns its id, URL, created_at, expires_at (99 hours later — export before then), and this identity's capabilities on it; the calling identity is enrolled as the document's first agent. Editing afterwards (insert, replace) needs the write capability, which the anonymous endpoint never has — there, revise by suggest, or connect signed in. To revise a document that already exists, use replace on it instead: one document per draft, so the URL its readers have stays valid.",
         inputSchema: {
           markdown: z.string().optional().describe("Optional starting markdown for the document."),
         },
@@ -300,9 +343,12 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
 
         const origin = this.props?.origin ?? siteWithoutRequest(this.env).origin;
         const note = createDocumentNote(identity);
+        const summary = await (stub as unknown as DocStub).documentSummary();
         return jsonContent({
           id,
           url: `${origin}${documentPath(id, titleFromMarkdown(markdown ?? ""))}`,
+          created_at: summary.createdAt,
+          expires_at: summary.expiresAt,
           capabilities: identity.caps,
           ...(note ? { note } : {}),
         });

@@ -275,6 +275,42 @@ describe("Registry wake targets", () => {
       await registry.removeEnrollment("google:1", "bbbbbbbb");
       await registry.removeEnrollment("google:1", "never-there");
       expect(await registry.listEnrollments("google:1")).toEqual({ docs: [] });
+  describe("personal access tokens (#85)", () => {
+    it("mints a token shown once, resolves it to its grant, lists and revokes it", async () => {
+      const registry = makeRegistry();
+      const made = await registry.createAccessToken({ principal: "google:1", email: "a@x.com", caps: ["suggest", "comment"], label: "build box" });
+      if ("error" in made) throw new Error(made.error.message);
+      expect(made.token.startsWith("vpt_")).toBe(true);
+      expect(made.view).toMatchObject({ label: "build box", caps: ["suggest", "comment"], hint: made.token.slice(-4), lastUsedAt: null });
+      expect(made.view.id).toHaveLength(12);
+
+      expect(await registry.lookupAccessToken(made.token)).toEqual({
+        grant: { principal: "google:1", email: "a@x.com", caps: ["suggest", "comment"] },
+      });
+      expect(await registry.lookupAccessToken("vpt_nope")).toEqual({ grant: null });
+      expect(await registry.lookupAccessToken("not-a-token")).toEqual({ grant: null });
+
+      const listed = await registry.listAccessTokens("google:1");
+      expect(listed.tokens).toHaveLength(1);
+      expect(listed.tokens[0].lastUsedAt).not.toBeNull();
+      expect(await registry.listAccessTokens("google:2")).toEqual({ tokens: [] });
+
+      // Someone else's id does nothing; the owner's revokes.
+      await registry.revokeAccessToken("google:2", made.view.id);
+      expect((await registry.lookupAccessToken(made.token)).grant).not.toBeNull();
+      await registry.revokeAccessToken("google:1", made.view.id);
+      expect(await registry.lookupAccessToken(made.token)).toEqual({ grant: null });
+      expect(await registry.listAccessTokens("google:1")).toEqual({ tokens: [] });
+    });
+
+    it("caps the number of tokens per principal", async () => {
+      const registry = makeRegistry();
+      for (let i = 0; i < 20; i++) {
+        const r = await registry.createAccessToken({ principal: "google:1", email: "a@x.com", caps: ["suggest"], label: `t${i}` });
+        expect("token" in r).toBe(true);
+      }
+      const over = await registry.createAccessToken({ principal: "google:1", email: "a@x.com", caps: ["suggest"], label: "one more" });
+      expect(over).toMatchObject({ error: { code: "rate_limited" } });
     });
   });
 });

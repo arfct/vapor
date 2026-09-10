@@ -17,7 +17,9 @@ import { handleOAuth, OAUTH_CORS } from "./oauth";
 import { handleAttachmentUpload, handleAttachmentServe } from "./attachments";
 import { buildAttachmentDeps } from "./attachment-deps";
 import { handleWakeRoutes } from "./wake-routes";
-import { agentMention } from "../app/shared/agent-protocol";
+import { handleTokenRoutes } from "./token-routes";
+import { isAccessToken } from "../app/shared/token-policy";
+import { agentMention, type AgentCapability } from "../app/shared/agent-protocol";
 import type Registry from "../agents/registry";
 
 export { default as DocumentAgent } from "../agents/document";
@@ -108,6 +110,18 @@ export default {
       if (wakeResponse) return wakeResponse;
     }
 
+    // /me/tokens — the signed-in person's personal access tokens (#85).
+    if (url.pathname === "/me/tokens") {
+      const registry = (await getAgentByName(env.Registry, "global")) as unknown as Registry;
+      const tokenResponse = await handleTokenRoutes(request, {
+        secret: env.SESSION_SECRET ?? "",
+        list: (principal) => registry.listAccessTokens(principal),
+        create: (input) => registry.createAccessToken(input),
+        revoke: (principal, id) => registry.revokeAccessToken(principal, id),
+      });
+      if (tokenResponse) return tokenResponse;
+    }
+
     // Anyone landing on /mcp with a GET gets the how-to-connect guide (HTML
     // for browsers, markdown otherwise) instead of a protocol error; only the
     // event-stream GET a real MCP client makes falls through to VaporMcp.serve
@@ -155,15 +169,20 @@ export default {
       return anonMcpHandler.fetch(request, env, mcpCtx);
     }
 
-    // /mcp is the signed-in endpoint: it accepts exactly one credential type — a
-    // vapor OAuth access token (session JWT). A bare or invalid request gets
-    // the 401 challenge that drives MCP clients into the consent flow.
+    // /mcp is the signed-in endpoint: it accepts a vapor OAuth access token
+    // (session JWT) or a personal access token (vpt_…, minted under Share →
+    // Invite an agent; #85). A bare or invalid request gets the 401 challenge
+    // that drives MCP clients into the consent flow.
     if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) {
       const header = request.headers.get("Authorization");
       const bearer = header?.match(/^Bearer\s+(.+)$/i)?.[1] ?? null;
-      const claims = bearer
-        ? await verifySessionToken(bearer, env.SESSION_SECRET ?? "")
-        : null;
+      let claims: { principal: string; email: string; caps?: AgentCapability[] } | null = null;
+      if (bearer && isAccessToken(bearer)) {
+        const registry = (await getAgentByName(env.Registry, "global")) as unknown as Registry;
+        claims = (await registry.lookupAccessToken(bearer)).grant;
+      } else if (bearer) {
+        claims = await verifySessionToken(bearer, env.SESSION_SECRET ?? "");
+      }
       if (!claims) {
         return new Response(
           JSON.stringify({ error: "unauthorized", error_description: "OAuth access token required" }),

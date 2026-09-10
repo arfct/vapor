@@ -1,5 +1,6 @@
 import { Agent } from "agents";
 import type { AgentCapability } from "../app/shared/agent-protocol";
+import { ACCESS_TOKEN_PREFIX, MAX_ACCESS_TOKENS_PER_PRINCIPAL, type AccessTokenView } from "../app/shared/token-policy";
 import { randomShortId } from "../app/shared/short-id";
 import { ledgerAllows, pruneLedger, type AttachmentError, type LedgerRow } from "../app/shared/attachment-policy";
 import {
@@ -74,6 +75,17 @@ export interface TokenReplay {
   exp: number;
 }
 
+/** A personal access token at rest: hashed key, plain metadata (#85). */
+export interface AccessTokenRecord {
+  principal: string;
+  email: string;
+  caps: AgentCapability[];
+  label: string;
+  hint: string;
+  createdAt: number;
+  lastUsedAt: number | null;
+}
+
 /** A stored wake target (docs/plans/2026-09-06-agent-wake-plan.md). The secret is sealed; see wake-crypto. */
 interface WakeRecord {
   kind: WakeKind;
@@ -112,6 +124,17 @@ const REFRESH_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 async function sha256Hex(input: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function tokenView(hash: string, record: AccessTokenRecord): AccessTokenView {
+  return {
+    id: hash.slice(0, 12),
+    label: record.label,
+    caps: record.caps,
+    createdAt: record.createdAt,
+    lastUsedAt: record.lastUsedAt,
+    hint: record.hint,
+  };
 }
 
 function randomToken(prefix: string): string {
@@ -473,6 +496,76 @@ class Registry extends Agent {
         .map(([docId, enrolledAt]) => ({ docId, enrolledAt }))
         .sort((a, b) => b.enrolledAt - a.enrolledAt),
     };
+  /* ---- Personal access tokens (#85) ---- */
+
+  /**
+   * Mints a token for a principal. The raw token is returned once and never
+   * stored; the record lives under its SHA-256, and a per-principal index of
+   * hashes supports listing and revocation.
+   */
+  async createAccessToken(
+    input: { principal: string; email: string; caps: AgentCapability[]; label: string },
+  ): Promise<{ token: string; view: AccessTokenView } | { error: { code: "rate_limited"; message: string } }> {
+    const index = this.kvGet<string[]>(`pats:${input.principal}`) ?? [];
+    if (index.length >= MAX_ACCESS_TOKENS_PER_PRINCIPAL) {
+      return {
+        error: { code: "rate_limited", message: `At most ${MAX_ACCESS_TOKENS_PER_PRINCIPAL} tokens; revoke one first.` },
+      };
+    }
+    const token = randomToken(ACCESS_TOKEN_PREFIX);
+    const hash = await sha256Hex(token);
+    const record: AccessTokenRecord = {
+      principal: input.principal,
+      email: input.email,
+      caps: input.caps,
+      label: input.label,
+      hint: token.slice(-4),
+      createdAt: Date.now(),
+      lastUsedAt: null,
+    };
+    this.kvPut(`pat:${hash}`, record);
+    this.kvPut(`pats:${input.principal}`, [...index, hash]);
+    return { token, view: tokenView(hash, record) };
+  }
+
+  /**
+   * Resolves a bearer to its grant, or null. Notes the use (at most once a
+   * minute, to keep a busy agent from writing storage on every call).
+   */
+  async lookupAccessToken(
+    token: string,
+  ): Promise<{ grant: { principal: string; email: string; caps: AgentCapability[] } | null }> {
+    if (!token.startsWith(ACCESS_TOKEN_PREFIX)) return { grant: null };
+    const hash = await sha256Hex(token);
+    const record = this.kvGet<AccessTokenRecord>(`pat:${hash}`);
+    if (!record) return { grant: null };
+    const now = Date.now();
+    if (record.lastUsedAt === null || now - record.lastUsedAt > 60_000) {
+      this.kvPut(`pat:${hash}`, { ...record, lastUsedAt: now });
+    }
+    return { grant: { principal: record.principal, email: record.email, caps: record.caps } };
+  }
+
+  async listAccessTokens(principal: string): Promise<{ tokens: AccessTokenView[] }> {
+    const index = this.kvGet<string[]>(`pats:${principal}`) ?? [];
+    const tokens: AccessTokenView[] = [];
+    for (const hash of index) {
+      const record = this.kvGet<AccessTokenRecord>(`pat:${hash}`);
+      if (record) tokens.push(tokenView(hash, record));
+    }
+    return { tokens };
+  }
+
+  /** Revokes one of the principal's tokens by its view id; a stranger's id is a no-op. */
+  async revokeAccessToken(principal: string, id: string): Promise<{ ok: true }> {
+    const index = this.kvGet<string[]>(`pats:${principal}`) ?? [];
+    const hash = index.find((h) => h.startsWith(id));
+    if (!hash) return { ok: true };
+    this.kvDelete(`pat:${hash}`);
+    const rest = index.filter((h) => h !== hash);
+    if (rest.length === 0) this.kvDelete(`pats:${principal}`);
+    else this.kvPut(`pats:${principal}`, rest);
+    return { ok: true };
   }
 
   /** Reads a code without consuming it, so the exchange can be validated before the code is spent (#78). */

@@ -7,14 +7,13 @@
  * module stays unit-testable.
  */
 import { isValidDocumentId } from "../app/shared/constants";
-import { parseDocumentSegment } from "../app/shared/doc-url";
 import type { AgentError } from "../app/shared/agent-protocol";
 import { mcpHelpHtml, mcpHelpMarkdown } from "../app/lib/mcp-help";
 import { configuredOrigin, redirectHosts, siteForRequest, type SiteConfig, type SiteEnv } from "../app/shared/site";
 import skillTemplate from "../plugin/skills/vapor/SKILL.md?raw";
 import { absolutizeAttachmentUrls, isImageType } from "../app/shared/attachment-policy";
 import { attachmentImages, buildEpub, epubFilename, type EpubImage } from "../app/shared/epub";
-import { titleFromMarkdown } from "../app/shared/doc-url";
+import { parseDocumentSegment, titleFromMarkdown } from "../app/shared/doc-url";
 import {
   mintSessionToken,
   sessionFromRequest,
@@ -71,8 +70,9 @@ export async function handleEpub(request: Request, deps: EpubDeps): Promise<Resp
   const url = new URL(request.url);
   const match = /^\/([^/]+)\.epub$/.exec(url.pathname);
   if (!match) return null;
-  const id = match[1];
-  if (!isValidDocumentId(id)) return null;
+  // The bare id, or the slugged form the address bar shows (`/a-plan-abcd1234`).
+  const id = parseDocumentSegment(match[1])?.id ?? null;
+  if (!id || !isValidDocumentId(id)) return null;
 
   const built = await buildDocumentEpub(id, deps, url.origin);
   if (!built) return new Response("Not found", { status: 404 });

@@ -226,6 +226,11 @@ describe("handleEpub", () => {
     expect(String.fromCharCode(...bytes.subarray(30, 38))).toBe("mimetype");
   });
 
+  it("accepts the slugged form the address bar shows", async () => {
+    const res = await handleEpub(new Request("https://vapor.example/a-plan-abcd1234.epub"), deps);
+    expect(res!.status).toBe(200);
+  });
+
   it("falls through for other paths and 404s a missing document", async () => {
     expect(await handleEpub(new Request("https://vapor.example/abcd1234.md"), deps)).toBeNull();
     expect(await handleEpub(new Request("https://vapor.example/nope.epub"), deps)).toBeNull();

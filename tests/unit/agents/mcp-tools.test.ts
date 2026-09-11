@@ -86,13 +86,14 @@ describe("mcp tool table", () => {
     const tool = TOOLS.find((t) => t.name === "replace")!;
     await tool.run(
       { getStub: async () => stub as never, identity: ID },
-      { doc_id: "abcd1234", from_anchor: "b1-aaaabbbb", to_anchor: "b2-ccccdddd", markdown: "x" },
+      { doc_id: "abcd1234", from_anchor: "b1-aaaabbbb", to_anchor: "b2-ccccdddd", markdown: "x", anchors: ["b1-aaaabbbb", "b2-ccccdddd"] },
     );
     expect(stub.agentReplace).toHaveBeenCalledWith(ID, {
       from: "b1-aaaabbbb",
       to: "b2-ccccdddd",
       markdown: "x",
       pace: undefined,
+      anchors: ["b1-aaaabbbb", "b2-ccccdddd"],
     });
   });
 

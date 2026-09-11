@@ -275,6 +275,9 @@ describe("Registry wake targets", () => {
       await registry.removeEnrollment("google:1", "bbbbbbbb");
       await registry.removeEnrollment("google:1", "never-there");
       expect(await registry.listEnrollments("google:1")).toEqual({ docs: [] });
+    });
+  });
+
   describe("personal access tokens (#85)", () => {
     it("mints a token shown once, resolves it to its grant, lists and revokes it", async () => {
       const registry = makeRegistry();

@@ -7,12 +7,13 @@
  * module stays unit-testable.
  */
 import { isValidDocumentId } from "../app/shared/constants";
-import { parseDocumentSegment } from "../app/shared/doc-url";
 import type { AgentError } from "../app/shared/agent-protocol";
 import { mcpHelpHtml, mcpHelpMarkdown } from "../app/lib/mcp-help";
 import { configuredOrigin, redirectHosts, siteForRequest, type SiteConfig, type SiteEnv } from "../app/shared/site";
 import skillTemplate from "../plugin/skills/vapor/SKILL.md?raw";
-import { absolutizeAttachmentUrls } from "../app/shared/attachment-policy";
+import { absolutizeAttachmentUrls, isImageType } from "../app/shared/attachment-policy";
+import { attachmentImages, buildEpub, epubFilename, type EpubImage } from "../app/shared/epub";
+import { parseDocumentSegment, titleFromMarkdown } from "../app/shared/doc-url";
 import {
   mintSessionToken,
   sessionFromRequest,
@@ -27,6 +28,62 @@ import {
 /** The subset of the DocumentAgent RPC surface handleRawMarkdown calls. */
 export interface MarkdownStub {
   exportMarkdown(): Promise<{ markdown: string } | { error: AgentError }>;
+}
+
+/** What building an EPUB needs from a document and its attachments. */
+export interface EpubDeps {
+  getStub(id: string): Promise<MarkdownStub & { attachmentInfo(id: string): Promise<{ filename: string; contentType: string } | null> }>;
+  /** The attachment's bytes from R2, or null. */
+  getAttachment(docId: string, attachmentId: string): Promise<Uint8Array | null>;
+}
+
+/**
+ * The document as an EPUB, ready for a Kindle or a reMarkable: the same
+ * markdown as `/:id.md`, CriticMarkup resolved as accepted, attachments
+ * embedded so the file stands alone (#100). Null unless the request is a
+ * GET on `/<8-char-id>.epub`; 404 for a document that doesn't exist.
+ */
+export async function buildDocumentEpub(
+  id: string,
+  deps: EpubDeps,
+  origin: string,
+): Promise<{ bytes: Uint8Array; filename: string; title: string | null } | null> {
+  const stub = await deps.getStub(id);
+  const result = await stub.exportMarkdown();
+  if ("error" in result) return null;
+  const images: EpubImage[] = [];
+  for (const ref of attachmentImages(result.markdown)) {
+    if (ref.path.split("/")[1] !== id) continue; // another document's attachment: leave the link alone
+    const [info, bytes] = await Promise.all([stub.attachmentInfo(ref.id), deps.getAttachment(id, ref.id)]);
+    if (!info || !bytes || !isImageType(info.contentType)) continue;
+    images.push({ path: ref.path, bytes, contentType: info.contentType, filename: info.filename });
+  }
+  return {
+    bytes: buildEpub({ id, markdown: result.markdown, images, sourceUrl: `${origin}/${id}` }),
+    filename: epubFilename(id, result.markdown),
+    title: titleFromMarkdown(result.markdown),
+  };
+}
+
+export async function handleEpub(request: Request, deps: EpubDeps): Promise<Response | null> {
+  if (request.method !== "GET") return null;
+  const url = new URL(request.url);
+  const match = /^\/([^/]+)\.epub$/.exec(url.pathname);
+  if (!match) return null;
+  // The bare id, or the slugged form the address bar shows (`/a-plan-abcd1234`).
+  const id = parseDocumentSegment(match[1])?.id ?? null;
+  if (!id || !isValidDocumentId(id)) return null;
+
+  const built = await buildDocumentEpub(id, deps, url.origin);
+  if (!built) return new Response("Not found", { status: 404 });
+  return new Response(built.bytes as unknown as BodyInit, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/epub+zip",
+      "Content-Disposition": `attachment; filename="${built.filename.replace(/"/g, "")}"`,
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
 }
 
 /**

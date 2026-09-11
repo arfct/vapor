@@ -57,6 +57,7 @@ export default function HeaderMenu({
   comments,
   onNewDocument,
   onHistory,
+  onSendTo,
   onSignIn,
 }: {
   /** Phones only: the comment sheet's open state and toggle. */
@@ -64,6 +65,8 @@ export default function HeaderMenu({
   onNewDocument?: () => void;
   /** Documents only: open the version history. */
   onHistory?: () => void;
+  /** Documents only: send to a Kindle or reMarkable, or download the EPUB. */
+  onSendTo?: () => void;
   /** Opens the sign-in dialog; the row shows only while signed out. */
   onSignIn?: () => void;
 } = {}) {
@@ -167,10 +170,11 @@ export default function HeaderMenu({
                 ))}
               </div>
             </div>
-            {(onNewDocument || onHistory) && (
+            {(onNewDocument || onHistory || onSendTo) && (
               <div className="border-t border-border py-1">
                 {onNewDocument && <Row icon="note_add" label="New document" onClick={run(onNewDocument)} />}
                 {onHistory && <Row icon="history" label="History" onClick={run(onHistory)} />}
+                {onSendTo && <Row icon="send" label="Send to device" onClick={run(onSendTo)} />}
               </div>
             )}
             <div className="border-t border-border py-1" role="group" aria-label="Editing mode">

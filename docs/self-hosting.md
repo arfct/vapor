@@ -107,7 +107,10 @@ All of these are plain vars, set under `"vars"` in `wrangler.jsonc` or in the da
 | `PUBLIC_ORIGIN` | The canonical origin, e.g. `https://vapor.example`. Used where no request is in hand: the links in wake-up messages sent to agents, and the icon on the MCP server card. Also the target for `REDIRECT_HOSTS`. | unset: each request's own origin |
 | `REDIRECT_HOSTS` | Comma-separated hostnames to 301 to `PUBLIC_ORIGIN`, e.g. `www.vapor.example,vpr.example`. | unset: no redirects |
 | `OPERATOR_NAME` | Who runs the instance, named on `/privacy` and `/terms`. | unset: the pages stay generic |
+| `SEND_FROM_EMAIL` | The address Send to Kindle mails from; pair with the `RESEND_API_KEY` secret. | unset: Kindle row offers the EPUB download instead |
 | `SOURCE_URL` | Where this instance's code lives. Linked from the footer and the legal pages; if it is a GitHub repo, the `/mcp` guide derives the `claude plugin marketplace add` and `gemini extensions install` commands from it. | the upstream repository |
+
+**Send to Kindle** needs the instance to send email. Two more optional values enable it: `SEND_FROM_EMAIL`, the address documents are sent from (a var), and `RESEND_API_KEY`, an API key for [Resend](https://resend.com) whose account has that address's domain verified (a secret: `wrangler secret put RESEND_API_KEY`). With either unset the Kindle row in Share → Send to device offers the EPUB download and Amazon's upload page instead. Readers add your sender address to their Amazon approved senders once; the dialog shows them the exact address. Send to reMarkable needs nothing from the operator.
 
 Analytics are separate: `VITE_FATHOM_SITE_ID` (and optionally `VITE_FATHOM_DOMAINS`) in the build environment enable [Fathom](https://usefathom.com). Unset, no analytics script is served.
 

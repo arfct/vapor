@@ -1,6 +1,7 @@
 import { Agent } from "agents";
 import type { AgentCapability } from "../app/shared/agent-protocol";
 import { ACCESS_TOKEN_PREFIX, MAX_ACCESS_TOKENS_PER_PRINCIPAL, type AccessTokenView } from "../app/shared/token-policy";
+import { SENDS_PER_MINUTE, type DevicesView } from "../app/shared/device-policy";
 import { randomShortId } from "../app/shared/short-id";
 import { ledgerAllows, pruneLedger, type AttachmentError, type LedgerRow } from "../app/shared/attachment-policy";
 import {
@@ -73,6 +74,19 @@ export interface TokenReplay {
   codeChallenge: string;
   body: string;
   exp: number;
+}
+
+/** A person's e-reader settings at rest (#100). The reMarkable token is sealed like a wake secret. */
+interface DeviceRecord {
+  kindleEmail?: string;
+  remarkable?: { sealedToken: string; pairedAt: number };
+}
+
+function deviceView(rec: DeviceRecord | null): DevicesView {
+  return {
+    kindleEmail: rec?.kindleEmail ?? null,
+    remarkable: rec?.remarkable ? { pairedAt: rec.remarkable.pairedAt } : null,
+  };
 }
 
 /** A personal access token at rest: hashed key, plain metadata (#85). */
@@ -496,6 +510,62 @@ class Registry extends Agent {
         .map(([docId, enrolledAt]) => ({ docId, enrolledAt }))
         .sort((a, b) => b.enrolledAt - a.enrolledAt),
     };
+  }
+
+  /* ---- Send to Kindle / reMarkable (#100) ---- */
+
+  async getDevices(principal: string): Promise<{ devices: DevicesView }> {
+    const rec = this.kvGet<DeviceRecord>(`devices:${principal}`);
+    return { devices: deviceView(rec) };
+  }
+
+  async setKindleEmail(principal: string, email: string | null): Promise<{ devices: DevicesView }> {
+    const rec = this.kvGet<DeviceRecord>(`devices:${principal}`) ?? {};
+    if (email) rec.kindleEmail = email;
+    else delete rec.kindleEmail;
+    this.putDevices(principal, rec);
+    return { devices: deviceView(rec) };
+  }
+
+  /** Stores a reMarkable device token sealed under the deployment's key; it is opened only to send. */
+  async setRemarkableToken(principal: string, deviceToken: string): Promise<{ devices: DevicesView }> {
+    const rec = this.kvGet<DeviceRecord>(`devices:${principal}`) ?? {};
+    rec.remarkable = { sealedToken: await sealSecret(deviceToken, await this.wakeKey()), pairedAt: Date.now() };
+    this.putDevices(principal, rec);
+    return { devices: deviceView(rec) };
+  }
+
+  async clearRemarkable(principal: string): Promise<{ devices: DevicesView }> {
+    const rec = this.kvGet<DeviceRecord>(`devices:${principal}`) ?? {};
+    delete rec.remarkable;
+    this.putDevices(principal, rec);
+    return { devices: deviceView(rec) };
+  }
+
+  /** The paired reMarkable's device token, or null when unpaired or unsealable. */
+  async openRemarkableToken(principal: string): Promise<{ deviceToken: string | null }> {
+    const rec = this.kvGet<DeviceRecord>(`devices:${principal}`);
+    if (!rec?.remarkable) return { deviceToken: null };
+    return { deviceToken: await openSecret(rec.remarkable.sealedToken, await this.wakeKey()) };
+  }
+
+  /** Counts a send against the per-minute allowance; false when it is spent. */
+  async allowSend(principal: string): Promise<{ allowed: boolean }> {
+    const key = `sends:${principal}`;
+    const now = Date.now();
+    const recent = (this.kvGet<number[]>(key) ?? []).filter((t) => now - t < 60_000);
+    if (recent.length >= SENDS_PER_MINUTE) {
+      this.kvPut(key, recent);
+      return { allowed: false };
+    }
+    recent.push(now);
+    this.kvPut(key, recent);
+    return { allowed: true };
+  }
+
+  private putDevices(principal: string, rec: DeviceRecord): void {
+    if (!rec.kindleEmail && !rec.remarkable) this.kvDelete(`devices:${principal}`);
+    else this.kvPut(`devices:${principal}`, rec);
   }
 
   /* ---- Personal access tokens (#85) ---- */

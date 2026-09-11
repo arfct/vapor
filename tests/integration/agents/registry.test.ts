@@ -316,4 +316,31 @@ describe("Registry wake targets", () => {
       expect(over).toMatchObject({ error: { code: "rate_limited" } });
     });
   });
+
+  describe("e-reader settings (#100)", () => {
+    it("keeps a Kindle address and a sealed reMarkable token per principal", async () => {
+      const registry = makeRegistry();
+      (registry as unknown as { env: Record<string, string> }).env = { SESSION_SECRET: "registry-test-secret" };
+      expect(await registry.getDevices("google:1")).toEqual({ devices: { kindleEmail: null, remarkable: null } });
+      await registry.setKindleEmail("google:1", "ada@kindle.com");
+      const paired = await registry.setRemarkableToken("google:1", "device-token-secret");
+      expect(paired.devices.kindleEmail).toBe("ada@kindle.com");
+      expect(paired.devices.remarkable?.pairedAt).toBeGreaterThan(0);
+      // The token is stored sealed, never in the clear.
+      expect(kvStore.get("devices:google:1") ?? "").not.toContain("device-token-secret");
+      expect(await registry.openRemarkableToken("google:1")).toEqual({ deviceToken: "device-token-secret" });
+
+      await registry.clearRemarkable("google:1");
+      expect(await registry.openRemarkableToken("google:1")).toEqual({ deviceToken: null });
+      await registry.setKindleEmail("google:1", null);
+      expect(await registry.getDevices("google:1")).toEqual({ devices: { kindleEmail: null, remarkable: null } });
+    });
+
+    it("allows a handful of sends a minute, then refuses", async () => {
+      const registry = makeRegistry();
+      for (let i = 0; i < 5; i++) expect(await registry.allowSend("google:1")).toEqual({ allowed: true });
+      expect(await registry.allowSend("google:1")).toEqual({ allowed: false });
+      expect(await registry.allowSend("google:2")).toEqual({ allowed: true });
+    });
+  });
 });

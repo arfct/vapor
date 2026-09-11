@@ -38,7 +38,8 @@
 	//   REDIRECT_HOSTS    comma-separated aliases to 301 to PUBLIC_ORIGIN
 	//   OPERATOR_NAME     shown on /privacy and /terms
 	//   SOURCE_URL        your fork, if you publish your own plugin from it
-	// SESSION_SECRET is a secret, not a var: `wrangler secret put SESSION_SECRET`.
+	//   SEND_FROM_EMAIL   the address Send to Kindle mails from (with the RESEND_API_KEY secret)
+	// SESSION_SECRET and RESEND_API_KEY are secrets, not vars: `wrangler secret put <NAME>`.
 	"vars": {},
 	"keep_vars": true
 }

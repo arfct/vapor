@@ -17,6 +17,9 @@ interface Env {
   REDIRECT_HOSTS?: string;
   OPERATOR_NAME?: string;
   SOURCE_URL?: string;
+  /** Send to Kindle by email (#100): a Resend API key (secret) and the approved sender address (var). Both optional. */
+  RESEND_API_KEY?: string;
+  SEND_FROM_EMAIL?: string;
 }
 
 declare namespace Cloudflare {
@@ -29,5 +32,7 @@ declare namespace Cloudflare {
     REDIRECT_HOSTS?: string;
     OPERATOR_NAME?: string;
     SOURCE_URL?: string;
+    RESEND_API_KEY?: string;
+    SEND_FROM_EMAIL?: string;
   }
 }

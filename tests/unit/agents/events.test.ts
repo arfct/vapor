@@ -16,9 +16,11 @@ import {
 } from "~/../agents/events";
 
 describe("event catalog", () => {
-  it("lists the three event types with schemas and delivery modes", () => {
+  it("lists the four event types with schemas and delivery modes", () => {
     const catalog = eventCatalog();
-    expect(catalog.map((e) => e.name)).toEqual(["document.changed", "mention", "thread.reply"]);
+    expect(catalog.map((e) => e.name)).toEqual(["document.changed", "mention", "document.expiring", "thread.reply"]);
+    const expiring = catalog.find((e) => e.name === "document.expiring")!;
+    expect((expiring.payloadSchema as { properties: Record<string, unknown> }).properties).toHaveProperty("expires_at");
     for (const e of catalog) {
       expect(e.delivery).toContain("poll");
       expect(e.delivery).toContain("webhook");
@@ -30,6 +32,7 @@ describe("event catalog", () => {
     expect(eventTypeByName("mention")?.internalType).toBe("mention");
     expect(eventTypeByName("thread.reply")?.internalType).toBe("thread_reply");
     expect(eventTypeByName("document.changed")?.internalType).toBe("doc_changed");
+    expect(eventTypeByName("document.expiring")?.internalType).toBe("doc_expiring");
     expect(eventTypeByName("nope")).toBeNull();
   });
 });

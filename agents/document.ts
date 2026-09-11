@@ -132,6 +132,10 @@ const SCHEDULE_JITTER_MS = 5_000;
 const IDLE_TASK_PREFIX = "idle:";
 /** The scheduled task that takes the idle version snapshot. */
 const SNAPSHOT_TASK = "snapshot";
+/** The scheduled task that fires document.expiring (#83). */
+const EXPIRING_TASK = "expiring";
+/** How far ahead of deletion document.expiring fires. */
+const EXPIRING_LEAD_MS = 6 * 60 * 60 * 1000;
 
 /**
  * Wall-clock budget for one typed performance. Typing pins this Durable
@@ -890,7 +894,57 @@ class DocumentAgent extends Agent {
       this.setAgentPresence(key.slice(IDLE_TASK_PREFIX.length), null);
     } else if (key === SNAPSHOT_TASK) {
       this.maybeSnapshot("idle");
+    } else if (key === EXPIRING_TASK) {
+      if (this.docExists()) {
+        this.recordEvent("doc_expiring", { expires_at: new Date(this.docExpiresAt()).toISOString() });
+      }
     }
+  }
+
+  /**
+   * Books document.expiring for EXPIRING_LEAD_MS before deletion, once. Called
+   * at creation and whenever an agent enrolls, so documents from before the
+   * event existed pick it up on their next agent visit (#83).
+   */
+  private ensureExpiringTask(): void {
+    if (this.scheduledDue.has(EXPIRING_TASK)) return;
+    const due = this.docExpiresAt() - EXPIRING_LEAD_MS;
+    if (due <= Date.now()) return;
+    const rows = this.sql<{ key: string }>`SELECT key FROM schedule WHERE key = ${EXPIRING_TASK}`;
+    if (rows.length > 0) {
+      this.scheduledDue.set(EXPIRING_TASK, due);
+      return;
+    }
+    this.scheduleTask(EXPIRING_TASK, due);
+  }
+
+  /** The Registry, when this agent runs with its bindings (tests may not). */
+  private registryStub(): Promise<Registry> | null {
+    const binding = (this as unknown as { env?: Env }).env?.Registry;
+    if (!binding) return null;
+    return getAgentByName(binding, "global") as unknown as Promise<Registry>;
+  }
+
+  /**
+   * What a listing needs to know about this document without reading it
+   * all: whether it exists, its title, and its lifetime. Used by
+   * create_document's result and list_documents (#83, #84).
+   */
+  async documentSummary(): Promise<{
+    exists: boolean;
+    title: string | null;
+    createdAt: string | null;
+    expiresAt: string | null;
+  }> {
+    const { doc } = this.ensureInitialised();
+    if (!this.docExists()) return { exists: false, title: null, createdAt: null, expiresAt: null };
+    const expiresAt = this.docExpiresAt();
+    return {
+      exists: true,
+      title: titleFromMarkdown(yDocToMarkdown(doc)),
+      createdAt: new Date(expiresAt - DOCUMENT_TTL_MS).toISOString(),
+      expiresAt: new Date(expiresAt).toISOString(),
+    };
   }
 
   override readonly alarm = async (): Promise<void> => {
@@ -926,7 +980,16 @@ class DocumentAgent extends Agent {
     this.sql`DELETE FROM doc_state`;
     // The roster dies with the document — an enrollment must not persist
     // against whatever content lands at this doc id if it's recreated
-    // after expiry.
+    // after expiry. Signed-in agents' document lists forget it too (#84).
+    const enrolled = this.sql<{ identity_id: string }>`SELECT identity_id FROM roster WHERE owner IS NOT NULL`;
+    const registry = this.registryStub();
+    if (registry && enrolled.length > 0) {
+      const forget = registry
+        .then((r) => Promise.all(enrolled.map((row) => r.removeEnrollment(row.identity_id, this.name))))
+        .catch((err: unknown) => console.error("enrollment cleanup failed:", err));
+      const ctx = (this as unknown as { ctx?: { waitUntil?: (p: Promise<unknown>) => void } }).ctx;
+      if (ctx?.waitUntil) ctx.waitUntil(forget);
+    }
     this.sql`DELETE FROM roster`;
     // Any queued performances belong to a document that no longer exists.
     this.sql`DELETE FROM performances`;
@@ -989,6 +1052,7 @@ class DocumentAgent extends Agent {
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
       `;
       await this.ctx.storage.setAlarm(now + DOCUMENT_TTL_MS);
+      this.scheduleTask(EXPIRING_TASK, now + DOCUMENT_TTL_MS - EXPIRING_LEAD_MS);
 
       // If the request has a JSON body with content, populate the Yjs doc
       const contentType = request.headers.get("Content-Type") || "";
@@ -1168,6 +1232,17 @@ class DocumentAgent extends Agent {
       INSERT INTO roster (identity_id, name, label, color, owner, capabilities, created_at, last_seen_at, mention, owner_uid, client)
       VALUES (${identity.id}, ${name}, ${identity.label ?? null}, ${color}, ${identity.owner}, ${JSON.stringify(identity.caps)}, ${createdAt}, ${null}, ${mention}, ${ownerUid}, ${client})
     `;
+    // A signed-in agent's documents are listable (#84); the expiring event is
+    // booked now so this document warns its agents before it goes (#83).
+    if (identity.kind === "principal") {
+      const registry = this.registryStub();
+      if (registry) {
+        void registry
+          .then((r) => r.addEnrollment(identity.id, this.name))
+          .catch((err: unknown) => console.error("enrollment record failed:", err));
+      }
+    }
+    this.ensureExpiringTask();
     return {
       entry: {
         name,
@@ -1814,6 +1889,9 @@ class DocumentAgent extends Agent {
         /** Standing per-document guidance addressed to agents; null when the document has none. */
         instructions: string | null;
         instruction_sources: { edited_by: string | null; edited_at: string | null }[];
+        /** ISO 8601: when the document was created and when it deletes itself (#83). */
+        created_at: string;
+        expires_at: string;
         presence: { name: string; isAgent: boolean; mention?: string }[];
         threads: ThreadData[];
       }
@@ -1866,7 +1944,17 @@ class DocumentAgent extends Agent {
       }
     });
 
-    return { markdown, blocks, instructions, instruction_sources, presence, threads };
+    const expiresAtMs = this.docExpiresAt();
+    return {
+      markdown,
+      blocks,
+      instructions,
+      instruction_sources,
+      created_at: new Date(expiresAtMs - DOCUMENT_TTL_MS).toISOString(),
+      expires_at: new Date(expiresAtMs).toISOString(),
+      presence,
+      threads,
+    };
   }
 
   /**

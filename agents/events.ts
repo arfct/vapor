@@ -33,6 +33,14 @@ export const EVENT_TYPES = [
     addressed: true,
   },
   {
+    name: "document.expiring",
+    internalType: "doc_expiring",
+    description:
+      "Fires once, a few hours before the document deletes itself (99 hours after creation), so an agent can export what it needs to keep. `expires_at` is the deletion time.",
+    delivery: ["poll", "webhook"] as const,
+    addressed: false,
+  },
+  {
     name: "thread.reply",
     internalType: "thread_reply",
     description: "Fires when someone else — a person, or another agent (`actor`) — replies in a comment thread this agent participated in.",
@@ -70,6 +78,7 @@ export function eventCatalog(): {
         doc_id: { type: "string" },
         actor: { type: "string", description: "The agent that caused the event, when it was an agent rather than a person." },
         ...(t.addressed ? { agent: { type: "string" } } : {}),
+        ...(t.name === "document.expiring" ? { expires_at: { type: "string", description: "ISO 8601 deletion time." } } : {}),
       },
     },
   }));

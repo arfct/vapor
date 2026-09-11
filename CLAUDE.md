@@ -99,6 +99,10 @@ Root slugs share one namespace with a small reserved-word list (`app/shared/cons
 
 `~` resolves to `app/` (configured in tsconfig and vitest). Use `~/lib/foo` instead of relative paths.
 
+#### Critical Rule: No `addToHistory: false` on appended transactions
+
+Undo/redo is the Yjs `UndoManager` behind `@tiptap/extension-collaboration` (⌘Z, ⇧⌘Z, ⌘Y, and the Format menu's Undo/Redo). The y-sync plugin folds every ProseMirror transaction from one update into one Yjs transaction and takes the batch's history flag from the *last* transaction it saw, so a plugin's appended transaction flagged `addToHistory: false` (as `BlockId` once did) silently excludes the person's own edit from undo. Appended transactions must not carry that flag; undoing the batch restores their attrs along with the content.
+
 #### Critical Rule: Server/Client Separation
 
 Client-side React components must **never** import from `agents/`. The `agents` package uses `cloudflare:` protocol imports that don't exist in the browser. Use `app/shared/` for types needed by both sides.

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { createElement } from "react";
+import { fireEvent } from "@testing-library/react";
 import { renderWithDocument } from "../../helpers/document-context";
 import FormatToolbar from "~/components/FormatToolbar";
 
@@ -20,6 +21,7 @@ describe("FormatToolbar", () => {
       isActive: () => false,
       state: { selection: { empty: true } },
       chain: () => ({ focus: () => ({ run: () => {} }) }),
+      can: () => ({ undo: () => false, redo: () => true }),
     };
     const { getByLabelText, queryByLabelText } = renderWithDocument(createElement(FormatToolbar), {
       context: { editorInstance: fakeEditor as never },
@@ -37,6 +39,7 @@ describe("FormatToolbar", () => {
       isActive: () => false,
       state: { selection: { empty: true } },
       chain: () => ({ focus: () => ({ run: () => {} }) }),
+      can: () => ({ undo: () => false, redo: () => true }),
     };
     const { getByLabelText, findByText, unmount } = renderWithDocument(
       createElement(FormatToolbar, { onAttachFiles: () => {} }),
@@ -52,5 +55,28 @@ describe("FormatToolbar", () => {
     bare.getByLabelText("Format").click();
     await bare.findByText("Table");
     expect(bare.queryByText("Attach file…")).toBeNull();
+  });
+
+  it("offers Undo and Redo in the Format menu, enabled by what the history can do", async () => {
+    const chainRun = { undo: vi.fn(() => ({ run: vi.fn() })), redo: vi.fn(() => ({ run: vi.fn() })) };
+    const fakeEditor = {
+      on: () => {},
+      off: () => {},
+      isFocused: false,
+      isActive: () => false,
+      state: { selection: { empty: true } },
+      chain: () => ({ focus: () => chainRun }),
+      can: () => ({ undo: () => false, redo: () => true }),
+    };
+    const { getByLabelText, findByLabelText } = renderWithDocument(createElement(FormatToolbar), {
+      context: { editorInstance: fakeEditor as never },
+    });
+    fireEvent.click(getByLabelText("Format"));
+    const undo = (await findByLabelText("Undo")) as HTMLButtonElement;
+    const redo = getByLabelText("Redo") as HTMLButtonElement;
+    expect(undo.disabled).toBe(true);
+    expect(redo.disabled).toBe(false);
+    fireEvent.click(redo);
+    expect(chainRun.redo).toHaveBeenCalled();
   });
 });

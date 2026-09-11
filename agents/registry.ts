@@ -496,6 +496,8 @@ class Registry extends Agent {
         .map(([docId, enrolledAt]) => ({ docId, enrolledAt }))
         .sort((a, b) => b.enrolledAt - a.enrolledAt),
     };
+  }
+
   /* ---- Personal access tokens (#85) ---- */
 
   /**

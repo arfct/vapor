@@ -89,6 +89,8 @@ Documents render at the root path, not under `/docs`:
 | `/mcp` | `agents/mcp.ts` (`VaporMcp`) — OAuth-gated MCP server |
 | `/mcp/anonymous` | `agents/mcp.ts` (`VaporMcp`) — tokenless MCP server |
 | `/auth/*` | `workers/routes.ts` — Google sign-in sessions |
+| `/:id.epub` | `workers/routes.ts` — EPUB export (`app/shared/epub.ts`), attachments embedded |
+| `/me/devices`, `/:id/send` | `workers/device-routes.ts` — Send to Kindle (mail via `workers/kindle.ts`) / reMarkable (`workers/remarkable.ts`) |
 | `/skill.md`, `/llms.txt` | `workers/routes.ts` — the plugin skill and the MCP guide, rewritten to the serving origin |
 | `/oauth/*`, `/.well-known/oauth-*` | `workers/oauth.ts` — OAuth 2.1 AS for MCP |
 | `/agents/*` | `agents/document.ts` (`DocumentAgent`) — Yjs WebSocket |
@@ -129,6 +131,10 @@ Track-changes functionality spans multiple files:
 #### Durable Object wake hygiene
 
 A Durable Object bills for every moment it is awake, and a pending timer keeps it awake, so `DocumentAgent` holds no timer longer than the 1-second persistence debounce. Everything else waits on the DO's single alarm: a `schedule` table of deadlines (`idle:<agent>` presence expiry, `snapshot` for the idle version) that `armAlarm()` serves alongside the document's 99-hour expiry; the alarm handler runs what is due, then either re-arms or expires the document. y-protocols' `Awareness` starts a 3-second `setInterval` on construction — `ensureInitialised()` clears it and `pruneOutdatedAwareness()` does that job on incoming awareness traffic. Do not add `setInterval` or a long `setTimeout` to the agent; book a scheduled task instead. See `docs/plans/2026-08-31-sleeping-tabs-plan.md` and #58.
+
+#### Send to Kindle / reMarkable (#100)
+
+`app/shared/epub.ts` builds a single-chapter EPUB 3 with `fflate` from the document's markdown (CriticMarkup resolved as accepted, comments and `agent` fences dropped, attachment images fetched from R2 and packaged); `GET /:id.epub` serves it. `SendDialog.tsx` (header menu "Send to device", Share menu) saves a Kindle address or pairs a reMarkable (`/me/devices`; the reMarkable device token is sealed with the wake key in the Registry) and `POST /:id/send` delivers: Kindle by email through Resend when `RESEND_API_KEY` + `SEND_FROM_EMAIL` are set, reMarkable through its cloud upload endpoint. Delivery clients are pure and fetch-injected; neither can be exercised in tests beyond request shape.
 
 #### Version history
 

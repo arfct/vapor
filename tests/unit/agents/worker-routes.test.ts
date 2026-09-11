@@ -209,6 +209,34 @@ describe("redirectLegacyDocPath", () => {
   });
 });
 
+describe("handleEpub", () => {
+  const { handleEpub } = routesModule;
+  const stub = {
+    exportMarkdown: async () => ({ markdown: "# A plan\n\nHello {++there++}." }),
+    attachmentInfo: async () => null,
+  };
+  const deps = { getStub: async () => stub, getAttachment: async () => null };
+
+  it("serves a document as an EPUB with a download file name", async () => {
+    const res = await handleEpub(new Request("https://vapor.example/abcd1234.epub"), deps);
+    expect(res!.status).toBe(200);
+    expect(res!.headers.get("Content-Type")).toBe("application/epub+zip");
+    expect(res!.headers.get("Content-Disposition")).toBe('attachment; filename="a-plan-abcd1234.epub"');
+    const bytes = new Uint8Array(await res!.arrayBuffer());
+    expect(String.fromCharCode(...bytes.subarray(30, 38))).toBe("mimetype");
+  });
+
+  it("falls through for other paths and 404s a missing document", async () => {
+    expect(await handleEpub(new Request("https://vapor.example/abcd1234.md"), deps)).toBeNull();
+    expect(await handleEpub(new Request("https://vapor.example/nope.epub"), deps)).toBeNull();
+    const missing = await handleEpub(new Request("https://vapor.example/abcd1234.epub"), {
+      ...deps,
+      getStub: async () => ({ ...stub, exportMarkdown: async () => ({ error: { code: "doc_not_found" as const, message: "no" } }) }),
+    });
+    expect(missing!.status).toBe(404);
+  });
+});
+
 describe("redirectHost", () => {
   const env = {
     PUBLIC_ORIGIN: "https://vapor.example",

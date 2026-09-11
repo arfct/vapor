@@ -28,7 +28,10 @@ const COPY_ICON: Record<CopyState, string> = {
  * Share a document: its id, connection, and expiry; the system share
  * sheet where there is one; Copy link; Download; and inviting an agent.
  */
-export default function ShareButton({ onInviteAgent }: { onInviteAgent?: () => void } = {}) {
+export default function ShareButton({
+  onInviteAgent,
+  onSendTo,
+}: { onInviteAgent?: () => void; onSendTo?: () => void } = {}) {
   const { docId, createdAt, markdown, threads } = useDocument();
   const [copyState, setCopyState] = useState<CopyState>("idle");
 
@@ -94,6 +97,16 @@ export default function ShareButton({ onInviteAgent }: { onInviteAgent?: () => v
           <Icon name="download" />
           <span>Download</span>
         </MenuItem>
+        <MenuItem className="gap-2" onClick={() => window.location.assign(`/${docId}.epub`)}>
+          <Icon name="menu_book" />
+          <span>Download EPUB</span>
+        </MenuItem>
+        {onSendTo && (
+          <MenuItem className="gap-2" onClick={onSendTo}>
+            <Icon name="send" />
+            <span>Send to device</span>
+          </MenuItem>
+        )}
         {onInviteAgent && (
           <>
             <MenuSeparator />

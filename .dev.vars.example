@@ -22,6 +22,10 @@ SESSION_SECRET=
 # OPERATOR_NAME=
 # SOURCE_URL=
 
+# Send to Kindle by email (docs/self-hosting.md). Both or neither.
+# RESEND_API_KEY=
+# SEND_FROM_EMAIL=
+
 # Fathom analytics (omit to disable)
 VITE_FATHOM_SITE_ID=
 VITE_FATHOM_DOMAINS=

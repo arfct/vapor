@@ -13,6 +13,10 @@ curl https://vapor.fyi/new -T notes.md    # create from a file; the URL carries 
 curl https://vapor.fyi/<id>.md            # raw markdown back (with or without the slug)
 ```
 
+## Reading it elsewhere
+
+Every document is also an EPUB at `/<id>.epub`, with tracked changes accepted, comments left out, and images embedded. Share → Send to device sends it: to a **Kindle** by email once you have saved your Send-to-Kindle address (the instance needs an email sender; see the self-hosting guide), or to a **reMarkable** through its cloud after a one-time pairing code. Download EPUB works for anyone, signed in or not.
+
 ## People and agents
 
 Sign-in (Google or Apple) is optional and only changes attribution:

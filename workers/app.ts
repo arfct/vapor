@@ -8,6 +8,9 @@ import {
   handleLlmsTxt,
   handleAuth,
   handleSkill,
+  handleEpub,
+  buildDocumentEpub,
+  type EpubDeps,
   redirectHost,
   redirectLegacyDocPath,
   type MarkdownStub,
@@ -18,6 +21,9 @@ import { handleAttachmentUpload, handleAttachmentServe } from "./attachments";
 import { buildAttachmentDeps } from "./attachment-deps";
 import { handleWakeRoutes } from "./wake-routes";
 import { handleTokenRoutes } from "./token-routes";
+import { handleDeviceRoutes } from "./device-routes";
+import { kindleMailerFromEnv, sendToKindle } from "./kindle";
+import { pairRemarkable, remarkableUserToken, uploadToRemarkable } from "./remarkable";
 import { isAccessToken } from "../app/shared/token-policy";
 import { agentMention, type AgentCapability } from "../app/shared/agent-protocol";
 import type Registry from "../agents/registry";
@@ -108,6 +114,38 @@ export default {
         wake: (args) => registry.wake(args),
       });
       if (wakeResponse) return wakeResponse;
+    }
+
+    // /:id.epub — the document as an EPUB, attachments embedded (#100).
+    const epubDeps: EpubDeps = {
+      getStub: (id) => getAgentByName(env.DocumentAgent, id) as unknown as ReturnType<EpubDeps["getStub"]>,
+      getAttachment: async (docId, attachmentId) => {
+        const object = await env.ATTACHMENTS.get(`${docId}/${attachmentId}`);
+        return object ? new Uint8Array(await object.arrayBuffer()) : null;
+      },
+    };
+    const epubResponse = await handleEpub(request, epubDeps);
+    if (epubResponse) return epubResponse;
+
+    // /me/devices and /:id/send — Send to Kindle / reMarkable (#100).
+    if (url.pathname === "/me/devices" || /^\/[a-z0-9]{8}\/send$/.test(url.pathname)) {
+      const registry = (await getAgentByName(env.Registry, "global")) as unknown as Registry;
+      const deviceResponse = await handleDeviceRoutes(request, {
+        secret: env.SESSION_SECRET ?? "",
+        getDevices: (p) => registry.getDevices(p),
+        setKindleEmail: (p, email) => registry.setKindleEmail(p, email),
+        pairRemarkable: (code) => pairRemarkable(code),
+        setRemarkableToken: (p, token) => registry.setRemarkableToken(p, token),
+        clearRemarkable: (p) => registry.clearRemarkable(p),
+        openRemarkableToken: (p) => registry.openRemarkableToken(p),
+        allowSend: (p) => registry.allowSend(p),
+        mailer: kindleMailerFromEnv(env),
+        buildEpub: (docId, origin) => buildDocumentEpub(docId, epubDeps, origin),
+        sendKindle: (mailer, message) => sendToKindle(mailer, message),
+        remarkableUserToken: (token) => remarkableUserToken(token),
+        uploadRemarkable: (token, file) => uploadToRemarkable(token, file),
+      });
+      if (deviceResponse) return deviceResponse;
     }
 
     // /me/tokens — the signed-in person's personal access tokens (#85).

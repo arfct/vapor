@@ -12,6 +12,7 @@ import Preview from "~/components/Preview";
 import ShareButton from "~/components/ShareButton";
 import NewDocumentDialog from "~/components/NewDocumentDialog";
 import SignInDialog from "~/components/SignInDialog";
+import SendDialog from "~/components/SendDialog";
 import HistoryDialog from "~/components/HistoryDialog";
 import { useAttachments, SIGN_IN_EVENT } from "~/lib/useAttachments";
 import Icon from "~/components/Icon";
@@ -137,6 +138,8 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   const toggleComments = useCallback(() => setCommentsOpen((v) => !v), []);
   const [signInOpen, setSignInOpen] = useState(false);
   const closeSignIn = useCallback(() => setSignInOpen(false), []);
+  const [sendOpen, setSendOpen] = useState(false);
+  const closeSend = useCallback(() => setSendOpen(false), []);
   // Something elsewhere (a dropped file while signed out) asks for sign-in.
   useEffect(() => {
     const open = () => setSignInOpen(true);
@@ -241,12 +244,13 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
             <Icon name="add_2" />
           </button>
         ) : (
-          <ShareButton onInviteAgent={inviteAgent} />
+          <ShareButton onInviteAgent={inviteAgent} onSendTo={isHome ? undefined : () => setSendOpen(true)} />
         )}
         <HeaderMenu
           comments={wide ? undefined : { open: commentsOpen, onToggle: toggleComments }}
           onNewDocument={isHome ? undefined : () => setNewOpen(true)}
           onHistory={isHome ? undefined : () => setHistoryOpen(true)}
+          onSendTo={isHome ? undefined : () => setSendOpen(true)}
           onSignIn={() => setSignInOpen(true)}
         />
       </header>
@@ -276,6 +280,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
       />
       {surface.kind === "doc" && <HistoryDialog open={historyOpen} onClose={() => setHistoryOpen(false)} />}
       <SignInDialog open={signInOpen} onClose={closeSignIn} />
+      {surface.kind === "doc" && <SendDialog open={sendOpen} onClose={closeSend} docId={surface.id} />}
       {/* The page itself scrolls, so mobile browsers collapse their toolbar
           and let the text run under it. Half a screen at the foot so the end
           of the document can scroll clear of the keyboard. */}

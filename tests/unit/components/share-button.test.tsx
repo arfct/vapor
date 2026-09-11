@@ -28,6 +28,8 @@ describe("ShareButton", () => {
 
     expect(screen.getByText("Copy link")).toBeTruthy();
     expect(screen.getByText("Download")).toBeTruthy();
+    expect(screen.getByText("Download EPUB")).toBeTruthy();
+    expect(screen.queryByText("Send to device")).toBeNull();
     expect(screen.queryByText("Invite an agent")).toBeNull();
   });
 

@@ -156,6 +156,7 @@ Ported from subpixel's dependency-free auth stack. Full design: `docs/plans/2026
 
 - **`app/lib/auth.server.ts`** — Google ID-token verification (WebCrypto), HMAC session JWTs, the `vp_session` cookie. Identity is a principal (`google:<sub>`, server-side only); each profile has a public eight-character `uid` that is all clients ever see. Sign-in is optional.
 - **`agents/registry.ts`** (`Registry` DO, one `"global"` instance) — profiles (with the legacy `email:` principal re-keyed on sign-in), email → person resolution for mentions, wake targets, and OAuth clients/codes/refresh tokens. People are circles and agents are hexagons with their client's mark (`app/components/Avatar.tsx`).
+- **Personal access tokens** (#85) — `vpt_…` bearers minted at `/me/tokens` (`workers/token-routes.ts`, UI `TokenSection.tsx` in the invite dialog's Other tab), stored hashed in the Registry (`pat:<sha256>`, index `pats:<principal>`), resolved on `/mcp` by `Registry.lookupAccessToken` before the JWT path. Same claims shape as an OAuth access token; revocation deletes the record.
 - **`workers/oauth.ts`** — OAuth 2.1 AS (PKCE, dynamic registration, discovery). Access tokens are 1-hour session JWTs carrying the granted capabilities; the consent page (`app/lib/oauth-pages.ts`) is where write is granted. `/mcp` requires one of these; `/mcp/anonymous` needs none.
 - Secrets: `SESSION_SECRET` (Workers secret), `GOOGLE_CLIENT_ID` and `APPLE_CLIENT_ID` (public vars). See `.dev.vars.example`. All optional: without them an instance is anonymous-only.
 

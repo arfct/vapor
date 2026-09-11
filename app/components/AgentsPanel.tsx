@@ -5,6 +5,7 @@ import Dialog, { SnippetRow } from "~/components/ui/dialog";
 import AgentClientIcon from "~/components/AgentClientIcon";
 import Icon from "~/components/Icon";
 import WakeSection from "~/components/WakeSection";
+import TokenSection from "~/components/TokenSection";
 import { useSite } from "~/lib/site-context";
 import { githubSlug } from "~/shared/site";
 
@@ -291,6 +292,7 @@ export default function AgentsPanel({
               .
             </p>
             <SnippetRow label="MCP configuration" text={mcpServersJson} />
+            {asYou && <TokenSection mcpUrl={mcpUrl} />}
             {asYou && <WakeSection kind="webhook" docId={docId} roster={roster} onRoster={setRoster} />}
           </div>
         )}

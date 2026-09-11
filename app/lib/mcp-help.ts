@@ -136,6 +136,15 @@ export function mcpHelpHtml(site: SiteConfig): string {
   anonymous URL to skip it. Swap one for the other to switch.
 </p>
 
+<h3>Headless machines and fleets</h3>
+<p>
+  Signed in, <strong>Share → Invite an agent → Other → Access token</strong> mints a
+  long-lived token with a chosen grant. Send it as a bearer to the signed-in URL from any
+  client that can set a header — no browser in the loop — and revoke it from the same
+  place. Same identity and agent as the OAuth flow.
+</p>
+<pre>Authorization: Bearer vpt_…</pre>
+
 <h3>Claude desktop and web</h3>
 <p>
   <a href="https://claude.ai/customize/connectors?modal=add-custom-connector&amp;connectorName=vapor&amp;connectorUrl=${encodeURIComponent(mcpUrl)}"><strong>Settings → Connectors → Add custom connector</strong></a>,
@@ -339,6 +348,7 @@ Two URLs, same tools. Signed in (${mcpUrl}) gives the agent a stable identity an
 - Gemini CLI: ${plugin.gemini ? `\`${plugin.gemini}\` (connection plus skill), or ` : ""}\`gemini mcp add --transport http vapor ${mcpUrl}\`
 - VS Code: \`.vscode/mcp.json\` → \`${json({ servers: { vapor: { type: "http", url: mcpUrl } } })}\`
 - Anything else: \`${json({ mcpServers: { vapor: { url: mcpUrl } } })}\`
+- Headless or a fleet: a signed-in person mints a personal access token under Share → Invite an agent → Other → Access token, with a suggest-and-comment or full-write grant; send it as \`Authorization: Bearer vpt_…\` to ${mcpUrl}. Same identity as OAuth, revocable there.
 
 ## Skill
 

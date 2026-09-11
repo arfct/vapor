@@ -15,6 +15,7 @@ import { CodeBlockCopy } from "~/lib/code-block-copy";
 import { AgentInstructions } from "~/lib/agent-instructions";
 import { CommentClickHandler } from "~/lib/comment-click";
 import { AppLinks, APP_LINK_PROTOCOL } from "~/lib/app-links";
+import { UndoRedo } from "~/lib/undo-redo";
 import { Attachment } from "~/lib/attachment";
 import { MentionSuggestion, type MentionSourceRef } from "~/lib/mention-suggestion";
 import { MentionHighlight, mentionHighlightKey, type MentionTargetsRef } from "~/lib/mention-highlight";
@@ -267,6 +268,8 @@ export default function Editor({
         CriticHighlight,
         CriticPointMarkers,
         Collaboration.configure({ document: doc }),
+        // After Collaboration on purpose: replaces its undo/redo commands.
+        UndoRedo,
         CollaborationCaret.configure({
           provider: { awareness },
           user,

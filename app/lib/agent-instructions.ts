@@ -107,7 +107,9 @@ export const AgentInstructions = Node.create<{ author?: string | null }, AgentIn
             tr.setNodeMarkup(pos, undefined, { ...node.attrs, editedBy: storage.author, editedAt: storage.now() });
             stamped = true;
           });
-          return stamped ? tr.setMeta(STAMP_META, true).setMeta("addToHistory", false) : null;
+          // Not flagged addToHistory: false — see BlockId for why an appended
+          // transaction must not carry that flag in this editor.
+          return stamped ? tr.setMeta(STAMP_META, true) : null;
         },
       }),
     ];

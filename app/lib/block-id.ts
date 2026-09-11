@@ -55,7 +55,12 @@ export const BlockId = Extension.create({
             tr.setNodeMarkup(offset, undefined, { ...node.attrs, blockId: fresh });
           });
 
-          if (tr) tr.setMeta("addToHistory", false);
+          // Deliberately NOT flagged addToHistory: false. The Yjs sync plugin
+          // folds every ProseMirror transaction from one update into a single
+          // Yjs transaction and takes the batch's history flag from the last
+          // transaction it saw — so flagging this appended one excluded the
+          // person's own edit from undo whenever it created a block. Undoing
+          // the batch restores the previous ids along with the content.
           return tr;
         },
       }),

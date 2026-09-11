@@ -101,6 +101,31 @@ export default function FormatToolbar({ onAttachFiles }: { onAttachFiles?: (file
         </MenuTrigger>
         <MenuContent align="end">
           <div className="flex items-center gap-0.5 px-1 py-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-[36px] w-[36px]"
+              onClick={() => editor.chain().focus().undo().run()}
+              disabled={!editor.can().undo()}
+              title="Undo (⌘Z)"
+              aria-label="Undo"
+            >
+              <Icon name="undo" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-[36px] w-[36px]"
+              onClick={() => editor.chain().focus().redo().run()}
+              disabled={!editor.can().redo()}
+              title="Redo (⇧⌘Z)"
+              aria-label="Redo"
+            >
+              <Icon name="redo" />
+            </Button>
+          </div>
+          <MenuSeparator />
+          <div className="flex items-center gap-0.5 px-1 py-1">
             {markButton("bold", "format_bold", "Bold", () => editor.chain().focus().toggleBold().run())}
             {markButton("italic", "format_italic", "Italic", () => editor.chain().focus().toggleItalic().run())}
             {markButton("strike", "strikethrough_s", "Strikethrough", () => editor.chain().focus().toggleStrike().run())}

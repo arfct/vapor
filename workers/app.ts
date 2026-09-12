@@ -9,6 +9,7 @@ import {
   handleAuth,
   handleSkill,
   handleEpub,
+  handlePrint,
   buildDocumentEpub,
   type EpubDeps,
   redirectHost,
@@ -124,7 +125,7 @@ export default {
         return object ? new Uint8Array(await object.arrayBuffer()) : null;
       },
     };
-    const epubResponse = await handleEpub(request, epubDeps);
+    const epubResponse = (await handleEpub(request, epubDeps)) ?? (await handlePrint(request, epubDeps));
     if (epubResponse) return epubResponse;
 
     // /me/devices and /:id/send — Send to Kindle / reMarkable (#100).

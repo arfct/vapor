@@ -101,6 +101,10 @@ export default function ShareButton({
           <Icon name="menu_book" />
           <span>Download EPUB</span>
         </MenuItem>
+        <MenuItem className="gap-2" onClick={() => window.open(`/${docId}/print?print=1`, "_blank", "noopener")}>
+          <Icon name="print" />
+          <span>Print or save as PDF</span>
+        </MenuItem>
         {onSendTo && (
           <MenuItem className="gap-2" onClick={onSendTo}>
             <Icon name="send" />

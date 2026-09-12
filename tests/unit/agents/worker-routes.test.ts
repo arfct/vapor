@@ -242,6 +242,31 @@ describe("handleEpub", () => {
   });
 });
 
+describe("handlePrint", () => {
+  const { handlePrint } = routesModule;
+  const deps = { getStub: async () => ({ exportMarkdown: async () => ({ markdown: "# A plan\n\nHello." }), attachmentInfo: async () => null }) };
+
+  it("serves the printable page, auto-printing on request, for bare and slugged ids", async () => {
+    const res = await handlePrint(new Request("https://vapor.example/abcd1234/print?print=1"), deps);
+    expect(res!.status).toBe(200);
+    expect(res!.headers.get("Content-Type")).toContain("text/html");
+    const html = await res!.text();
+    expect(html).toContain("<h1>A plan</h1>");
+    expect(html).toContain("window.print()");
+    const slugged = await handlePrint(new Request("https://vapor.example/a-plan-abcd1234/print"), deps);
+    expect(slugged!.status).toBe(200);
+    expect(await slugged!.text()).not.toContain("window.print()");
+  });
+
+  it("falls through for other paths and 404s a missing document", async () => {
+    expect(await handlePrint(new Request("https://vapor.example/abcd1234/agents"), deps)).toBeNull();
+    const missing = await handlePrint(new Request("https://vapor.example/abcd1234/print"), {
+      getStub: async () => ({ exportMarkdown: async () => ({ error: { code: "doc_not_found" as const, message: "no" } }), attachmentInfo: async () => null }),
+    });
+    expect(missing!.status).toBe(404);
+  });
+});
+
 describe("redirectHost", () => {
   const env = {
     PUBLIC_ORIGIN: "https://vapor.example",

@@ -15,7 +15,7 @@ curl https://vapor.fyi/<id>.md            # raw markdown back (with or without t
 
 ## Reading it elsewhere
 
-Every document is also an EPUB at `/<id>.epub`, with tracked changes accepted, comments left out, and images embedded. Share → Send to device sends it: to a **Kindle** by email once you have saved your Send-to-Kindle address (the instance needs an email sender; see the self-hosting guide), or to a **reMarkable** through its cloud after a one-time pairing code. Download EPUB works for anyone, signed in or not.
+Every document is also an EPUB at `/<id>.epub`, with tracked changes accepted, comments left out, and images embedded, set in the same sans type as the page; `/<id>/print` is the same copy as a printable page for Save as PDF. Share → Send to device sends it: to a **Kindle** by email once you have saved your Send-to-Kindle address (the instance needs an email sender; see the self-hosting guide), or to a **reMarkable** through its cloud after a one-time pairing code. Download EPUB works for anyone, signed in or not.
 
 ## People and agents
 

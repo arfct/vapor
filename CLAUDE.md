@@ -89,7 +89,7 @@ Documents render at the root path, not under `/docs`:
 | `/mcp` | `agents/mcp.ts` (`VaporMcp`) — OAuth-gated MCP server |
 | `/mcp/anonymous` | `agents/mcp.ts` (`VaporMcp`) — tokenless MCP server |
 | `/auth/*` | `workers/routes.ts` — Google sign-in sessions |
-| `/:id.epub` | `workers/routes.ts` — EPUB export (`app/shared/epub.ts`), attachments embedded |
+| `/:id.epub`, `/:id/print` | `workers/routes.ts` — EPUB export and the printable page (Save as PDF), both from `app/shared/epub.ts` with the page's type (`READING_CSS`) |
 | `/me/devices`, `/:id/send` | `workers/device-routes.ts` — Send to Kindle (mail via `workers/kindle.ts`) / reMarkable (`workers/remarkable.ts`) |
 | `/skill.md`, `/llms.txt` | `workers/routes.ts` — the plugin skill and the MCP guide, rewritten to the serving origin |
 | `/oauth/*`, `/.well-known/oauth-*` | `workers/oauth.ts` — OAuth 2.1 AS for MCP |

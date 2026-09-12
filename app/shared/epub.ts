@@ -88,13 +88,37 @@ export function epubChapterHtml(markdown: string, images: EpubImage[]): string {
   return md.render(source);
 }
 
-const STYLES = `body { font-family: Georgia, serif; line-height: 1.5; margin: 1em; }
-h1, h2, h3 { font-family: Helvetica, Arial, sans-serif; line-height: 1.2; }
-pre, code { font-family: Menlo, Consolas, monospace; font-size: 0.9em; }
-pre { white-space: pre-wrap; }
+/**
+ * The document's type as the page sets it (docs/design-system.md, app.css
+ * `.tiptap`): a system sans body at 1.6 leading, bold sans headings stepping
+ * 1.875 / 1.5 / 1.25 em with a lighter, larger opening title, IBM Plex Mono
+ * (or the reader's mono) for code, a rule-left blockquote, ruled tables.
+ * Relative units throughout so Kindle's and reMarkable's own text size
+ * settings still apply. Shared with the print view, which adds page rules.
+ */
+export const READING_CSS = `body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 1em; line-height: 1.6; color: #1a1a1a; margin: 0 auto; padding: 1.5em; max-width: 42em; }
+p { margin: 0 0 0.6em; }
+h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-weight: bold; line-height: 1.2; }
+h1 { font-size: 1.875em; margin: 1.5em 0 0.6em; }
+h2 { font-size: 1.5em; line-height: 1.3; margin: 1.25em 0 0.5em; }
+h3, h4 { font-size: 1.25em; line-height: 1.3; margin: 1em 0 0.4em; }
+body > h1:first-child { font-size: 2.5em; font-weight: 500; line-height: 1.1; margin-top: 0; }
+h1:first-child, h2:first-child, h3:first-child { margin-top: 0; }
+ul, ol { margin: 0 0 0.6em 1.5em; padding: 0; }
+li { margin-bottom: 0.25em; }
+li > p { margin-bottom: 0; }
+blockquote { margin: 0 0 1em; padding: 0 0 0 1em; border-left: 4px solid #d9d9d9; color: #555; font-style: italic; }
+code, pre, kbd { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 0.875em; }
+code { background: #f2f2f2; padding: 0.1em 0.3em; border-radius: 3px; }
+pre { background: #f2f2f2; padding: 0.75em 1em; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; margin: 0 0 0.75em; }
+pre code { background: none; padding: 0; }
+a { color: inherit; text-decoration: underline; text-decoration-color: #999; }
+hr { border: 0; border-top: 1px solid #d9d9d9; margin: 1.5em 0; }
 img { max-width: 100%; height: auto; }
-blockquote { margin: 1em 0; padding-left: 1em; border-left: 3px solid #999; color: #555; }
-table { border-collapse: collapse; } td, th { border: 1px solid #ccc; padding: 0.25em 0.5em; }
+table { border-collapse: collapse; margin: 0 0 0.75em; font-size: 0.95em; }
+th, td { border: 1px solid #d9d9d9; padding: 0.3em 0.6em; text-align: left; vertical-align: top; }
+th { font-weight: bold; background: #f7f7f7; }
+del { color: #999; }
 `;
 
 /** The file name a reader will see: the title's slug and the id. */
@@ -171,10 +195,50 @@ ${imageItems}
     "OEBPS/content.opf": [strToU8(opf), { level: 6 }],
     "OEBPS/nav.xhtml": [strToU8(nav), { level: 6 }],
     "OEBPS/chapter.xhtml": [strToU8(chapter), { level: 6 }],
-    "OEBPS/style.css": [strToU8(STYLES), { level: 6 }],
+    "OEBPS/style.css": [strToU8(READING_CSS), { level: 6 }],
   };
   images.forEach((image, i) => {
     files[`OEBPS/images/${i + 1}.${imageExtension(image.contentType, image.filename)}`] = [image.bytes, { level: 0 }];
   });
   return zipSync(files);
+}
+
+/**
+ * The document as a standalone HTML page for printing or saving as a PDF
+ * (#100): the same reading stylesheet as the EPUB plus page rules, and the
+ * browser's print dialog when opened with `?print=1`. Attachment URLs are
+ * left as the same-origin paths they already are.
+ */
+export function printableHtml(input: { id: string; markdown: string; origin: string; autoPrint: boolean }): string {
+  const title = titleFromMarkdown(input.markdown) ?? `vapor ${input.id}`;
+  const body = md.render(readingMarkdown(input.markdown));
+  const escaped = escapeXml(title);
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>${escaped}</title>
+<style>
+${READING_CSS}
+@page { margin: 18mm 16mm; }
+@media print {
+  body { padding: 0; max-width: none; color: #000; }
+  a { text-decoration: none; color: inherit; }
+  pre, blockquote, table, img { break-inside: avoid; }
+  h1, h2, h3 { break-after: avoid; }
+  .print-note { display: none; }
+}
+.print-note { font-size: 0.85em; color: #777; border-bottom: 1px solid #e5e5e5; padding-bottom: 0.75em; margin-bottom: 1.5em; }
+.print-note a { color: inherit; }
+</style>
+</head>
+<body>
+<p class="print-note">Print, or choose “Save as PDF” in the print dialog. Source: <a href="${escapeXml(input.origin)}/${escapeXml(input.id)}">${escapeXml(input.origin)}/${escapeXml(input.id)}</a></p>
+${body}${input.autoPrint ? `
+<script>window.addEventListener("load", () => setTimeout(() => window.print(), 150));</script>` : ""}
+</body>
+</html>
+`;
 }

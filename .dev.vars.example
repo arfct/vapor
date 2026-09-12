@@ -26,6 +26,9 @@ SESSION_SECRET=
 # RESEND_API_KEY=
 # SEND_FROM_EMAIL=
 
+# Domain verification for listing the MCP server in ChatGPT's plugin directory (docs/self-hosting.md)
+# OPENAI_APPS_CHALLENGE=
+
 # Fathom analytics (omit to disable)
 VITE_FATHOM_SITE_ID=
 VITE_FATHOM_DOMAINS=

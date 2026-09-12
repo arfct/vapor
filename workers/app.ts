@@ -9,6 +9,7 @@ import {
   handleAuth,
   handleSkill,
   handleEpub,
+  handleAppsChallenge,
   buildDocumentEpub,
   type EpubDeps,
   redirectHost,
@@ -70,6 +71,8 @@ export default {
       const oauthResponse = await handleOAuth(request, {
         secret: env.SESSION_SECRET ?? "",
         registry,
+        lookupAccessToken: (token) => registry.lookupAccessToken(token),
+        displayName: async (principal) => (await registry.getProfile(principal)).profile?.displayName ?? null,
       });
       if (oauthResponse) {
         return oauthResponse;
@@ -164,6 +167,12 @@ export default {
     // for browsers, markdown otherwise) instead of a protocol error; only the
     // event-stream GET a real MCP client makes falls through to VaporMcp.serve
     // below. /llms.txt is the same guide where agents look for it first.
+    // /.well-known/openai-apps-challenge — the token OpenAI's plugin portal
+    // asks a domain to serve to prove ownership (#103); a var, so each
+    // deployment verifies its own domain.
+    const challengeResponse = handleAppsChallenge(request, env);
+    if (challengeResponse) return challengeResponse;
+
     // /skill.md is the plugin's skill with its URLs pointed at this instance.
     const helpResponse = handleMcpHelp(request, env) ?? handleLlmsTxt(request, env) ?? handleSkill(request, env);
     if (helpResponse) {

@@ -242,6 +242,29 @@ describe("handleEpub", () => {
   });
 });
 
+describe("handleAppsChallenge (#103)", () => {
+  const { handleAppsChallenge } = routesModule;
+  const url = "https://vapor.example/.well-known/openai-apps-challenge";
+
+  it("serves the configured token verbatim as plain text, uncached", async () => {
+    const res = handleAppsChallenge(new Request(url), { OPENAI_APPS_CHALLENGE: " abc123 \n" });
+    expect(res!.status).toBe(200);
+    expect(res!.headers.get("Content-Type")).toContain("text/plain");
+    expect(res!.headers.get("Cache-Control")).toBe("no-store");
+    expect(await res!.text()).toBe("abc123");
+  });
+
+  it("404s when no token is configured, so an unverified instance advertises nothing", async () => {
+    expect(handleAppsChallenge(new Request(url), {})!.status).toBe(404);
+    expect(handleAppsChallenge(new Request(url), { OPENAI_APPS_CHALLENGE: "  " })!.status).toBe(404);
+  });
+
+  it("falls through for other methods and paths", () => {
+    expect(handleAppsChallenge(new Request(url, { method: "POST" }), { OPENAI_APPS_CHALLENGE: "x" })).toBeNull();
+    expect(handleAppsChallenge(new Request("https://vapor.example/.well-known/other"), { OPENAI_APPS_CHALLENGE: "x" })).toBeNull();
+  });
+});
+
 describe("redirectHost", () => {
   const env = {
     PUBLIC_ORIGIN: "https://vapor.example",

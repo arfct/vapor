@@ -23,6 +23,11 @@ import {
   anonymousAgentLabel,
   type DocStub,
   createDocumentNote,
+  READ,
+  WRITE,
+  ANY_CALLER,
+  CAN_WRITE,
+  SIGNED_IN,
 } from "./mcp-tools";
 import { eventCatalog, EVENTS_DRAFT_META_KEY, EVENTS_DRAFT_VERSION } from "./events";
 import { generateDocumentId, isValidDocumentId } from "../app/shared/constants";
@@ -97,8 +102,17 @@ function throwEventsError(error: { code: string; message: string }): never {
 }
 
 /** Every tool — errors included — returns its result as JSON text content. */
+/**
+ * A tool result both ways: the JSON as text for every client, and as
+ * `structuredContent` for clients that read it (#103). Results are always
+ * objects here, which is what structuredContent requires.
+ */
 function jsonContent(result: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
+  const structured = typeof result === "object" && result !== null && !Array.isArray(result) ? (result as Record<string, unknown>) : undefined;
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(result) }],
+    ...(structured ? { structuredContent: structured } : {}),
+  };
 }
 
 export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps> {
@@ -169,7 +183,13 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
     for (const tool of TOOLS) {
       this.server.registerTool(
         tool.name,
-        { description: tool.description, inputSchema: tool.schema },
+        {
+          title: tool.title,
+          description: tool.description,
+          inputSchema: tool.schema,
+          annotations: tool.annotations,
+          _meta: { securitySchemes: tool.securitySchemes },
+        },
         async (args: Record<string, unknown>) => {
           const identity = await this.identity();
           const result = await tool.run({ getStub, identity }, args);
@@ -183,6 +203,9 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
     this.server.registerTool(
       "list_documents",
       {
+        title: "List my documents",
+        annotations: READ,
+        _meta: { securitySchemes: SIGNED_IN },
         description:
           "The documents this signed-in identity's agent is enrolled on (joined, or touched with any tool), most recent first, each with its title, URL, created_at, and expires_at — for an agent starting cold that wants to know what it was working on. Documents that have since expired are dropped. Empty on the anonymous endpoint.",
         inputSchema: {},
@@ -226,6 +249,9 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
     this.server.registerTool(
       "attach",
       {
+        title: "Attach a file",
+        annotations: WRITE,
+        _meta: { securitySchemes: CAN_WRITE },
         description:
           "Attach a file to a document and insert it as a block (images render inline, other files as a chip). Base64 payload up to 4 MB decoded. Larger files up to 20 MB go through POST <origin>/<doc_id>/attachments (raw bytes, X-Filename header, this session's OAuth access token as Bearer), which only works when your client lets you use that token; otherwise ask a person to upload from the browser. Requires the write capability and a signed-in identity.",
         inputSchema: {
@@ -302,6 +328,9 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
     this.server.registerTool(
       "create_document",
       {
+        title: "Create a document",
+        annotations: WRITE,
+        _meta: { securitySchemes: ANY_CALLER },
         description:
           "Create a new vapor document, optionally with starting markdown. Returns its id, URL, created_at, expires_at (99 hours later — export before then), and this identity's capabilities on it; the calling identity is enrolled as the document's first agent. Editing afterwards (insert, replace) needs the write capability, which the anonymous endpoint never has — there, revise by suggest, or connect signed in. To revise a document that already exists, use replace on it instead: one document per draft, so the URL its readers have stays valid.",
         inputSchema: {

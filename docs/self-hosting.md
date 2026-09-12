@@ -108,6 +108,7 @@ All of these are plain vars, set under `"vars"` in `wrangler.jsonc` or in the da
 | `REDIRECT_HOSTS` | Comma-separated hostnames to 301 to `PUBLIC_ORIGIN`, e.g. `www.vapor.example,vpr.example`. | unset: no redirects |
 | `OPERATOR_NAME` | Who runs the instance, named on `/privacy` and `/terms`. | unset: the pages stay generic |
 | `SEND_FROM_EMAIL` | The address Send to Kindle mails from; pair with the `RESEND_API_KEY` secret. | unset: Kindle row offers the EPUB download instead |
+| `OPENAI_APPS_CHALLENGE` | The domain-verification token from OpenAI's plugin portal, served at `/.well-known/openai-apps-challenge`; see [Listing in ChatGPT](#listing-in-chatgpt). | unset: the path 404s |
 | `SOURCE_URL` | Where this instance's code lives. Linked from the footer and the legal pages; if it is a GitHub repo, the `/mcp` guide derives the `claude plugin marketplace add` and `gemini extensions install` commands from it. | the upstream repository |
 
 **Send to Kindle** needs the instance to send email. Two more optional values enable it: `SEND_FROM_EMAIL`, the address documents are sent from (a var), and `RESEND_API_KEY`, an API key for [Resend](https://resend.com) whose account has that address's domain verified (a secret: `wrangler secret put RESEND_API_KEY`). With either unset the Kindle row in Share → Send to device offers the EPUB download and Amazon's upload page instead. Readers add your sender address to their Amazon approved senders once; the dialog shows them the exact address. Send to reMarkable needs nothing from the operator.
@@ -162,6 +163,17 @@ Agents on your instance get everything they need from the instance itself: the `
 1. Change the URL in `plugin/.mcp.json` and `gemini-extension.json` to `https://vapor.example/mcp`.
 2. In `plugin/skills/vapor/SKILL.md`, replace `https://vapor.fyi` with your origin (`tests/unit/plugin-skill-sync.test.ts` checks that the skill and the bundled connection agree).
 3. Set `SOURCE_URL` to your fork so the `/mcp` guide advertises `claude plugin marketplace add you/vapor`.
+
+## Listing in ChatGPT
+
+Anyone on ChatGPT can already add an instance as a connector in developer mode. Reaching people on free and Plus plans, and on mobile, takes a listing in the ChatGPT plugins directory, which is a review process on the operator's side; the code does its part on every instance:
+
+- Tools declare `title`, `annotations` (read-only, destructive, open-world), and which credentials they accept (`noauth` for the anonymous endpoint, `oauth2` with the capability scope). Results come back as `structuredContent` alongside the text.
+- `GET /oauth/userinfo` returns the bearer's `sub`, `email`, and `email_verified: true` (both providers verify addresses), and the server metadata names it as `userinfo_endpoint`.
+- `GET /.well-known/openai-apps-challenge` serves whatever `OPENAI_APPS_CHALLENGE` holds. Set it to the token the portal shows during domain verification, deploy, and click verify; you can unset it afterwards.
+- `/privacy` lists what is stored, why, who sees it, and for how long, which the review asks for.
+
+The portal side, in order: verify your organisation's identity on [platform.openai.com](https://platform.openai.com), then under Plugins submit the MCP URL (`https://vapor.example/mcp`), the OAuth details (discovered from `/.well-known/oauth-authorization-server`; dynamic client registration is on), the privacy and terms URLs, and a test account the reviewers can sign in with that does not require multi-factor authentication. A personal access token (Share → Invite an agent → Other) minted by that account works as the reviewers' bearer if they prefer one over the sign-in flow. Reviews look at every tool once, so keep the descriptions honest about what each writes.
 
 ## Operating notes
 

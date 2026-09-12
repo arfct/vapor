@@ -29,6 +29,35 @@ describe("mcp tool table", () => {
     for (const n of SPEC_TOOLS) expect(names).toContain(n);
   });
 
+  it("every tool carries a title, complete annotations, and at least one security scheme (#103)", () => {
+    for (const t of TOOLS) {
+      expect(t.title, t.name).toMatch(/\S/);
+      for (const key of ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"] as const) {
+        expect(typeof t.annotations[key], `${t.name}.${key}`).toBe("boolean");
+      }
+      expect(t.securitySchemes.length, t.name).toBeGreaterThan(0);
+      // A read-only tool never claims to be destructive.
+      if (t.annotations.readOnlyHint) expect(t.annotations.destructiveHint, t.name).toBe(false);
+    }
+  });
+
+  it("marks reads read-only and anything that lands in a public document open-world", () => {
+    const by = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
+    expect(by.read_document.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: false });
+    expect(by.events_poll.annotations.readOnlyHint).toBe(true);
+    expect(by.replace.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true, openWorldHint: true });
+    expect(by.delete_comment.annotations.destructiveHint).toBe(true);
+    expect(by.suggest.annotations).toMatchObject({ destructiveHint: false, openWorldHint: true });
+  });
+
+  it("only lets anonymous callers reach what the anonymous endpoint grants", () => {
+    const anon = (name: string) => TOOLS.find((t) => t.name === name)!.securitySchemes.some((s) => s.type === "noauth");
+    for (const n of ["read_document", "suggest", "comment", "reply", "join", "events_poll"]) expect(anon(n), n).toBe(true);
+    for (const n of ["insert", "replace", "events_subscribe", "events_unsubscribe"]) expect(anon(n), n).toBe(false);
+    const write = TOOLS.find((t) => t.name === "insert")!.securitySchemes.find((s) => s.type === "oauth2");
+    expect(write).toMatchObject({ type: "oauth2", scopes: ["write"] });
+  });
+
   it("gives every tool a description and a doc_id in its schema", () => {
     for (const tool of TOOLS) {
       expect(tool.description.length).toBeGreaterThan(0);

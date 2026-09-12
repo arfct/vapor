@@ -12,7 +12,7 @@ import { mcpHelpHtml, mcpHelpMarkdown } from "../app/lib/mcp-help";
 import { configuredOrigin, redirectHosts, siteForRequest, type SiteConfig, type SiteEnv } from "../app/shared/site";
 import skillTemplate from "../plugin/skills/vapor/SKILL.md?raw";
 import { absolutizeAttachmentUrls, isImageType } from "../app/shared/attachment-policy";
-import { attachmentImages, buildEpub, epubFilename, type EpubImage } from "../app/shared/epub";
+import { attachmentImages, buildEpub, epubFilename, printableHtml, type EpubImage } from "../app/shared/epub";
 import { parseDocumentSegment, titleFromMarkdown } from "../app/shared/doc-url";
 import {
   mintSessionToken,
@@ -63,6 +63,27 @@ export async function buildDocumentEpub(
     filename: epubFilename(id, result.markdown),
     title: titleFromMarkdown(result.markdown),
   };
+}
+
+/**
+ * `GET /:id/print` — the document as a printable page (the PDF path: the
+ * browser's Save as PDF), same type as the EPUB. `?print=1` opens the print
+ * dialog on load. Accepts the slugged id too.
+ */
+export async function handlePrint(request: Request, deps: Pick<EpubDeps, "getStub">): Promise<Response | null> {
+  if (request.method !== "GET") return null;
+  const url = new URL(request.url);
+  const match = /^\/([^/]+)\/print$/.exec(url.pathname);
+  if (!match) return null;
+  const id = parseDocumentSegment(match[1])?.id ?? null;
+  if (!id || !isValidDocumentId(id)) return null;
+  const stub = await deps.getStub(id);
+  const result = await stub.exportMarkdown();
+  if ("error" in result) return new Response("Not found", { status: 404 });
+  return new Response(
+    printableHtml({ id, markdown: result.markdown, origin: url.origin, autoPrint: url.searchParams.get("print") === "1" }),
+    { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "X-Content-Type-Options": "nosniff" } },
+  );
 }
 
 export async function handleEpub(request: Request, deps: EpubDeps): Promise<Response | null> {

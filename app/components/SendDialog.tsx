@@ -245,12 +245,24 @@ function SendBody({ docId }: { docId: string }) {
         {error.remarkable && <p className="text-sm text-coral">{error.remarkable}</p>}
       </section>
 
-      <section className="border-t border-border pt-4">
+      <section className="space-y-2 border-t border-border pt-4">
         <a href={epubHref} className="dialog-row flex items-center gap-3 border border-border px-4 py-3 text-left transition-colors hover:bg-accent">
           <Icon name="menu_book" />
           <span className="min-w-0">
             <span className="block text-sm font-medium">Download EPUB</span>
             <span className="block text-sm text-muted">For any reader, or amazon.com/sendtokindle and my.remarkable.com.</span>
+          </span>
+        </a>
+        <a
+          href={`/${docId}/print?print=1`}
+          target="_blank"
+          rel="noreferrer"
+          className="dialog-row flex items-center gap-3 border border-border px-4 py-3 text-left transition-colors hover:bg-accent"
+        >
+          <Icon name="print" />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium">Print or save as PDF</span>
+            <span className="block text-sm text-muted">Opens a clean copy and the print dialog; choose Save as PDF there.</span>
           </span>
         </a>
       </section>

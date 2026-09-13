@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { unzipSync, strFromU8 } from "fflate";
-import { buildEpub, readingMarkdown, attachmentImages, epubChapterHtml, epubFilename } from "~/shared/epub";
+import { buildEpub, readingMarkdown, attachmentImages, epubChapterHtml, epubFilename, printableHtml, READING_CSS } from "~/shared/epub";
 
 const md = `# A plan
 
@@ -76,5 +76,27 @@ describe("EPUB export (#100)", () => {
   it("names the file after the title and id, falling back to the id", () => {
     expect(epubFilename("abcd1234", md)).toBe("a-plan-abcd1234.epub");
     expect(epubFilename("abcd1234", "no heading here")).toBe("abcd1234.epub");
+  });
+
+  it("sets the page's type: a sans body, bold sans headings stepping down, a larger lighter title, mono code", () => {
+    expect(READING_CSS).toMatch(/body \{ font-family: ui-sans-serif, system-ui/);
+    expect(READING_CSS).toContain("h1 { font-size: 1.875em;");
+    expect(READING_CSS).toContain("h2 { font-size: 1.5em;");
+    expect(READING_CSS).toContain("body > h1:first-child { font-size: 2.5em; font-weight: 500;");
+    expect(READING_CSS).toMatch(/code, pre, kbd \{ font-family: "IBM Plex Mono"/);
+    expect(READING_CSS).not.toContain("Georgia");
+    const files = unzipSync(buildEpub({ id: "abcd1234", markdown: md }));
+    expect(strFromU8(files["OEBPS/style.css"])).toBe(READING_CSS);
+  });
+
+  it("renders a printable page with the same styles, page rules, and an optional auto-print", () => {
+    const html = printableHtml({ id: "abcd1234", markdown: md, origin: "https://vapor.example", autoPrint: true });
+    expect(html).toContain("<title>A plan</title>");
+    expect(html).toContain("@page { margin: 18mm 16mm; }");
+    expect(html).toContain("Hello there, new text quoted.");
+    expect(html).not.toContain("Keep it short");
+    expect(html).toContain("window.print()");
+    expect(html).toContain('src="/abcd1234/attachments/abcdefghijklmnop/diagram.png"');
+    expect(printableHtml({ id: "abcd1234", markdown: md, origin: "https://vapor.example", autoPrint: false })).not.toContain("window.print()");
   });
 });

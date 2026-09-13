@@ -14,7 +14,7 @@ import { CodeBlock } from "~/lib/code-block";
 import { CodeBlockCopy } from "~/lib/code-block-copy";
 import { AgentInstructions } from "~/lib/agent-instructions";
 import { CommentClickHandler } from "~/lib/comment-click";
-import { AppLinks, APP_LINK_PROTOCOL } from "~/lib/app-links";
+import { AppLinks, APP_LINK_PROTOCOL, Link } from "~/lib/app-links";
 import { UndoRedo } from "~/lib/undo-redo";
 import { Attachment } from "~/lib/attachment";
 import { MentionSuggestion, type MentionSourceRef } from "~/lib/mention-suggestion";
@@ -241,16 +241,19 @@ export default function Editor({
           // Replaced by CodeBlock (lowlight highlighting + language selector).
           codeBlock: false,
           heading: { levels: [1, 2, 3] },
-          link: {
-            openOnClick: false,
-            autolink: true,
-            linkOnPaste: true,
-            // `@ada@example.com` is a mention; autolinking its tail to a
-            // mailto would break it. Bare emails stay text as a result.
-            shouldAutoLink: (url) => !url.startsWith("mailto:"),
-            // `vapor:` links are actions inside the app (see app-links.ts).
-            protocols: [APP_LINK_PROTOCOL],
-          },
+          // Replaced by Link from app-links.ts, which always opens in a new tab.
+          link: false,
+        }),
+        Link.configure({
+          // AppLinks handles clicks and taps (new tab, or the app action).
+          openOnClick: false,
+          autolink: true,
+          linkOnPaste: true,
+          // `@ada@example.com` is a mention; autolinking its tail to a
+          // mailto would break it. Bare emails stay text as a result.
+          shouldAutoLink: (url) => !url.startsWith("mailto:"),
+          // `vapor:` links are actions inside the app (see app-links.ts).
+          protocols: [APP_LINK_PROTOCOL],
         }),
         CodeBlock,
         BlockId,

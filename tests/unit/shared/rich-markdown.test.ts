@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
+import { Node, Schema } from "prosemirror-model";
 import {
   parseMarkdown,
   serializePmDoc,
@@ -17,6 +18,7 @@ import {
   INSTRUCTIONS_NOTICE,
   parseAgentFenceInfo,
   agentFenceInfo,
+  richSchema,
 } from "~/shared/rich-markdown";
 import { blockHash } from "~/shared/agent-protocol";
 
@@ -296,6 +298,15 @@ describe("tables", () => {
     if (!parsed.ok) throw new Error(parsed.message);
     expect(parsed.doc.child(0).child(1).textContent).toBe("x | y");
     expect(serializePmDoc(parsed.doc)).toContain("| x \\| y |");
+  });
+
+  it("serialises a table from another schema instance, as the editor's documents are", () => {
+    const parsed = parseMarkdown(md);
+    if (!parsed.ok) throw new Error(parsed.message);
+    const other = new Schema(richSchema.spec);
+    const foreign = Node.fromJSON(other, parsed.doc.toJSON());
+    expect(foreign.type.schema).not.toBe(richSchema);
+    expect(serializePmDoc(foreign)).toBe(md);
   });
 });
 

@@ -627,11 +627,17 @@ export const markdownSerializer = new MarkdownSerializer(
 
 const SERIALIZE_OPTS = { tightLists: true };
 
-/** A table cell's inline content as one line of markdown, pipes escaped. */
+/**
+ * A table cell's inline content as one line of markdown, pipes escaped.
+ * The wrapper nodes come from the cell's own schema: the editor serialises
+ * TipTap documents through here too, and a paragraph from `richSchema`
+ * refuses content from another schema.
+ */
 function serializeCellInline(cell: PMNode): string {
-  const para = richSchema.node("paragraph", null, cell.content);
+  const schema = cell.type.schema;
+  const para = schema.node("paragraph", null, cell.content);
   return markdownSerializer
-    .serialize(richSchema.node("doc", null, [para]), SERIALIZE_OPTS)
+    .serialize(schema.node("doc", null, [para]), SERIALIZE_OPTS)
     .replace(/\n+$/, "")
     .replace(/\n/g, " ")
     .replace(/\|/g, "\\|");

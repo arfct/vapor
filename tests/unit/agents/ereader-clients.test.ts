@@ -64,7 +64,27 @@ describe("Kindle mailer (#100)", () => {
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer re_x");
     const body = JSON.parse(init.body as string);
     expect(body).toMatchObject({ from: "kindle@vapor.example", to: ["ada@kindle.com"], subject: "A plan" });
+    expect(body.reply_to).toBeUndefined();
     expect(body.attachments).toEqual([{ filename: "a-plan-abcd1234.epub", content: btoa("hi"), content_type: "application/epub+zip" }]);
     expect(await sendToKindle({ apiKey: "k", from: "f" }, { to: "a@kindle.com", title: "t", filename: "f.epub", bytes: new Uint8Array(), sourceUrl: "u" }, fetchReturning(422, "bad from"))).toMatchObject({ error: expect.stringContaining("422") });
+  });
+
+  it("names the sender in From and sets Reply-To to them, keeping the operator's address", async () => {
+    const send = (sender: { name: string | null; email: string | null }) => {
+      const f = fetchReturning(200, "{}");
+      return sendToKindle(
+        { apiKey: "re_x", from: "kindle@vapor.example" },
+        { to: "ada@kindle.com", title: "t", filename: "f.epub", bytes: new Uint8Array(), sourceUrl: "u", sender },
+        f,
+      ).then(() => JSON.parse((f.mock.calls[0] as [string, RequestInit])[1].body as string));
+    };
+    expect(await send({ name: "Ada Lovelace", email: "ada@example.com" })).toMatchObject({
+      from: '"Ada Lovelace via vapor" <kindle@vapor.example>',
+      reply_to: "ada@example.com",
+    });
+    const anonymous = await send({ name: null, email: null });
+    expect(anonymous.from).toBe("kindle@vapor.example");
+    expect(anonymous.reply_to).toBeUndefined();
+    expect((await send({ name: 'Ada "<x>" \n Lovelace', email: null })).from).toBe('"Ada x  Lovelace via vapor" <kindle@vapor.example>');
   });
 });

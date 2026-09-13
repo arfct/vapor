@@ -13,6 +13,21 @@ export interface KindleMailer {
   from: string;
 }
 
+/**
+ * Who pressed Send. Resend only mails from the operator's verified domain,
+ * so the reader's own address cannot be the From; it goes in the display
+ * name and Reply-To instead, and the approved-sender address stays constant.
+ */
+export interface KindleSender {
+  name: string | null;
+  email: string | null;
+}
+
+function fromHeader(from: string, sender: KindleSender | undefined): string {
+  const name = sender?.name?.replace(/["<>\r\n]/g, "").trim();
+  return name ? `"${name} via vapor" <${from}>` : from;
+}
+
 /** The operator's mailer, or null when the instance cannot send email. */
 export function kindleMailerFromEnv(env: { RESEND_API_KEY?: string; SEND_FROM_EMAIL?: string }): KindleMailer | null {
   const apiKey = env.RESEND_API_KEY?.trim();
@@ -29,14 +44,15 @@ function base64(bytes: Uint8Array): string {
 /** Mails the EPUB to a Kindle address. The subject is the document title; Kindle ignores the body. */
 export async function sendToKindle(
   mailer: KindleMailer,
-  message: { to: string; title: string; filename: string; bytes: Uint8Array; sourceUrl: string },
+  message: { to: string; title: string; filename: string; bytes: Uint8Array; sourceUrl: string; sender?: KindleSender },
   fetchImpl: Fetch = fetch,
 ): Promise<{ ok: true; id: string | null } | { error: string }> {
   const res = await fetchImpl("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${mailer.apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      from: mailer.from,
+      from: fromHeader(mailer.from, message.sender),
+      ...(message.sender?.email ? { reply_to: message.sender.email } : {}),
       to: [message.to],
       subject: message.title,
       text: `${message.title}\n\nSent from vapor: ${message.sourceUrl}`,

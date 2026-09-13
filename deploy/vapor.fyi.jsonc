@@ -38,6 +38,7 @@
 		"REDIRECT_HOSTS": "vpr.fyi,vaporware.fyi",
 		"OPERATOR_NAME": "Artifact",
 		"SOURCE_URL": "https://github.com/arfct/vapor",
+		"SEND_FROM_EMAIL": "doc@vapor.fyi",
 		"OPENAI_APPS_CHALLENGE": "-EHnlJjYEutJYpn1JTF8bXqtJJAJFPfxbpjbECGkX8I"
 	},
 	"keep_vars": true

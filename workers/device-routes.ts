@@ -8,7 +8,7 @@
 import { sameOrigin, sessionFromRequest } from "../app/lib/auth.server";
 import { isValidDocumentId } from "../app/shared/constants";
 import { validateKindleEmail, validateRemarkableCode, type DevicesView, type SendTarget } from "../app/shared/device-policy";
-import type { KindleMailer } from "./kindle";
+import type { KindleMailer, KindleSender } from "./kindle";
 
 export interface DeviceRouteDeps {
   secret: string;
@@ -21,10 +21,12 @@ export interface DeviceRouteDeps {
   allowSend(principal: string): Promise<{ allowed: boolean }>;
   /** The operator's mailer, or null when the instance cannot send email. */
   mailer: KindleMailer | null;
+  /** The sender's display name, for the From header's display part. */
+  displayName(principal: string): Promise<string | null>;
   buildEpub(docId: string, origin: string): Promise<{ bytes: Uint8Array; filename: string; title: string | null } | null>;
   sendKindle(
     mailer: KindleMailer,
-    message: { to: string; title: string; filename: string; bytes: Uint8Array; sourceUrl: string },
+    message: { to: string; title: string; filename: string; bytes: Uint8Array; sourceUrl: string; sender: KindleSender },
   ): Promise<{ ok: true; id: string | null } | { error: string }>;
   remarkableUserToken(deviceToken: string): Promise<{ userToken: string } | { error: string }>;
   uploadRemarkable(
@@ -125,6 +127,7 @@ export async function handleDeviceRoutes(request: Request, deps: DeviceRouteDeps
       filename: built.filename,
       bytes: built.bytes,
       sourceUrl: `${url.origin}/${docId}`,
+      sender: { name: await deps.displayName(principal), email: session.email || null },
     });
     if ("error" in sent) return json({ error: sent.error }, 502);
     return json({ ok: true, target, to: devices.kindleEmail, title });

@@ -181,6 +181,21 @@ export function skillMarkdown(origin: string): string {
   return skillTemplate.split(SKILL_TEMPLATE_ORIGIN).join(origin);
 }
 
+/**
+ * `GET /.well-known/openai-apps-challenge` — OpenAI's plugin submission
+ * portal verifies an MCP server's domain by asking it to serve an exact
+ * token here (#103). Set OPENAI_APPS_CHALLENGE to the token the portal
+ * shows; unset, the path 404s like any other.
+ */
+export function handleAppsChallenge(request: Request, env: { OPENAI_APPS_CHALLENGE?: string }): Response | null {
+  if (request.method !== "GET") return null;
+  const url = new URL(request.url);
+  if (url.pathname !== "/.well-known/openai-apps-challenge") return null;
+  const token = env.OPENAI_APPS_CHALLENGE?.trim();
+  if (!token) return new Response("Not found", { status: 404 });
+  return new Response(token, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
+}
+
 /** `GET /skill.md` — the Agent Skills file, addressed to this instance. */
 export function handleSkill(request: Request, env: SiteEnv = {}): Response | null {
   if (request.method !== "GET") return null;

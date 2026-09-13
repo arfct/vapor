@@ -12,6 +12,7 @@
 import {
   mintSessionToken,
   sessionFromRequest,
+  verifySessionToken,
   type SessionClaims,
 } from "../app/lib/auth.server";
 import { consentPageHtml } from "../app/lib/oauth-pages";
@@ -37,6 +38,10 @@ export interface OAuthRegistry {
 export interface OAuthDeps {
   secret: string;
   registry: OAuthRegistry;
+  /** Resolves a personal access token to its grant, when the deployment issues them. */
+  lookupAccessToken?: (token: string) => Promise<{ grant: { principal: string; email: string } | null }>;
+  /** The display name behind a principal, for `name` in userinfo. */
+  displayName?: (principal: string) => Promise<string | null>;
 }
 
 const ACCESS_TTL_SECONDS = 60 * 60;
@@ -163,6 +168,8 @@ function serverMetadata(origin: string) {
     token_endpoint: `${origin}/oauth/token`,
     registration_endpoint: `${origin}/oauth/register`,
     revocation_endpoint: `${origin}/oauth/revoke`,
+    // Who a token belongs to, for clients that ask (ChatGPT's plugin review does; #103).
+    userinfo_endpoint: `${origin}/oauth/userinfo`,
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
@@ -333,6 +340,31 @@ async function mintTokens(
   });
 }
 
+async function handleUserinfo(request: Request, deps: OAuthDeps): Promise<Response> {
+  const bearer = request.headers.get("Authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ?? null;
+  const unauthorized = () =>
+    new Response(JSON.stringify({ error: "invalid_token" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json", "WWW-Authenticate": 'Bearer error="invalid_token"' },
+    });
+  if (!bearer) return unauthorized();
+  let identity: { principal: string; email: string } | null = null;
+  if (bearer.startsWith("vpt_") && deps.lookupAccessToken) {
+    identity = (await deps.lookupAccessToken(bearer)).grant;
+  } else {
+    const claims = await verifySessionToken(bearer, deps.secret);
+    identity = claims ? { principal: claims.principal, email: claims.email } : null;
+  }
+  if (!identity) return unauthorized();
+  const name = deps.displayName ? await deps.displayName(identity.principal) : null;
+  return Response.json({
+    sub: identity.principal,
+    email: identity.email,
+    email_verified: true,
+    ...(name ? { name } : {}),
+  });
+}
+
 async function handleToken(request: Request, deps: OAuthDeps): Promise<Response> {
   const params = new URLSearchParams(await request.text());
   const grantType = params.get("grant_type");
@@ -474,6 +506,12 @@ export async function handleOAuth(request: Request, deps: OAuthDeps): Promise<Re
     }
     if (path === "/oauth/token" && request.method === "POST") {
       return withCors(await handleToken(request, deps));
+    }
+    // OpenID-style UserInfo (#103): the bearer's identity. `sub` is the
+    // principal (an opaque provider-keyed id, never an email), `email` the
+    // verified address the provider gave us. Session JWTs and vpt_ tokens both.
+    if (path === "/oauth/userinfo" && (request.method === "GET" || request.method === "POST")) {
+      return withCors(await handleUserinfo(request, deps));
     }
     if (path === "/oauth/revoke" && request.method === "POST") {
       return withCors(await handleRevoke(request, deps));

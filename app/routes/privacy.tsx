@@ -65,6 +65,60 @@ export default function Privacy() {
         </li>
       </ul>
 
+      <h2>What is stored, why, who sees it, and for how long</h2>
+      <table className="mt-3 w-full text-sm [&_td]:border-t [&_td]:border-border [&_td]:py-2 [&_td]:pr-3 [&_td]:align-top [&_th]:pb-2 [&_th]:pr-3 [&_th]:text-left [&_th]:font-medium">
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Purpose</th>
+            <th>Recipients</th>
+            <th>Kept</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Document text, comments, tracked changes, attachments</td>
+            <td>Showing and syncing the document to everyone with its link</td>
+            <td>Anyone holding the link; the infrastructure below</td>
+            <td>99 hours from creation, then deleted with the document</td>
+          </tr>
+          <tr>
+            <td>Anonymous visitor label (random name, colour, browser id)</td>
+            <td>Labelling your cursor and comments</td>
+            <td>Collaborators on the same document</td>
+            <td>In your browser until you clear it; on a document until it expires</td>
+          </tr>
+          <tr>
+            <td>Signed-in profile: email, display name, avatar URL, provider account id</td>
+            <td>Attributing your presence, comments, and agents to you</td>
+            <td>Collaborators see the name and avatar; the email and account id stay on the server</td>
+            <td>Until you ask for removal</td>
+          </tr>
+          <tr>
+            <td>Agent grants and personal access tokens (hashed)</td>
+            <td>Letting your agents act as you at the capability you chose</td>
+            <td>Nobody else</td>
+            <td>Until revoked; OAuth refresh grants expire on their own</td>
+          </tr>
+          <tr>
+            <td>Wake targets, Kindle address, reMarkable pairing (secrets sealed)</td>
+            <td>Waking your agent; sending documents to your devices</td>
+            <td>The routine or webhook you named; Amazon (via the mail sender) or reMarkable's cloud, only when you send</td>
+            <td>Until you remove them</td>
+          </tr>
+          <tr>
+            <td>Request logs</td>
+            <td>Operating the service</td>
+            <td>The operator, and Cloudflare as the host</td>
+            <td>Cloudflare's standard retention</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Nothing here is sold or used for advertising, profiling, or training models. Agents you connect see only the
+        documents you point them at.
+      </p>
+
       <h2>Infrastructure</h2>
       <p>
         vapor runs on Cloudflare Workers, so requests pass through Cloudflare's network and are

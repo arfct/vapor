@@ -39,6 +39,7 @@
 	//   OPERATOR_NAME     shown on /privacy and /terms
 	//   SOURCE_URL        your fork, if you publish your own plugin from it
 	//   SEND_FROM_EMAIL   the address Send to Kindle mails from (with the RESEND_API_KEY secret)
+	//   OPENAI_APPS_CHALLENGE  domain-verification token for OpenAI's plugin portal (docs/self-hosting.md)
 	// SESSION_SECRET and RESEND_API_KEY are secrets, not vars: `wrangler secret put <NAME>`.
 	"vars": {},
 	"keep_vars": true

@@ -20,6 +20,8 @@ interface Env {
   /** Send to Kindle by email (#100): a Resend API key (secret) and the approved sender address (var). Both optional. */
   RESEND_API_KEY?: string;
   SEND_FROM_EMAIL?: string;
+  /** OpenAI plugin portal domain-verification token, served at /.well-known/openai-apps-challenge (#103). */
+  OPENAI_APPS_CHALLENGE?: string;
 }
 
 declare namespace Cloudflare {
@@ -34,5 +36,6 @@ declare namespace Cloudflare {
     SOURCE_URL?: string;
     RESEND_API_KEY?: string;
     SEND_FROM_EMAIL?: string;
+    OPENAI_APPS_CHALLENGE?: string;
   }
 }

@@ -95,6 +95,52 @@ async function registeredClient(registry: OAuthRegistry): Promise<string> {
   return body.client_id;
 }
 
+describe("userinfo (#103)", () => {
+  const PRINCIPAL = "google:1234567890";
+
+  it("advertises the endpoint in server metadata", async () => {
+    const res = await handleOAuth(new Request("https://vapor.fyi/.well-known/oauth-authorization-server"), deps(fakeRegistry()));
+    const body = (await res!.json()) as { userinfo_endpoint: string };
+    expect(body.userinfo_endpoint).toBe("https://vapor.fyi/oauth/userinfo");
+  });
+
+  it("returns sub, verified email, and name for a session bearer", async () => {
+    const session = await mintSessionToken({ principal: PRINCIPAL, email: "a@x.com", caps: ["suggest"] }, SECRET);
+    const res = await handleOAuth(new Request("https://vapor.fyi/oauth/userinfo", { headers: { Authorization: `Bearer ${session}` } }), {
+      ...deps(fakeRegistry()),
+      displayName: async (principal) => (principal === PRINCIPAL ? "Ada" : null),
+    });
+    expect(res!.status).toBe(200);
+    expect(res!.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(await res!.json()).toEqual({ sub: PRINCIPAL, email: "a@x.com", email_verified: true, name: "Ada" });
+  });
+
+  it("resolves a personal access token through the registry, and never leaks the email as sub", async () => {
+    const lookupAccessToken = vi.fn(async (token: string) => ({
+      grant: token === "vpt_ok" ? { principal: PRINCIPAL, email: "a@x.com" } : null,
+    }));
+    const call = (token: string) =>
+      handleOAuth(new Request("https://vapor.fyi/oauth/userinfo", { headers: { Authorization: `Bearer ${token}` } }), {
+        ...deps(fakeRegistry()),
+        lookupAccessToken,
+      });
+    const ok = await call("vpt_ok");
+    expect(await ok!.json()).toEqual({ sub: PRINCIPAL, email: "a@x.com", email_verified: true });
+    expect((await call("vpt_nope"))!.status).toBe(401);
+  });
+
+  it("rejects a missing or bad bearer with a WWW-Authenticate challenge", async () => {
+    const none = await handleOAuth(new Request("https://vapor.fyi/oauth/userinfo"), deps(fakeRegistry()));
+    expect(none!.status).toBe(401);
+    expect(none!.headers.get("WWW-Authenticate")).toContain("invalid_token");
+    const forged = await handleOAuth(
+      new Request("https://vapor.fyi/oauth/userinfo", { headers: { Authorization: "Bearer not.a.jwt" } }),
+      deps(fakeRegistry()),
+    );
+    expect(forged!.status).toBe(401);
+  });
+});
+
 describe("oauth authorization server", () => {
   it("serves discovery documents with CORS", async () => {
     const res = await handleOAuth(

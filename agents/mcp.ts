@@ -23,7 +23,6 @@ import {
   anonymousAgentLabel,
   type DocStub,
   createDocumentNote,
-  READ,
   WRITE,
   CREATE_DOCUMENT_OUTPUT,
   LIST_DOCUMENTS_OUTPUT,

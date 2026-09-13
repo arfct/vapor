@@ -64,7 +64,11 @@ export default {
 
     // /oauth/* + the OAuth discovery documents — the authorization server
     // MCP clients use to connect with the user's identity.
-    if (url.pathname.startsWith("/oauth") || url.pathname.startsWith("/.well-known/oauth-")) {
+    if (
+      url.pathname.startsWith("/oauth") ||
+      url.pathname.startsWith("/.well-known/oauth-") ||
+      url.pathname.startsWith("/.well-known/openid-configuration")
+    ) {
       const registry = (await getAgentByName(
         env.Registry,
         "global",

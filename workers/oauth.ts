@@ -50,6 +50,26 @@ const MAX_REDIRECT_URIS = 8;
 
 const WRITE_CAPS: AgentCapability[] = ["suggest", "comment", "write"];
 
+/**
+ * OpenID Connect scopes (#103). Sign-in is identity-only, so these are the
+ * whole vocabulary: openid + email give userinfo's sub/email/email_verified,
+ * profile adds name. Capabilities are chosen on the consent screen, not by
+ * scope, but the token response names the granted ones alongside so a
+ * client reading `scope` sees the true grant.
+ */
+const OIDC_SCOPES = ["openid", "email", "profile"] as const;
+
+/** The subset of a requested `scope` we honour, in canonical order; "" when none. */
+export function honouredScope(requested: string | null | undefined): string {
+  const asked = new Set((requested ?? "").split(/\s+/).filter(Boolean));
+  return OIDC_SCOPES.filter((s) => asked.has(s)).join(" ");
+}
+
+/** The `scope` a token response carries: honoured OpenID scopes plus the grant's capabilities. */
+export function grantedScope(grant: { scope?: string; caps: AgentCapability[] }): string {
+  return [...(grant.scope ? grant.scope.split(" ") : []), ...grant.caps].join(" ");
+}
+
 async function sha256Base64Url(input: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
   return btoa(String.fromCharCode(...new Uint8Array(digest)))
@@ -174,11 +194,29 @@ function serverMetadata(origin: string) {
     grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
-    scopes_supported: [],
+    scopes_supported: [...OIDC_SCOPES, ...WRITE_CAPS],
     service_documentation: `${origin}/mcp`,
     // Accept a Client ID Metadata Document URL as the client_id (CIMD),
     // in addition to dynamically-registered ids.
     client_id_metadata_document_supported: true,
+  };
+}
+
+/**
+ * OpenID Connect discovery (#103): the same server, described the OIDC way,
+ * for clients that want a verified email through UserInfo — ChatGPT uses
+ * it to restrict a plugin to a workspace's domain. Identity claims come
+ * from UserInfo only; no ID token is issued (the endpoint is what that
+ * flow requires, and every client here is public, with no key to verify
+ * a signature against), so no signing algorithms are advertised.
+ */
+function openidConfiguration(origin: string) {
+  return {
+    ...serverMetadata(origin),
+    subject_types_supported: ["public"],
+    claims_supported: ["sub", "email", "email_verified", "name"],
+    claims_parameter_supported: false,
+    request_parameter_supported: false,
   };
 }
 
@@ -306,6 +344,7 @@ async function handleAuthorize(request: Request, deps: OAuthDeps): Promise<Respo
     principal: session.principal,
     email: session.email,
     caps,
+    scope: honouredScope(params.get("scope")),
     clientId,
     redirectUri,
     codeChallenge,
@@ -315,7 +354,7 @@ async function handleAuthorize(request: Request, deps: OAuthDeps): Promise<Respo
 
 async function mintTokens(
   deps: OAuthDeps,
-  grant: { principal: string; email: string; caps: AgentCapability[]; clientId: string },
+  grant: { principal: string; email: string; caps: AgentCapability[]; clientId: string; scope?: string },
 ): Promise<Response> {
   const accessToken = await mintSessionToken(
     { principal: grant.principal, email: grant.email, caps: grant.caps } as Omit<
@@ -330,13 +369,14 @@ async function mintTokens(
     email: grant.email,
     caps: grant.caps,
     clientId: grant.clientId,
+    ...(grant.scope ? { scope: grant.scope } : {}),
   });
   return Response.json({
     access_token: accessToken,
     token_type: "Bearer",
     expires_in: ACCESS_TTL_SECONDS,
     refresh_token: refreshToken,
-    scope: "",
+    scope: grantedScope(grant),
   });
 }
 
@@ -441,7 +481,7 @@ async function handleToken(request: Request, deps: OAuthDeps): Promise<Response>
       token_type: "Bearer",
       expires_in: ACCESS_TTL_SECONDS,
       refresh_token: rotated.token,
-      scope: "",
+      scope: grantedScope(rotated.data),
     });
   }
 
@@ -481,12 +521,13 @@ export async function handleOAuth(request: Request, deps: OAuthDeps): Promise<Re
   // expects `resource` to equal that exact endpoint URL. Serve the bare
   // documents and any path-suffixed variant of them.
   const wellKnown = path.match(
-    /^\/\.well-known\/(oauth-authorization-server|oauth-protected-resource)(\/.*)?$/,
+    /^\/\.well-known\/(oauth-authorization-server|oauth-protected-resource|openid-configuration)(\/.*)?$/,
   );
   if (wellKnown) {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: OAUTH_CORS });
     const [, doc, suffix] = wellKnown;
     if (doc === "oauth-authorization-server") return withCors(Response.json(serverMetadata(origin)));
+    if (doc === "openid-configuration") return withCors(Response.json(openidConfiguration(origin)));
     return withCors(
       Response.json({
         resource: origin + (suffix ?? ""),

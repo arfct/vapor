@@ -25,6 +25,9 @@ import {
   createDocumentNote,
   READ,
   WRITE,
+  CREATE_DOCUMENT_OUTPUT,
+  LIST_DOCUMENTS_OUTPUT,
+  ATTACH_OUTPUT,
   ANY_CALLER,
   CAN_WRITE,
   SIGNED_IN,
@@ -187,6 +190,7 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
           title: tool.title,
           description: tool.description,
           inputSchema: tool.schema,
+          outputSchema: tool.output,
           annotations: tool.annotations,
           _meta: { securitySchemes: tool.securitySchemes },
         },
@@ -204,6 +208,7 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
       "list_documents",
       {
         title: "List my documents",
+        outputSchema: LIST_DOCUMENTS_OUTPUT,
         annotations: READ,
         _meta: { securitySchemes: SIGNED_IN },
         description:
@@ -250,6 +255,7 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
       "attach",
       {
         title: "Attach a file",
+        outputSchema: ATTACH_OUTPUT,
         annotations: WRITE,
         _meta: { securitySchemes: CAN_WRITE },
         description:
@@ -329,6 +335,7 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
       "create_document",
       {
         title: "Create a document",
+        outputSchema: CREATE_DOCUMENT_OUTPUT,
         annotations: WRITE,
         _meta: { securitySchemes: ANY_CALLER },
         description:

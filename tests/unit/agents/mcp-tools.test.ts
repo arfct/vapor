@@ -1,5 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
-import { TOOLS, validateNewDocumentMarkdown, createDocumentAgentName, createDocumentNote } from "../../../agents/mcp-tools";
+import { z } from "zod";
+import {
+  TOOLS,
+  validateNewDocumentMarkdown,
+  createDocumentAgentName,
+  createDocumentNote,
+  CREATE_DOCUMENT_OUTPUT,
+  LIST_DOCUMENTS_OUTPUT,
+  ATTACH_OUTPUT,
+} from "../../../agents/mcp-tools";
 import type { AgentIdentity } from "../../../app/shared/agent-protocol";
 
 const ID: AgentIdentity = {
@@ -38,6 +47,43 @@ describe("mcp tool table", () => {
       expect(t.securitySchemes.length, t.name).toBeGreaterThan(0);
       // A read-only tool never claims to be destructive.
       if (t.annotations.readOnlyHint) expect(t.annotations.destructiveHint, t.name).toBe(false);
+    }
+  });
+
+  it("every tool's output schema admits both an error and its success shape (#103)", () => {
+    // The SDK validates structuredContent against outputSchema on every call,
+    // so a schema that rejects either outcome would turn a working tool into
+    // a protocol error.
+    const error = { error: { code: "doc_not_found", message: "gone" } };
+    const samples: Record<string, unknown> = {
+      read_document: {
+        markdown: "# A", blocks: [{ anchor: "k3f0a9x2-a91f0c2d", text: "# A" }], instructions: null, instruction_sources: [],
+        created_at: "2026-09-12T00:00:00.000Z", expires_at: "2026-09-16T03:00:00.000Z",
+        presence: [{ name: "Ada", isAgent: false }, { name: "Ada's Claude", isAgent: true, mention: "@ada+agent~k3f0a9x2" }],
+        threads: [{ id: "t1", commentText: "hi", author: { name: "Ada", color: "#000", colorLight: "#fff" }, createdAt: 1, resolved: false, replies: [] }],
+      },
+      comment: { threadId: "t1" },
+      resolve_thread: { ok: true, resolved: true },
+      await_events: { events: [{ seq: 1, type: "mention", payload: { agent: "x" } }], cursor: 1 },
+      events_list: { events: [{ name: "mention", description: "d", delivery: ["poll"], inputSchema: {}, payloadSchema: {} }] },
+      events_poll: { events: [], cursor: null, truncated: false, hasMore: false, nextPollMs: 5000, retryAfterMs: 5000 },
+      events_subscribe: { id: "s1", refreshBefore: "2026-09-16T00:00:00.000Z", cursor: "s0", truncated: false },
+    };
+    for (const t of TOOLS) {
+      const schema = z.object(t.output);
+      expect(schema.safeParse(error).success, `${t.name} error`).toBe(true);
+      const ok = samples[t.name] ?? { ok: true };
+      const parsed = schema.safeParse(ok);
+      expect(parsed.success, `${t.name} success: ${parsed.success ? "" : parsed.error.message}`).toBe(true);
+      expect(Object.keys(t.output).length, t.name).toBeGreaterThan(1);
+    }
+    for (const [name, schema, sample] of [
+      ["create_document", CREATE_DOCUMENT_OUTPUT, { id: "abcd1234", url: "https://v/x-abcd1234", created_at: null, expires_at: null, capabilities: ["suggest", "comment"], note: "n" }],
+      ["list_documents", LIST_DOCUMENTS_OUTPUT, { documents: [{ id: "a", url: "u", title: null, created_at: null, expires_at: null, enrolled_at: "2026-09-12T00:00:00.000Z" }] }],
+      ["attach", ATTACH_OUTPUT, { id: "a", url: "u", filename: "f.png", contentType: "image/png", bytes: 3, markdown: "![f](u)", inserted: { ok: true } }],
+    ] as const) {
+      expect(z.object(schema).safeParse(sample).success, name).toBe(true);
+      expect(z.object(schema).safeParse(error).success, `${name} error`).toBe(true);
     }
   });
 

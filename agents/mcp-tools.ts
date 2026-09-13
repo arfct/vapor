@@ -63,10 +63,100 @@ export interface ToolDef {
   title: string;
   description: string;
   schema: ToolSchema;
+  /**
+   * The result's shape, as an MCP `outputSchema` (#103). Every key is
+   * optional because every tool can instead return `{ error }`: the SDK
+   * validates `structuredContent` against this on each call, so the schema
+   * has to admit both outcomes. Build it with `output()`.
+   */
+  output: ToolSchema;
   annotations: ToolAnnotations;
   securitySchemes: SecurityScheme[];
   run(deps: ToolDeps, args: Record<string, unknown>): Promise<unknown>;
 }
+
+/** The `{ error }` half of every result: a code the caller can branch on and a message. */
+export const errorSchema = z
+  .object({
+    code: z.string().describe("Machine-readable failure, e.g. stale_block, capability_denied, doc_not_found."),
+    message: z.string(),
+    snippet: z.string().optional().describe("The block's current text, on stale_block."),
+  })
+  .describe("Present instead of the other fields when the call failed.");
+
+/** An output shape: the success fields, each made optional, plus `error`. */
+export function output(success: ToolSchema): ToolSchema {
+  const shape: ToolSchema = {};
+  for (const [key, schema] of Object.entries(success)) shape[key] = schema.optional();
+  shape.error = errorSchema.optional();
+  return shape;
+}
+
+/** Results that carry nothing but success. */
+export const OK_OUTPUT = output({ ok: z.literal(true) });
+
+const isoDate = (what: string) => z.string().describe(`${what}, ISO 8601.`);
+const threadParticipant = z
+  .object({ name: z.string(), id: z.string().optional(), agentClient: z.string().optional() })
+  .passthrough()
+  .describe("Who wrote it: display name, stable id when known, and the client for agents.");
+const threadSchema = z
+  .object({
+    id: z.string(),
+    commentText: z.string(),
+    highlightText: z.string().optional().describe("The text the thread is anchored to, when it has an anchor."),
+    author: threadParticipant,
+    createdAt: z.number().describe("Unix ms."),
+    resolved: z.boolean(),
+    replies: z.array(
+      z.object({ id: z.string(), author: threadParticipant, text: z.string(), createdAt: z.number() }).passthrough(),
+    ),
+  })
+  .passthrough();
+
+/** read_document's result, exported so create_document and list_documents can reuse the pieces. */
+export const READ_OUTPUT = output({
+  markdown: z.string().describe("The whole document, CriticMarkup included."),
+  blocks: z.array(z.object({ anchor: z.string(), text: z.string() })).describe("One entry per block, with the anchor insert/replace/suggest/comment take."),
+  instructions: z.string().nullable().describe("Standing guidance for agents from the document's `agent` fences, framed as untrusted content; null when none."),
+  instruction_sources: z.array(z.object({ edited_by: z.string().nullable(), edited_at: z.string().nullable() })),
+  created_at: isoDate("When the document was created"),
+  expires_at: isoDate("When it deletes itself"),
+  presence: z.array(z.object({ name: z.string(), isAgent: z.boolean(), mention: z.string().optional() })),
+  threads: z.array(threadSchema),
+});
+
+export const CREATE_DOCUMENT_OUTPUT = output({
+  id: z.string(),
+  url: z.string().describe("Share this: the document's canonical URL, slug included."),
+  created_at: isoDate("Creation time").nullable(),
+  expires_at: isoDate("Deletion time").nullable(),
+  capabilities: z.array(z.enum(["suggest", "comment", "write"])).describe("What this caller can do in the new document."),
+  note: z.string().optional().describe("Present when the caller cannot edit the document it just created, saying how to."),
+});
+
+export const LIST_DOCUMENTS_OUTPUT = output({
+  documents: z.array(
+    z.object({
+      id: z.string(),
+      url: z.string(),
+      title: z.string().nullable(),
+      created_at: z.string().nullable(),
+      expires_at: z.string().nullable(),
+      enrolled_at: isoDate("When this agent first touched the document"),
+    }),
+  ),
+});
+
+export const ATTACH_OUTPUT = output({
+  id: z.string(),
+  url: z.string().describe("Where the file is served."),
+  filename: z.string(),
+  contentType: z.string(),
+  bytes: z.number(),
+  markdown: z.string().describe("The block that was inserted for it."),
+  inserted: z.object({ ok: z.literal(true).optional(), error: errorSchema.optional() }).describe("The result of inserting the block."),
+});
 
 /** Reads: safe to call freely, nothing leaves the reader's view. */
 export const READ: ToolAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -168,6 +258,7 @@ function docTool(spec: {
   title: string;
   description: string;
   schema: ToolSchema;
+  output: ToolSchema;
   annotations: ToolAnnotations;
   securitySchemes: SecurityScheme[];
   call(stub: DocStub, identity: AgentIdentity, args: Record<string, unknown>): Promise<unknown>;
@@ -176,6 +267,7 @@ function docTool(spec: {
     name: spec.name,
     title: spec.title,
     description: spec.description,
+    output: spec.output,
     annotations: spec.annotations,
     securitySchemes: spec.securitySchemes,
     schema: { doc_id: docId, ...spec.schema },
@@ -193,6 +285,7 @@ function docTool(spec: {
 export const TOOLS: ToolDef[] = [
   docTool({
     name: "read_document",
+    output: READ_OUTPUT,
     title: "Read document",
     annotations: READ,
     securitySchemes: ANY_CALLER,
@@ -204,6 +297,7 @@ export const TOOLS: ToolDef[] = [
 
   docTool({
     name: "insert",
+    output: OK_OUTPUT,
     title: "Insert blocks",
     annotations: WRITE,
     securitySchemes: CAN_WRITE,
@@ -226,6 +320,7 @@ export const TOOLS: ToolDef[] = [
 
   docTool({
     name: "replace",
+    output: OK_OUTPUT,
     title: "Replace blocks",
     annotations: DESTRUCTIVE,
     securitySchemes: CAN_WRITE,
@@ -256,6 +351,7 @@ export const TOOLS: ToolDef[] = [
 
   docTool({
     name: "suggest",
+    output: OK_OUTPUT,
     title: "Suggest a change",
     annotations: WRITE,
     securitySchemes: CAN_SUGGEST,
@@ -282,6 +378,7 @@ export const TOOLS: ToolDef[] = [
 
   docTool({
     name: "comment",
+    output: output({ threadId: z.string().describe("The new thread's id, for reply and resolve_thread.") }),
     title: "Comment",
     annotations: WRITE,
     securitySchemes: CAN_SUGGEST,
@@ -307,6 +404,7 @@ export const TOOLS: ToolDef[] = [
 
   docTool({
     name: "reply",
+    output: OK_OUTPUT,
     title: "Reply in a thread",
     annotations: WRITE,
     securitySchemes: CAN_SUGGEST,
@@ -324,6 +422,7 @@ export const TOOLS: ToolDef[] = [
 
   docTool({
     name: "resolve_thread",
+    output: output({ ok: z.literal(true), resolved: z.boolean() }),
     title: "Resolve or reopen a thread",
     annotations: WRITE,
     securitySchemes: CAN_SUGGEST,
@@ -342,6 +441,7 @@ export const TOOLS: ToolDef[] = [
 
   docTool({
     name: "edit_comment",
+    output: OK_OUTPUT,
     title: "Edit your comment",
     annotations: DESTRUCTIVE,
     securitySchemes: CAN_SUGGEST,
@@ -362,6 +462,7 @@ export const TOOLS: ToolDef[] = [
 
   docTool({
     name: "delete_comment",
+    output: OK_OUTPUT,
     title: "Delete your comment",
     annotations: DESTRUCTIVE,
     securitySchemes: CAN_SUGGEST,
@@ -380,6 +481,7 @@ export const TOOLS: ToolDef[] = [
 
   docTool({
     name: "join",
+    output: OK_OUTPUT,
     title: "Join the document",
     annotations: PRESENCE,
     securitySchemes: ANY_CALLER,
@@ -393,6 +495,7 @@ export const TOOLS: ToolDef[] = [
 
   docTool({
     name: "leave",
+    output: OK_OUTPUT,
     title: "Leave the document",
     annotations: PRESENCE,
     securitySchemes: ANY_CALLER,
@@ -403,6 +506,11 @@ export const TOOLS: ToolDef[] = [
 
   docTool({
     name: "await_events",
+    output: output({
+      events: z.array(z.object({ seq: z.number(), type: z.string(), payload: z.unknown() })),
+      cursor: z.number(),
+      retryAfterMs: z.number().optional(),
+    }),
     title: "Wait for events",
     annotations: READ,
     securitySchemes: ANY_CALLER,
@@ -429,6 +537,11 @@ export const TOOLS: ToolDef[] = [
 
   docTool({
     name: "events_list",
+    output: output({
+      events: z.array(
+        z.object({ name: z.string(), description: z.string(), delivery: z.array(z.string()), inputSchema: z.unknown(), payloadSchema: z.unknown() }),
+      ),
+    }),
     title: "List event types",
     annotations: READ,
     securitySchemes: ANY_CALLER,
@@ -440,6 +553,16 @@ export const TOOLS: ToolDef[] = [
 
   docTool({
     name: "events_poll",
+    output: output({
+      events: z.array(
+        z.object({ eventId: z.string(), name: z.string(), timestamp: z.string(), data: z.record(z.string(), z.unknown()), cursor: z.string() }),
+      ),
+      cursor: z.string().nullable().describe("Pass back as `cursor` next time."),
+      truncated: z.boolean().describe("True when the log no longer reaches back to the cursor given."),
+      hasMore: z.boolean(),
+      nextPollMs: z.number(),
+      retryAfterMs: z.number().optional().describe("On an empty result: wait at least this long before polling again."),
+    }),
     title: "Poll events",
     annotations: READ,
     securitySchemes: ANY_CALLER,
@@ -464,6 +587,12 @@ export const TOOLS: ToolDef[] = [
 
   docTool({
     name: "events_subscribe",
+    output: output({
+      id: z.string(),
+      refreshBefore: isoDate("Re-subscribe before this to keep receiving"),
+      cursor: z.string(),
+      truncated: z.boolean(),
+    }),
     title: "Subscribe a webhook",
     annotations: PRESENCE,
     securitySchemes: SIGNED_IN,
@@ -492,6 +621,7 @@ export const TOOLS: ToolDef[] = [
 
   docTool({
     name: "events_unsubscribe",
+    output: OK_OUTPUT,
     title: "Unsubscribe a webhook",
     annotations: PRESENCE,
     securitySchemes: SIGNED_IN,

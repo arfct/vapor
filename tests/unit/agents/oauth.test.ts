@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { handleOAuth, redirectUriMatches, type OAuthRegistry } from "../../../workers/oauth";
+import { handleOAuth, redirectUriMatches, honouredScope, grantedScope, type OAuthRegistry } from "../../../workers/oauth";
 import { mintSessionToken, verifySessionToken, SESSION_COOKIE } from "../../../app/lib/auth.server";
 import type { AuthCode, OAuthClient, RefreshGrant, TokenReplay } from "../../../agents/registry";
 
@@ -94,6 +94,31 @@ async function registeredClient(registry: OAuthRegistry): Promise<string> {
   const body = (await res?.json()) as { client_id: string };
   return body.client_id;
 }
+
+describe("openid connect (#103)", () => {
+  it("serves an OIDC discovery document that agrees with the OAuth metadata and names the scopes", async () => {
+    const res = await handleOAuth(new Request("https://vapor.fyi/.well-known/openid-configuration"), deps(fakeRegistry()));
+    expect(res!.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    const oidc = (await res!.json()) as Record<string, unknown>;
+    const oauth = (await (await handleOAuth(new Request("https://vapor.fyi/.well-known/oauth-authorization-server"), deps(fakeRegistry())))!.json()) as Record<string, unknown>;
+    expect(oidc.issuer).toBe("https://vapor.fyi");
+    expect(oidc.userinfo_endpoint).toBe("https://vapor.fyi/oauth/userinfo");
+    expect(oidc.subject_types_supported).toEqual(["public"]);
+    expect(oidc.claims_supported).toEqual(expect.arrayContaining(["sub", "email", "email_verified"]));
+    for (const key of ["authorization_endpoint", "token_endpoint", "scopes_supported", "code_challenge_methods_supported"]) {
+      expect(oidc[key], key).toEqual(oauth[key]);
+    }
+    expect(oauth.scopes_supported).toEqual(expect.arrayContaining(["openid", "email"]));
+  });
+
+  it("honours only the OpenID scopes it knows, in canonical order", () => {
+    expect(honouredScope("email openid junk")).toBe("openid email");
+    expect(honouredScope(null)).toBe("");
+    expect(honouredScope("  ")).toBe("");
+    expect(grantedScope({ scope: "openid email", caps: ["suggest", "comment"] })).toBe("openid email suggest comment");
+    expect(grantedScope({ caps: ["write"] })).toBe("write");
+  });
+});
 
 describe("userinfo (#103)", () => {
   const PRINCIPAL = "google:1234567890";
@@ -307,6 +332,48 @@ describe("oauth authorization server", () => {
       deps(registry),
     );
   }
+
+  it("echoes the honoured OpenID scopes plus the granted capabilities, through refresh too (#103)", async () => {
+    const registry = fakeRegistry();
+    const clientId = await registeredClient(registry);
+    const { verifier, challenge } = await pkcePair();
+    const session = await mintSessionToken({ principal: "google:1", email: "a@x.com" }, SECRET);
+    const approve = await handleOAuth(
+      new Request("https://vapor.fyi/oauth/authorize", {
+        method: "POST",
+        headers: { Cookie: `${SESSION_COOKIE}=${session}` },
+        body: new URLSearchParams({
+          client_id: clientId,
+          redirect_uri: REDIRECT,
+          response_type: "code",
+          code_challenge: challenge,
+          code_challenge_method: "S256",
+          scope: "openid email offline_access",
+          decision: "approve",
+        }).toString(),
+      }),
+      deps(registry),
+    );
+    const code = new URL(approve!.headers.get("Location")!).searchParams.get("code")!;
+    const tokens = (await (await exchange(registry, { code, client_id: clientId, redirect_uri: REDIRECT, code_verifier: verifier }))!.json()) as Record<string, string>;
+    expect(tokens.scope).toBe("openid email suggest comment");
+
+    const refreshed = await handleOAuth(
+      new Request("https://vapor.fyi/oauth/token", {
+        method: "POST",
+        body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: tokens.refresh_token }).toString(),
+      }),
+      deps(registry),
+    );
+    expect(((await refreshed!.json()) as Record<string, string>).scope).toBe("openid email suggest comment");
+
+    // Its access token satisfies userinfo, so the OIDC loop closes.
+    const info = await handleOAuth(
+      new Request("https://vapor.fyi/oauth/userinfo", { headers: { Authorization: `Bearer ${tokens.access_token}` } }),
+      deps(registry),
+    );
+    expect(await info!.json()).toMatchObject({ sub: "google:1", email: "a@x.com", email_verified: true });
+  });
 
   it("a wrong verifier, client, or redirect_uri is refused without spending the code (#78)", async () => {
     const registry = fakeRegistry();

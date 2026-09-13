@@ -3,12 +3,15 @@ import { getMarkRange, isMarkActive, type Editor as TiptapEditor } from "@tiptap
 import type { EditorState } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { processRangeAtCursor } from "~/lib/suggestion-actions";
+import { selectedImageAttachment, setImageLayout } from "~/lib/image-commands";
+import { isFullWidth, type ImageAlign } from "~/shared/image-layout";
 import Icon from "~/components/Icon";
 
 type BubbleContext =
   | { kind: "selection" }
   | { kind: "suggestion" }
   | { kind: "annotation" }
+  | { kind: "attachment" }
   | null;
 
 /**
@@ -28,6 +31,10 @@ function getContext(state: EditorState): BubbleContext {
 }
 
 function detectContext(state: EditorState): BubbleContext {
+  // Before the text checks: a node selection on an atom spans no text, so
+  // the emptiness and textBetween gates below would both reject it.
+  if (selectedImageAttachment(state)) return { kind: "attachment" };
+
   const { from, to, empty } = state.selection;
 
   if (empty) {
@@ -102,12 +109,75 @@ const shouldShowSuggestion = ({ editor, element, view, state }: ShouldShowProps)
   return getContext(state)?.kind === "suggestion";
 };
 
+const shouldShowAttachment = ({ editor, element, view, state }: ShouldShowProps) => {
+  if (!baseChecks(view, element, editor)) return false;
+  return getContext(state)?.kind === "attachment";
+};
+
 // 44px square icon buttons at every width: Accept/Reject sit side by side
 // and a mis-tap on track changes is destructive.
 const btnClass =
   "flex h-[44px] w-[44px] items-center justify-center text-paper transition-colors hover:bg-paper/15 cursor-pointer";
 
 const menuClass = "bubble-menu flex bg-ink shadow-md";
+
+// Narrower than the 44px square buttons: the width row is five cells wide and
+// a mis-tap here is one undo, not a lost suggestion.
+const stepClass =
+  "flex h-[44px] min-w-[40px] items-center justify-center px-2 text-[13px] text-paper transition-colors hover:bg-paper/15 cursor-pointer";
+
+const WIDTHS = ["25%", "50%", "75%", "100%"] as const;
+const ALIGNS: { value: ImageAlign; icon: string; label: string }[] = [
+  { value: "left", icon: "format_image_left", label: "Align left" },
+  { value: "center", icon: "format_align_center", label: "Align centre" },
+  { value: "right", icon: "format_image_right", label: "Align right" },
+];
+
+function ImageLayoutButtons({ editor }: { editor: TiptapEditor }) {
+  const attrs = selectedImageAttachment(editor.state)?.node.attrs ?? {};
+  const width = (attrs.width ?? null) as string | null;
+  const align = (attrs.align ?? null) as ImageAlign | null;
+  const on = (active: boolean) => `${stepClass}${active ? " bg-paper/25" : ""}`;
+
+  return (
+    <>
+      {WIDTHS.map((w) => (
+        <button
+          key={w}
+          className={on(width === w)}
+          aria-pressed={width === w}
+          onClick={() => setImageLayout(editor, { width: w })}
+          title={`Width ${w}`}
+        >
+          {w.replace("%", "")}
+        </button>
+      ))}
+      <button
+        className={`${on(width === "full")} border-r border-paper/20`}
+        aria-pressed={width === "full"}
+        onClick={() => setImageLayout(editor, { width: "full" })}
+        title="Full width"
+        aria-label="Full width"
+      >
+        <Icon name="width_full" />
+      </button>
+      {ALIGNS.map((a) => (
+        <button
+          key={a.value}
+          className={on(align === a.value)}
+          aria-pressed={align === a.value}
+          // Nothing wraps beside a full-width image, so choosing an alignment
+          // steps the width back down to where there is room for text.
+          onClick={() => setImageLayout(editor, { align: a.value, ...(isFullWidth({ width }) ? { width: "50%" } : {}) })}
+          title={a.label}
+          aria-label={a.label}
+        >
+          <Icon name={a.icon} />
+        </button>
+      ))}
+    </>
+  );
+}
 
 // flip/shift keep the menu on screen when the keyboard or viewport edge
 // would otherwise cover it.
@@ -162,6 +232,18 @@ export default function BubbleToolbar({ editor, onNewComment }: { editor: Tiptap
         >
           <Icon name="close" />
         </button>
+      </BubbleMenu>
+
+      {/* A selected image → width and alignment */}
+      <BubbleMenu
+        editor={editor}
+        pluginKey="bubbleAttachment"
+        updateDelay={UPDATE_DELAY_MS}
+        shouldShow={shouldShowAttachment}
+        options={menuOptions}
+        className={menuClass}
+      >
+        <ImageLayoutButtons editor={editor} />
       </BubbleMenu>
     </>
   );

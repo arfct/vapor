@@ -127,10 +127,13 @@ export function epubChapterHtml(markdown: string, images: EpubImage[]): string {
  */
 export const READING_CSS = `body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 1em; line-height: 1.6; color: #1a1a1a; margin: 0 auto; padding: 1.5em; max-width: 42em; }
 p { margin: 0 0 0.6em; }
-h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-weight: bold; line-height: 1.2; }
-h1 { font-size: 1.875em; margin: 1.5em 0 0.6em; }
-h2 { font-size: 1.5em; line-height: 1.3; margin: 1.25em 0 0.5em; }
-h3, h4 { font-size: 1.25em; line-height: 1.3; margin: 1em 0 0.4em; }
+/* Dropbox Paper's extended-headings scale, as ems of the body size: 30px/36px
+   at -0.4px, 24px/30px at -0.2px, 20px/26px, all at weight 600. The type is
+   Paper's; the face stays the system sans. */
+h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-weight: 600; }
+h1 { font-size: 1.875em; line-height: 1.2; letter-spacing: -0.013em; margin: 1em 0 0.4em; }
+h2 { font-size: 1.5em; line-height: 1.25; letter-spacing: -0.008em; margin: 1.08em 0 0.42em; }
+h3, h4 { font-size: 1.25em; line-height: 1.3; margin: 1.2em 0 0.4em; }
 body > h1:first-child { font-size: 2.5em; font-weight: 500; line-height: 1.1; margin-top: 0; }
 h1:first-child, h2:first-child, h3:first-child { margin-top: 0; }
 ul, ol { margin: 0 0 0.6em 1.5em; padding: 0; }

@@ -12,12 +12,14 @@ function view(attrs: Record<string, unknown>, selected = false) {
 }
 
 describe("AttachmentView", () => {
-  it("renders an image with its name and size as a caption", () => {
-    view({ kind: "image", src: "/abcd1234/attachments/abcdefghijklmnop/cat.png", alt: "cat.png", bytes: 2048 });
+  it("renders an image alone, with its name as alt text and no caption under it", () => {
+    const { container } = view({ kind: "image", src: "/abcd1234/attachments/abcdefghijklmnop/cat.png", alt: "cat.png", bytes: 2048 });
     const img = screen.getByRole("img") as HTMLImageElement;
     expect(img.getAttribute("src")).toBe("/abcd1234/attachments/abcdefghijklmnop/cat.png");
-    expect(screen.getByText("cat.png")).toBeTruthy();
-    expect(screen.getByText("2 KB")).toBeTruthy();
+    expect(img.getAttribute("alt")).toBe("cat.png");
+    expect(container.querySelector("figcaption")).toBeNull();
+    expect(screen.queryByText("cat.png")).toBeNull();
+    expect(screen.queryByText("2 KB")).toBeNull();
   });
 
   it("puts width and align on the wrapper so the stylesheet can size it (#109)", () => {

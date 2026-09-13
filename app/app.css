@@ -179,7 +179,7 @@ body {
   margin: 1rem 0 0.5rem;
 }
 
-/* Attachments: an image with a caption, or a chip that downloads. The
+/* Attachments: an image on its own, or a chip that downloads. The
    selected state matches the code-block chrome. */
 .tiptap .attachment {
   max-width: 65ch;
@@ -187,13 +187,16 @@ body {
 }
 /* Image layout (#109). The width is an inline style, because a percent can
    be any value; alignment and full bleed are rules. A left or right aligned
-   image floats and body text wraps beside it. */
+   image floats and body text wraps beside it, capped at a third of the column
+   so the text keeps a readable measure; Paper caps its own floats at a third. */
 .tiptap .attachment[data-align="left"] {
   float: left;
+  max-width: 33.333%;
   margin: 0 1.25rem 0.75rem 0;
 }
 .tiptap .attachment[data-align="right"] {
   float: right;
+  max-width: 33.333%;
   margin: 0 0 0.75rem 1.25rem;
 }
 .tiptap .attachment[data-align="center"] {
@@ -240,6 +243,7 @@ body {
   .tiptap .attachment[data-align="right"] {
     float: none;
     width: 100%;
+    max-width: 100%;
     margin: 0 0 1rem;
   }
 }
@@ -253,13 +257,6 @@ body {
   max-width: 100%;
   height: auto;
   border-radius: 0.25rem;
-}
-.tiptap .attachment-image figcaption {
-  display: flex;
-  gap: 0.75rem;
-  margin-top: 0.35rem;
-  font-size: 0.85rem;
-  color: var(--color-muted);
 }
 .tiptap .attachment-chip {
   display: inline-flex;
@@ -293,28 +290,33 @@ body {
   margin: 0 0 0.5rem;
 }
 
-/* Rich-node typographic defaults (imported from the notes app) */
+/* Dropbox Paper's extended-headings scale: 30px/36px at -0.4px, 24px/30px at
+   -0.2px, 20px/26px, all at weight 600, with Paper's own margins. Sized in em
+   against the editor's 16px body, not rem: the root here is 14px, which would
+   shrink the whole scale. The type is Paper's; the face stays the system sans. */
 .tiptap h1 {
-  font-size: 1.875rem;
-  font-weight: bold;
+  font-size: 1.875em;
+  font-weight: 600;
   line-height: 1.2;
-  margin: 1.5rem 0 1rem;
+  letter-spacing: -0.013em;
+  margin: 30px 0 12px;
   max-width: 65ch;
 }
 
 .tiptap h2 {
-  font-size: 1.5rem;
-  font-weight: bold;
-  line-height: 1.3;
-  margin: 1.25rem 0 0.75rem;
+  font-size: 1.5em;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.008em;
+  margin: 26px 0 10px;
   max-width: 65ch;
 }
 
 .tiptap h3 {
-  font-size: 1.25rem;
-  font-weight: bold;
+  font-size: 1.25em;
+  font-weight: 600;
   line-height: 1.3;
-  margin: 1rem 0 0.5rem;
+  margin: 24px 0 8px;
   max-width: 65ch;
 }
 

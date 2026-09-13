@@ -53,7 +53,9 @@ export function imageLayoutStyle(layout: Partial<ImageLayout>): string {
   if (layout.width) rules.push(`width: ${layout.width === "full" ? "100%" : layout.width}`);
   if (layout.align && !isFullWidth(layout)) {
     if (layout.align === "center") rules.push("display: block", "margin-left: auto", "margin-right: auto");
-    else rules.push(`float: ${layout.align}`, `margin-${layout.align === "left" ? "right" : "left"}: 1em`, "margin-bottom: 0.5em");
+    // A float wider than a third of the column leaves too narrow a measure
+    // for the text beside it; Dropbox Paper caps its own floats at the same third.
+    else rules.push(`float: ${layout.align}`, "max-width: 33.333%", `margin-${layout.align === "left" ? "right" : "left"}: 1em`, "margin-bottom: 0.5em");
   }
   return rules.length ? `${rules.join("; ")};` : "";
 }

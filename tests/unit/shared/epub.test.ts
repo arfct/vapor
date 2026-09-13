@@ -98,10 +98,14 @@ describe("EPUB export (#100)", () => {
     expect(epubFilename("abcd1234", "no heading here")).toBe("abcd1234.epub");
   });
 
-  it("sets the page's type: a sans body, bold sans headings stepping down, a larger lighter title, mono code", () => {
+  it("sets the page's type: Paper's heading scale in the system font, a larger lighter title, mono code", () => {
     expect(READING_CSS).toMatch(/body \{ font-family: ui-sans-serif, system-ui/);
-    expect(READING_CSS).toContain("h1 { font-size: 1.875em;");
-    expect(READING_CSS).toContain("h2 { font-size: 1.5em;");
+    expect(READING_CSS).toContain("h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui");
+    // Paper's extended headings, as ems of the body size: 30/36/-0.4px, 24/30/-0.2px, 20/26px, all 600.
+    expect(READING_CSS).toContain("h1 { font-size: 1.875em; line-height: 1.2; letter-spacing: -0.013em;");
+    expect(READING_CSS).toContain("h2 { font-size: 1.5em; line-height: 1.25; letter-spacing: -0.008em;");
+    expect(READING_CSS).toContain("h3, h4 { font-size: 1.25em; line-height: 1.3;");
+    expect(READING_CSS).toMatch(/^h1, h2, h3, h4 \{[^}]*font-weight: 600;/m);
     expect(READING_CSS).toContain("body > h1:first-child { font-size: 2.5em; font-weight: 500;");
     expect(READING_CSS).toMatch(/code, pre, kbd \{ font-family: "IBM Plex Mono"/);
     expect(READING_CSS).not.toContain("Georgia");

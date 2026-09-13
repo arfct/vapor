@@ -37,7 +37,7 @@ Sizing is a set of presets rather than a drag handle. Each choice is one `update
 
 Paper also groups images dragged onto the same line into a side-by-side gallery, and gives each image an editable caption field. Both are out of scope here. A gallery needs a new container node in `richSchema`, a new markdown form, drag-to-group in the editor, and gallery rules in three stylesheets. Captions need a decision about where the caption text lives in markdown and whether `attachment` can stay `atom: true`.
 
-One thing worth recording while it is visible: `alt` is set to the uploaded filename ([app/lib/useAttachments.ts:104](../../app/lib/useAttachments.ts)) and rendered both as the `<img alt>` and as the visible figcaption, so the field named `alt` is the caption and no vapor document currently carries alt text. That is a separate issue from this one and is not fixed here.
+One thing worth recording while it is visible: `alt` is set to the uploaded filename ([app/lib/useAttachments.ts:104](../../app/lib/useAttachments.ts)). It was also drawn under the image as a figcaption, which made the filename read as a caption; that figcaption is now gone and `alt` is only the `<img alt>`. No vapor document carries real alt text yet. That is a separate issue from this one and is not fixed here.
 
 ## Design
 

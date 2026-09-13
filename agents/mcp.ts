@@ -202,14 +202,19 @@ export class VaporMcp extends McpAgent<Env, Record<string, never>, VaporMcpProps
       );
     }
 
-    // list_documents reads the Registry, so it lives here too. Signed-in
-    // only: an anonymous session has no identity to keep a list for (#84).
+    // list_documents queries the Registry and may prune stale enrollments.
+    // Signed-in only: an anonymous session has no identity to keep a list for (#84).
     this.server.registerTool(
       "list_documents",
       {
         title: "List my documents",
         outputSchema: LIST_DOCUMENTS_OUTPUT,
-        annotations: READ,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
         _meta: { securitySchemes: SIGNED_IN },
         description:
           "The documents this signed-in identity's agent is enrolled on (joined, or touched with any tool), most recent first, each with its title, URL, created_at, and expires_at — for an agent starting cold that wants to know what it was working on. Documents that have since expired are dropped. Empty on the anonymous endpoint.",

@@ -20,6 +20,50 @@ describe("AttachmentView", () => {
     expect(screen.getByText("2 KB")).toBeTruthy();
   });
 
+  it("puts width and align on the wrapper so the stylesheet can size it (#109)", () => {
+    const { container } = view({
+      kind: "image",
+      src: "/abcd1234/attachments/abcdefghijklmnop/cat.png",
+      alt: "cat.png",
+      bytes: null,
+      width: "50%",
+      align: "left",
+    });
+    const wrapper = container.querySelector(".attachment")!;
+    expect(wrapper.getAttribute("data-width")).toBe("50%");
+    expect(wrapper.getAttribute("data-align")).toBe("left");
+    // An arbitrary percent cannot be a static CSS rule, so the width is inline.
+    expect((wrapper as HTMLElement).style.width).toBe("50%");
+  });
+
+  it("leaves the width to the stylesheet at full bleed (#109)", () => {
+    const { container } = view({
+      kind: "image",
+      src: "/abcd1234/attachments/abcdefghijklmnop/cat.png",
+      alt: "cat.png",
+      bytes: null,
+      width: "full",
+      align: "left",
+    });
+    const wrapper = container.querySelector(".attachment")! as HTMLElement;
+    expect(wrapper.getAttribute("data-width")).toBe("full");
+    expect(wrapper.style.width).toBe("");
+    // Nothing wraps beside a full-bleed image, so it drops the float.
+    expect(wrapper.hasAttribute("data-align")).toBe(false);
+  });
+
+  it("omits the layout attributes when the node carries none (#109)", () => {
+    const { container } = view({
+      kind: "image",
+      src: "/abcd1234/attachments/abcdefghijklmnop/cat.png",
+      alt: "cat.png",
+      bytes: null,
+    });
+    const wrapper = container.querySelector(".attachment")!;
+    expect(wrapper.hasAttribute("data-width")).toBe(false);
+    expect(wrapper.hasAttribute("data-align")).toBe(false);
+  });
+
   it("renders other files as a download chip, and hides an unknown size", () => {
     view({ kind: "file", src: "/abcd1234/attachments/abcdefghijklmnop/report.pdf", alt: "report.pdf", bytes: null });
     const link = screen.getByText("report.pdf").closest("a")!;

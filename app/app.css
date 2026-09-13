@@ -185,6 +185,50 @@ body {
   max-width: 65ch;
   margin: 0 0 1rem;
 }
+/* Image layout (#109). The width is an inline style, because a percent can
+   be any value; alignment and full bleed are rules. A left or right aligned
+   image floats and body text wraps beside it. */
+.tiptap .attachment[data-align="left"] {
+  float: left;
+  margin: 0 1.25rem 0.75rem 0;
+}
+.tiptap .attachment[data-align="right"] {
+  float: right;
+  margin: 0 0 0.75rem 1.25rem;
+}
+.tiptap .attachment[data-align="center"] {
+  margin-inline: auto;
+}
+.tiptap .attachment[data-width="full"] {
+  max-width: none;
+  width: 100%;
+}
+
+/* A float runs beside body text and stops at the next structural boundary,
+   not at an arbitrary paragraph. Floated attachments are exempt, or each
+   would push the one before it down instead of sitting where it was put. */
+.tiptap h1,
+.tiptap h2,
+.tiptap h3,
+.tiptap hr,
+.tiptap table,
+.tiptap pre,
+.tiptap blockquote,
+.tiptap .attachment:not([data-align="left"]):not([data-align="right"]) {
+  clear: both;
+}
+
+/* Below the phone breakpoint a 50% float leaves too little text beside it to
+   read, so alignment drops and every image takes its own line. */
+@media (max-width: 640px) {
+  .tiptap .attachment[data-align="left"],
+  .tiptap .attachment[data-align="right"] {
+    float: none;
+    width: 100%;
+    margin: 0 0 1rem;
+  }
+}
+
 .tiptap .attachment.is-selected > * {
   outline: 2px solid var(--color-ink);
   outline-offset: 2px;

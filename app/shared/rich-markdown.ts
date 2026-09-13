@@ -17,6 +17,7 @@ import * as Y from "yjs";
 import { yXmlFragmentToProseMirrorRootNode } from "@tiptap/y-tiptap";
 import { blockHash, formatMention, parseAnchor as parseLegacyAnchor, type DocBlock } from "./agent-protocol";
 import { parseAttachmentUrl } from "./attachment-policy";
+import { parseImageLayout, serializeImageLayout, type ImageLayout } from "./image-layout";
 
 /* ---------- Schema (names must match the TipTap extensions) ---------- */
 
@@ -314,37 +315,6 @@ type InlineToken = MdToken & {
 type TokenCtor = new (type: string, tag: string, nesting: number) => InlineToken;
 
 const isBlank = (t: InlineToken) => t.type === "text" && t.content.trim() === "";
-
-const WIDTH_RE = /^(?:full|(?:100|[1-9]\d?)%)$/;
-const ALIGNS = new Set(["left", "center", "right"]);
-const ATTR_BLOCK_RE = /^\{([^}]*)\}$/;
-
-export type ImageLayout = { width: string | null; align: "left" | "center" | "right" | null };
-
-/**
- * A Pandoc-style attribute block after an image: `{width=50% align=left}`.
- * Only `width` and `align` are kept; an unrecognised key or value is
- * dropped rather than carried, so the node holds nothing it cannot
- * serialise back (docs/plans/2026-09-13-image-sizing-design.md).
- */
-export function parseImageLayout(text: string): ImageLayout | null {
-  const block = ATTR_BLOCK_RE.exec(text.trim());
-  if (!block) return null;
-  const layout: ImageLayout = { width: null, align: null };
-  for (const [, key, value] of block[1].matchAll(/([a-z]+)=([^\s}]+)/g)) {
-    if (key === "width" && WIDTH_RE.test(value)) layout.width = value;
-    else if (key === "align" && ALIGNS.has(value)) layout.align = value as ImageLayout["align"];
-  }
-  return layout;
-}
-
-/** The attribute block for a node's layout, or "" when it carries none. */
-export function serializeImageLayout(layout: ImageLayout): string {
-  const parts: string[] = [];
-  if (layout.width) parts.push(`width=${layout.width}`);
-  if (layout.align) parts.push(`align=${layout.align}`);
-  return parts.length ? `{${parts.join(" ")}}` : "";
-}
 
 /**
  * Attachments in markdown: an image, or a link, standing alone in a

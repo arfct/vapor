@@ -2,6 +2,7 @@ import MarkdownIt from "markdown-it";
 import { zipSync, strToU8 } from "fflate";
 import { stripMentionIds } from "./agent-protocol";
 import { parseAttachmentUrl } from "./attachment-policy";
+import { parseImageLayout, imageLayoutStyle } from "./image-layout";
 import { titleFromMarkdown } from "./doc-url";
 
 /**
@@ -59,7 +60,35 @@ export function attachmentImages(markdown: string): { path: string; id: string; 
   return out;
 }
 
+type EpubToken = {
+  type: string;
+  content: string;
+  children: EpubToken[] | null;
+  attrSet(name: string, value: string): void;
+};
+
+/**
+ * Turns an image's `{width=… align=…}` block into inline CSS on the `<img>`
+ * and removes the text, so exports carry the layout rather than printing the
+ * braces. Mirrors `attachmentRule` in rich-markdown.ts (#109).
+ */
+function imageLayoutRule(state: { tokens: EpubToken[] }): void {
+  for (const token of state.tokens) {
+    if (token.type !== "inline" || !token.children) continue;
+    const kids = token.children;
+    for (let i = 0; i < kids.length - 1; i++) {
+      if (kids[i].type !== "image" || kids[i + 1].type !== "text") continue;
+      const layout = parseImageLayout(kids[i + 1].content);
+      if (!layout) continue;
+      const style = imageLayoutStyle(layout);
+      if (style) kids[i].attrSet("style", style);
+      kids[i + 1].content = "";
+    }
+  }
+}
+
 const md = new MarkdownIt({ html: false, linkify: true, xhtmlOut: true });
+md.core.ruler.after("inline", "imageLayout", imageLayoutRule as never);
 
 function escapeXml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -115,6 +144,9 @@ pre code { background: none; padding: 0; }
 a { color: inherit; text-decoration: underline; text-decoration-color: #999; }
 hr { border: 0; border-top: 1px solid #d9d9d9; margin: 1.5em 0; }
 img { max-width: 100%; height: auto; }
+/* A floated image runs beside body text and stops at the next structural
+   boundary, not at an arbitrary paragraph (#109). */
+h1, h2, h3, hr, table, pre, blockquote { clear: both; }
 table { border-collapse: collapse; margin: 0 0 0.75em; font-size: 0.95em; }
 th, td { border: 1px solid #d9d9d9; padding: 0.3em 0.6em; text-align: left; vertical-align: top; }
 th { font-weight: bold; background: #f7f7f7; }

@@ -16,6 +16,26 @@ Keep it short.
 `;
 
 describe("EPUB export (#100)", () => {
+  const sized = "![cat.png](/abcd1234/attachments/abcdefghijklmnop/cat.png){width=50% align=left}";
+
+  it("renders an image's attribute block as layout, not as literal text (#109)", () => {
+    const html = epubChapterHtml(sized, []);
+    expect(html).not.toContain("{width=50%");
+    expect(html).toContain("width: 50%");
+    expect(html).toContain("float: left");
+  });
+
+  it("clears floated images at the next structural boundary (#109)", () => {
+    expect(READING_CSS).toMatch(/clear: both/);
+  });
+
+  it("renders an image with no attribute block unchanged (#109)", () => {
+    const plain = "![cat.png](/abcd1234/attachments/abcdefghijklmnop/cat.png)";
+    const html = epubChapterHtml(plain, []);
+    expect(html).not.toContain("style=");
+    expect(html).toContain("<img");
+  });
+
   it("resolves CriticMarkup as accepted and drops comments and agent fences", () => {
     const text = readingMarkdown(md);
     expect(text).toContain("Hello there, new text quoted.");

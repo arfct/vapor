@@ -365,6 +365,51 @@ describe("attachments", () => {
     expect(yDocToMarkdown(doc)).toBe(`# Title\n\n${image}\n\nAfter.`);
     expect(getBlocks(doc)[1].id).toMatch(BLOCK_ID_RE);
   });
+
+  it("reads width and align from an attribute block after the image", () => {
+    const sized = `${image}{width=50% align=left}`;
+    const parsed = parseMarkdown(sized);
+    if (!parsed.ok) throw new Error(parsed.message);
+    const node = parsed.doc.firstChild!;
+    expect(node.type.name).toBe("attachment");
+    expect(node.attrs.width).toBe("50%");
+    expect(node.attrs.align).toBe("left");
+    expect(roundTrip(sized)).toBe(sized);
+  });
+
+  it("round-trips width=full and align on their own", () => {
+    expect(roundTrip(`${image}{width=full}`)).toBe(`${image}{width=full}`);
+    expect(roundTrip(`${image}{align=center}`)).toBe(`${image}{align=center}`);
+  });
+
+  it("honours a percent that is not one of the toolbar presets", () => {
+    const parsed = parseMarkdown(`${image}{width=37%}`);
+    if (!parsed.ok) throw new Error(parsed.message);
+    expect(parsed.doc.firstChild!.attrs.width).toBe("37%");
+  });
+
+  it("drops unknown keys and out-of-range values from the attribute block", () => {
+    const parsed = parseMarkdown(`${image}{width=200% align=diagonal caption=hi}`);
+    if (!parsed.ok) throw new Error(parsed.message);
+    const node = parsed.doc.firstChild!;
+    expect(node.type.name).toBe("attachment");
+    expect(node.attrs.width).toBe(null);
+    expect(node.attrs.align).toBe(null);
+    expect(roundTrip(`${image}{width=200% align=diagonal caption=hi}`)).toBe(image);
+  });
+
+  it("leaves an image followed by text that is not an attribute block as literal text", () => {
+    // Not round-tripped: an image turned back into text is escaped by the
+    // generic text serialiser, which predates the attribute block.
+    const parsed = parseMarkdown(`${image} and more`);
+    if (!parsed.ok) throw new Error(parsed.message);
+    expect(parsed.doc.firstChild!.type.name).toBe("paragraph");
+    expect(parsed.doc.textContent).toBe(`${image} and more`);
+  });
+
+  it("serialises no attribute block when the node carries no layout", () => {
+    expect(roundTrip(image)).toBe(image);
+  });
 });
 
 

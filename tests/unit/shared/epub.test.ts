@@ -113,6 +113,10 @@ describe("EPUB export (#100)", () => {
     expect(strFromU8(files["OEBPS/style.css"])).toBe(READING_CSS);
   });
 
+  it("caps an image at 80% of the page height so a tall one does not take the page (#109)", () => {
+    expect(READING_CSS).toContain("img { max-width: 100%; max-height: 80vh; height: auto; }");
+  });
+
   it("renders a printable page with the same styles, page rules, and an optional auto-print", () => {
     const html = printableHtml({ id: "abcd1234", markdown: md, origin: "https://vapor.example", autoPrint: true });
     expect(html).toContain("<title>A plan</title>");

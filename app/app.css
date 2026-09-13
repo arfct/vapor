@@ -255,9 +255,12 @@ body {
   outline: 2px solid var(--color-ink);
   outline-offset: 2px;
 }
+/* A tall image should not push everything else off the screen, so it is capped
+   at 80% of the viewport whatever its width says. */
 .tiptap .attachment-image img {
   display: block;
   max-width: 100%;
+  max-height: 80vh;
   height: auto;
   border-radius: 0.25rem;
 }

@@ -146,7 +146,7 @@ pre { background: #f2f2f2; padding: 0.75em 1em; border-radius: 4px; overflow-x: 
 pre code { background: none; padding: 0; }
 a { color: inherit; text-decoration: underline; text-decoration-color: #999; }
 hr { border: 0; border-top: 1px solid #d9d9d9; margin: 1.5em 0; }
-img { max-width: 100%; height: auto; }
+img { max-width: 100%; max-height: 80vh; height: auto; }
 /* A floated image runs beside body text and stops at the next structural
    boundary, not at an arbitrary paragraph (#109). */
 h1, h2, h3, hr, table, pre, blockquote { clear: both; }

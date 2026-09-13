@@ -134,7 +134,7 @@ export default function HeaderMenu({
       <Popover.Trigger
         render={
           <button aria-label="Menu" title={title} className="system-trigger header-button shrink-0">
-            <Icon name={modeIcon ?? "comment"} />
+            <Icon name={modeIcon ?? "menu"} />
           </button>
         }
       />

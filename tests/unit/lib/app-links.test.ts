@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import { AppLinks, APP_LINK_PROTOCOL } from "~/lib/app-links";
+import { AppLinks, APP_LINK_PROTOCOL, Link, NEW_TAB_FEATURES } from "~/lib/app-links";
 
 let editor: Editor | null = null;
 afterEach(() => {
@@ -13,7 +13,8 @@ afterEach(() => {
 function createEditor(onAppLink: (url: string) => void) {
   editor = new Editor({
     extensions: [
-      StarterKit.configure({ undoRedo: false, link: { openOnClick: false, protocols: [APP_LINK_PROTOCOL] } }),
+      StarterKit.configure({ undoRedo: false, link: false }),
+      Link.configure({ openOnClick: false, protocols: [APP_LINK_PROTOCOL] }),
       AppLinks.configure({ onAppLink }),
     ],
     content: '<p>Read on, or <a href="vapor://invite">invite an agent</a>, or visit <a href="https://example.com">the web</a>.</p>',
@@ -54,17 +55,51 @@ describe("AppLinks", () => {
     expect(end.defaultPrevented).toBe(true);
   });
 
-  it("leaves ordinary links and plain text alone", () => {
+  it("a click or a tap on an ordinary link opens it in a new tab", () => {
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
     const onAppLink = vi.fn();
     const ed = createEditor(onAppLink);
     const web = ed.view.dom.querySelector('a[href="https://example.com"]')!;
     const click = new MouseEvent("click", { bubbles: true, cancelable: true });
     web.dispatchEvent(click);
+    expect(open).toHaveBeenCalledWith("https://example.com", "_blank", NEW_TAB_FEATURES);
+    expect(click.defaultPrevented).toBe(true);
     touch(web, "touchstart");
     const end = touch(web, "touchend");
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(end.defaultPrevented).toBe(true);
     expect(onAppLink).not.toHaveBeenCalled();
+    open.mockRestore();
+  });
+
+  it("leaves plain text alone", () => {
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    const ed = createEditor(vi.fn());
+    const text = ed.view.dom.querySelector("p")!;
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    text.dispatchEvent(click);
+    const end = touch(text, "touchend");
+    expect(open).not.toHaveBeenCalled();
     expect(click.defaultPrevented).toBe(false);
     expect(end.defaultPrevented).toBe(false);
+    open.mockRestore();
+  });
+
+  it("renders every link to open in a new tab, even one stored with target null", () => {
+    const ed = createEditor(vi.fn());
+    ed.commands.setContent({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "imported", marks: [{ type: "link", attrs: { href: "https://example.com/x", target: null, rel: null } }] }],
+        },
+      ],
+    });
+    const a = ed.view.dom.querySelector("a")!;
+    expect(a.getAttribute("target")).toBe("_blank");
+    expect(a.getAttribute("rel")).toBe("noopener noreferrer nofollow");
+    expect(ed.getJSON().content?.[0].content?.[0].marks?.[0].attrs).toMatchObject({ href: "https://example.com/x", target: null });
   });
 
   it("setAppLinkHandler swaps the handler", () => {

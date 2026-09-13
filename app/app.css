@@ -538,6 +538,8 @@ body {
   width: 100%;
   margin: 0;
   overflow: hidden;
+  /* Tables carry more per line than prose; smaller type keeps columns readable. */
+  font-size: 0.8em;
 }
 
 .tiptap th,

@@ -199,7 +199,10 @@ body {
   max-width: 33.333%;
   margin: 0 0 0.75rem 1.25rem;
 }
+/* Shrink to the image so the auto margins have something to centre; an
+   explicit inline width overrides this. */
 .tiptap .attachment[data-align="center"] {
+  width: fit-content;
   margin-inline: auto;
 }
 /* The editor is a centred max-w-3xl column inside .doc-frame, so full bleed

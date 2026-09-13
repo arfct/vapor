@@ -122,19 +122,18 @@ const btnClass =
 
 const menuClass = "bubble-menu flex bg-ink shadow-md";
 
-// Narrower than the 44px square buttons: the width row is five cells wide and
-// a mis-tap here is one undo, not a lost suggestion.
+// Narrower than the 44px square buttons: a mis-tap here is one undo, not a
+// lost suggestion.
 const stepClass =
   "flex h-[44px] min-w-[40px] items-center justify-center px-2 text-[13px] text-paper transition-colors hover:bg-paper/15 cursor-pointer";
 
-const WIDTHS = ["25%", "50%", "75%", "100%"] as const;
 const ALIGNS: { value: ImageAlign; icon: string; label: string }[] = [
   { value: "left", icon: "format_image_left", label: "Align left" },
   { value: "center", icon: "format_align_center", label: "Align centre" },
   { value: "right", icon: "format_image_right", label: "Align right" },
 ];
 
-function ImageLayoutButtons({ editor }: { editor: TiptapEditor }) {
+export function ImageLayoutButtons({ editor }: { editor: TiptapEditor }) {
   // BubbleMenu renders its children into a portal and does not re-render them
   // per transaction, so the pressed state has to subscribe to the editor.
   const { width, align } = useEditorState({
@@ -149,23 +148,16 @@ function ImageLayoutButtons({ editor }: { editor: TiptapEditor }) {
   });
   const on = (active: boolean) => `${stepClass}${active ? " bg-paper/25" : ""}`;
 
+  // An image is its natural size unless the markdown carries a width, so the
+  // bubble sets no percentages: it toggles full bleed and picks an alignment.
+  const full = isFullWidth({ width });
+
   return (
     <>
-      {WIDTHS.map((w) => (
-        <button
-          key={w}
-          className={on(width === w)}
-          aria-pressed={width === w}
-          onClick={() => setImageLayout(editor, { width: w })}
-          title={`Width ${w}`}
-        >
-          {w.replace("%", "")}
-        </button>
-      ))}
       <button
-        className={`${on(width === "full")} border-r border-paper/20`}
-        aria-pressed={width === "full"}
-        onClick={() => setImageLayout(editor, { width: "full" })}
+        className={`${on(full)} border-r border-paper/20`}
+        aria-pressed={full}
+        onClick={() => setImageLayout(editor, { width: full ? null : "full" })}
         title="Full width"
         aria-label="Full width"
       >
@@ -176,9 +168,9 @@ function ImageLayoutButtons({ editor }: { editor: TiptapEditor }) {
           key={a.value}
           className={on(align === a.value)}
           aria-pressed={align === a.value}
-          // Nothing wraps beside a full-width image, so choosing an alignment
-          // steps the width back down to where there is room for text.
-          onClick={() => setImageLayout(editor, { align: a.value, ...(isFullWidth({ width }) ? { width: "50%" } : {}) })}
+          // Nothing wraps beside a full-bleed image, so choosing an alignment
+          // drops the width back to natural, where there is room for text.
+          onClick={() => setImageLayout(editor, { align: a.value, ...(full ? { width: null } : {}) })}
           title={a.label}
           aria-label={a.label}
         >

@@ -125,3 +125,16 @@ Tasks 1 and 3 are independent of 2 and 4 and testable without the editor.
 ## Out of scope
 
 Drag-to-resize handles; side-by-side galleries; editable captions; alt text distinct from the filename; sizing or alignment for non-image attachments, which stay block chips; server-side resizing or thumbnails; `width` and `align` parameters on the MCP `attach` tool.
+
+## Amendments after review, 2026-09-13
+
+Nicholas reviewed the built feature and changed four things. The decisions above are left as they were written; these supersede them.
+
+- **No width presets in the toolbar.** The bubble offered 25, 50, 75, 100 and full. The percentages are gone; it now toggles full bleed and picks an alignment. An image is its natural size unless the markdown carries a `width`, so the toolbar writes a width only for full bleed and only clears it. Decision 2's argument for presets over a drag handle still holds for the write pattern; it was an argument for one write per click, not for a row of percentages.
+- **Full bleed is a toggle.** Pressing it on an already full-bleed image returns the image to its natural width. Aligning a full-bleed image clears the width rather than stepping it to 50%, which is what it did before.
+- **Floats cap at a third of the column.** `max-width: 33.333%` in `app.css` and in `imageLayoutStyle`, which covers the EPUB and print paths. This is a cap, not a width: a floated image narrower than a third stays at its natural size, and a hand-written `{width=60% align=right}` renders at a third. Dropbox Paper caps its own floats at the same third. This is the fix for the 65ch problem listed under "Reopens when": the column did not have to widen, the float had to narrow.
+- **No filename under the image.** The `<figcaption>` is gone. `alt` still carries the filename, so the note above about `alt` doubling as a caption no longer describes what is drawn.
+
+Headings took Dropbox Paper's extended-headings scale in the same pass, which is not part of this design. The editor sizes them in `em` rather than `rem`: the root font-size is 14px, so `1.875rem` rendered an h1 at 26.25px against Paper's 30px.
+
+Verified by measurement against a local dev instance at a 630px column: a 400px image with no attributes renders 400px wide; floated left it renders 210px, which is 630/3; centred it renders 400px with its left edge at the column's midpoint minus 200px; an 80px image floated left stays 80px; `{width=60% align=right}` renders 210px. The bubble's buttons read Full width, Align left, Align centre, Align right, and nothing else.

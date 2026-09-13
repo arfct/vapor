@@ -1,0 +1,308 @@
+{
+  "$schema": "https://developers.openai.com/apps-sdk/schemas/chatgpt-app-submission.v1.json",
+  "schema_version": 1,
+  "app_info": {
+    "display_name": "vapor",
+    "subtitle": "Live markdown docs",
+    "description": "vapor lets users create, read, edit, suggest changes on, comment in, attach files to, and monitor live collaborative markdown documents through ChatGPT. Documents are public to anyone with the link, support optional signed-in attribution, and expire automatically after 99 hours.",
+    "category": "PRODUCTIVITY"
+  },
+  "tools": {
+    "read_document": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Retrieves a specified vapor document's markdown, anchors, metadata, presence, and comment threads without modifying data.",
+        "open_world_justification": "Only accesses vapor documents identified by document id and does not fetch arbitrary public webpages or unrelated external systems.",
+        "destructive_justification": "Does not delete, overwrite, revoke access, or perform irreversible actions."
+      }
+    },
+    "insert": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Adds markdown blocks to a live vapor document and therefore changes document state.",
+        "open_world_justification": "Writes content into a public-by-link document that can be viewed or edited by anyone with the URL.",
+        "destructive_justification": "Only inserts new blocks and does not delete or overwrite existing document content."
+      }
+    },
+    "replace": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Replaces one or more existing document blocks and therefore changes document state.",
+        "open_world_justification": "Writes content into a public-by-link document that can be viewed or edited by anyone with the URL.",
+        "destructive_justification": "Overwrites existing blocks in the document, with stale-anchor checks to reduce accidental overwrites."
+      }
+    },
+    "suggest": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Adds tracked CriticMarkup suggestions to a live document and therefore changes document state.",
+        "open_world_justification": "Writes suggestions into a public-by-link document that can be viewed or edited by anyone with the URL.",
+        "destructive_justification": "Records a proposed change for human review rather than directly deleting or overwriting accepted document content."
+      }
+    },
+    "comment": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Creates a new comment thread in a live document and therefore changes document state.",
+        "open_world_justification": "Writes comments into a public-by-link document that can be viewed or edited by anyone with the URL.",
+        "destructive_justification": "Adds a new thread and does not delete or overwrite existing document content or comments."
+      }
+    },
+    "reply": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Adds a reply to an existing comment thread and therefore changes document state.",
+        "open_world_justification": "Writes a reply into a public-by-link document that can be viewed or edited by anyone with the URL.",
+        "destructive_justification": "Adds a reply and does not delete or overwrite existing document content or comments."
+      }
+    },
+    "resolve_thread": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Changes a comment thread's resolved state and therefore modifies document discussion state.",
+        "open_world_justification": "Changes comment state in a public-by-link document that can be viewed or edited by anyone with the URL.",
+        "destructive_justification": "The resolved state can be reopened and does not permanently delete thread data."
+      }
+    },
+    "edit_comment": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Rewrites an existing comment or reply authored by the caller and therefore changes document discussion state.",
+        "open_world_justification": "Updates comments in a public-by-link document that can be viewed or edited by anyone with the URL.",
+        "destructive_justification": "Overwrites the prior text of a comment or reply authored by the caller."
+      }
+    },
+    "delete_comment": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Deletes a comment thread or reply authored by the caller and therefore changes document discussion state.",
+        "open_world_justification": "Removes comments from a public-by-link document that can be viewed or edited by anyone with the URL.",
+        "destructive_justification": "Deletes a reply or whole thread authored by the caller and removes its marker or highlight from the document."
+      }
+    },
+    "join": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Adds or updates the caller's agent presence in a document roster and therefore changes shared presence state.",
+        "open_world_justification": "Shows the caller's presence in a public-by-link document that can be viewed or edited by anyone with the URL.",
+        "destructive_justification": "Only adds or refreshes presence and does not delete or overwrite document content."
+      }
+    },
+    "leave": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Removes the caller's active presence from a document and therefore changes shared presence state.",
+        "open_world_justification": "Changes presence state in a public-by-link document that can be viewed or edited by anyone with the URL.",
+        "destructive_justification": "Only removes transient presence and does not delete document content, comments, or access grants."
+      }
+    },
+    "await_events": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Long-polls document events and returns event data without modifying document state.",
+        "open_world_justification": "Only reads events from a specified vapor document and does not interact with arbitrary external systems.",
+        "destructive_justification": "Does not delete, overwrite, revoke access, or perform irreversible actions."
+      }
+    },
+    "events_list": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Returns the event types supported by a document without modifying document state.",
+        "open_world_justification": "Only reads the event catalog for a specified vapor document and does not interact with arbitrary external systems.",
+        "destructive_justification": "Does not delete, overwrite, revoke access, or perform irreversible actions."
+      }
+    },
+    "events_poll": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Polls event occurrences from a document event log without modifying document state.",
+        "open_world_justification": "Only reads events from a specified vapor document and does not interact with arbitrary external systems.",
+        "destructive_justification": "Does not delete, overwrite, revoke access, or perform irreversible actions."
+      }
+    },
+    "events_subscribe": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Registers or refreshes a signed webhook subscription for document events and therefore changes subscription state.",
+        "open_world_justification": "Can make vapor deliver future event notifications to a caller-provided HTTPS webhook URL.",
+        "destructive_justification": "Creates or refreshes the caller's own subscription and does not delete document content or revoke access."
+      }
+    },
+    "events_unsubscribe": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Removes the caller's webhook subscription for document events and therefore changes subscription state.",
+        "open_world_justification": "Stops event delivery to a caller-provided HTTPS webhook URL associated with the subscription.",
+        "destructive_justification": "Only removes the caller's own event subscription, which can be recreated by subscribing again."
+      }
+    },
+    "list_documents": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Lists documents where the signed-in caller's agent is enrolled and may remove stale enrollment records for expired documents, so it can change Registry state.",
+        "open_world_justification": "Only accesses the caller's bounded vapor enrollment list and related vapor document summaries.",
+        "destructive_justification": "Does not delete live document content, comments, subscriptions, or access grants."
+      }
+    },
+    "attach": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Stores an uploaded file and inserts an attachment block into a live document, changing storage and document state.",
+        "open_world_justification": "Adds a file and link to a public-by-link document that can be viewed or edited by anyone with the URL.",
+        "destructive_justification": "Adds a new attachment and block and does not delete or overwrite existing document content."
+      }
+    },
+    "create_document": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Creates a new vapor document, optionally with starting markdown, and enrolls the caller as the first agent.",
+        "open_world_justification": "Creates a public-by-link document URL that can be shared with anyone who has the link.",
+        "destructive_justification": "Creates a new expiring document and does not delete or overwrite existing documents."
+      }
+    }
+  },
+  "test_cases": [
+    {
+      "description": "Read a document and summarize its current draft state.",
+      "user_prompt": "Open vapor document ab12cd34, summarize the current markdown, and tell me if there are unresolved comments.",
+      "file_attachment_urls": null,
+      "tools_triggered": "read_document",
+      "expected_output": "Returns the document content, metadata, presence, and open thread information, then summarizes the current state for the user.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Create a new draft document from supplied markdown.",
+      "user_prompt": "Create a new vapor document with this draft: # Launch notes\\n\\nFirst pass for tomorrow's review.",
+      "file_attachment_urls": null,
+      "tools_triggered": "create_document",
+      "expected_output": "Creates a new expiring vapor document and returns its id, URL, timestamps, and the caller's capabilities.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Propose and discuss a targeted change without direct write access.",
+      "user_prompt": "In document ab12cd34, suggest replacing 'ship soon' with 'ship after QA signs off' and leave a comment explaining why.",
+      "file_attachment_urls": null,
+      "tools_triggered": "read_document, suggest, comment",
+      "expected_output": "Uses block anchors from the document, records the tracked suggestion, and opens a relevant comment thread.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Directly edit a document and attach a small file when write access is available.",
+      "user_prompt": "In document ab12cd34, append a References section and attach this small CSV as supporting data.",
+      "file_attachment_urls": null,
+      "tools_triggered": "read_document, insert, attach",
+      "expected_output": "Appends the requested markdown and adds the file as an attachment block, or returns a capability error if write access is missing.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Monitor addressed document events using polling or webhook subscription.",
+      "user_prompt": "For document ab12cd34, list the event types and subscribe my HTTPS webhook to mentions.",
+      "file_attachment_urls": null,
+      "tools_triggered": "events_list, events_subscribe",
+      "expected_output": "Lists supported document events and registers the signed webhook subscription, or explains the signed-in endpoint requirement.",
+      "expected_output_url": null
+    }
+  ],
+  "negative_test_cases": [
+    {
+      "description": "Do not trigger for general markdown writing unrelated to vapor.",
+      "user_prompt": "Write me a markdown template for meeting notes in this chat.",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The app should not be invoked because the user is not asking to create, read, edit, or monitor a vapor document.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Do not trigger for unrelated cloud document services.",
+      "user_prompt": "Find the latest Google Doc in my Drive and add a comment to it.",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The app should not be invoked because it only works with vapor documents, not Google Drive documents.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Do not trigger for arbitrary web scraping or browsing.",
+      "user_prompt": "Fetch this public webpage and summarize it: https://example.com",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The app should not be invoked because reading arbitrary public webpages is outside the supported vapor document workflows.",
+      "expected_output_url": null
+    }
+  ]
+}

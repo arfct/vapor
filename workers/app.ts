@@ -148,6 +148,7 @@ export default {
         openRemarkableToken: (p) => registry.openRemarkableToken(p),
         allowSend: (p) => registry.allowSend(p),
         mailer: kindleMailerFromEnv(env),
+        displayName: async (p) => (await registry.getProfile(p)).profile?.displayName ?? null,
         buildEpub: (docId, origin) => buildDocumentEpub(docId, epubDeps, origin),
         sendKindle: (mailer, message) => sendToKindle(mailer, message),
         remarkableUserToken: (token) => remarkableUserToken(token),

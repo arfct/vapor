@@ -18,6 +18,7 @@ function deps(over: Partial<DeviceRouteDeps> = {}): DeviceRouteDeps {
     openRemarkableToken: vi.fn(async () => ({ deviceToken: "dev" })),
     allowSend: vi.fn(async () => ({ allowed: true })),
     mailer: { apiKey: "k", from: "kindle@vapor.example" },
+    displayName: vi.fn(async () => "Ada Lovelace"),
     buildEpub: vi.fn(async () => ({ bytes: new Uint8Array([1]), filename: "a-plan-abcd1234.epub", title: "A plan" })),
     sendKindle: vi.fn(async () => ({ ok: true as const, id: "e1" })),
     remarkableUserToken: vi.fn(async () => ({ userToken: "user" })),
@@ -77,7 +78,7 @@ describe("device routes (#100)", () => {
     const res = await handleDeviceRoutes(await post("/abcd1234/send", { target: "kindle" }), d);
     expect(await res!.json()).toEqual({ ok: true, target: "kindle", to: "ada@kindle.com", title: "A plan" });
     expect(d.buildEpub).toHaveBeenCalledWith("abcd1234", ORIGIN);
-    expect(d.sendKindle).toHaveBeenCalledWith(d.mailer, expect.objectContaining({ to: "ada@kindle.com", title: "A plan", filename: "a-plan-abcd1234.epub", sourceUrl: `${ORIGIN}/abcd1234` }));
+    expect(d.sendKindle).toHaveBeenCalledWith(d.mailer, expect.objectContaining({ to: "ada@kindle.com", title: "A plan", filename: "a-plan-abcd1234.epub", sourceUrl: `${ORIGIN}/abcd1234`, sender: { name: "Ada Lovelace", email: "ada@example.com" } }));
 
     expect((await handleDeviceRoutes(await post("/abcd1234/send", { target: "kindle" }), deps({ mailer: null })))!.status).toBe(409);
     expect((await handleDeviceRoutes(await post("/abcd1234/send", { target: "kindle" }), deps({ getDevices: vi.fn(async () => ({ devices: none })) })))!.status).toBe(409);

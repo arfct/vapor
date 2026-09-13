@@ -1,4 +1,5 @@
 import { BubbleMenu } from "@tiptap/react/menus";
+import { useEditorState } from "@tiptap/react";
 import { getMarkRange, isMarkActive, type Editor as TiptapEditor } from "@tiptap/core";
 import type { EditorState } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
@@ -134,9 +135,18 @@ const ALIGNS: { value: ImageAlign; icon: string; label: string }[] = [
 ];
 
 function ImageLayoutButtons({ editor }: { editor: TiptapEditor }) {
-  const attrs = selectedImageAttachment(editor.state)?.node.attrs ?? {};
-  const width = (attrs.width ?? null) as string | null;
-  const align = (attrs.align ?? null) as ImageAlign | null;
+  // BubbleMenu renders its children into a portal and does not re-render them
+  // per transaction, so the pressed state has to subscribe to the editor.
+  const { width, align } = useEditorState({
+    editor,
+    selector: ({ editor: ed }) => {
+      const attrs = selectedImageAttachment(ed.state)?.node.attrs ?? {};
+      return {
+        width: (attrs.width ?? null) as string | null,
+        align: (attrs.align ?? null) as ImageAlign | null,
+      };
+    },
+  });
   const on = (active: boolean) => `${stepClass}${active ? " bg-paper/25" : ""}`;
 
   return (

@@ -199,9 +199,24 @@ body {
 .tiptap .attachment[data-align="center"] {
   margin-inline: auto;
 }
+/* The editor is a centred max-w-3xl column inside .doc-frame, so full bleed
+   has to break out of it. Container units measure .doc-frame, which is the
+   space beside the comment rail; the viewport would be wrong whenever the
+   rail is showing. The negative inline margin re-centres the wider box. */
+.doc-frame {
+  container-type: inline-size;
+  container-name: doc-frame;
+}
 .tiptap .attachment[data-width="full"] {
   max-width: none;
-  width: 100%;
+  width: min(100cqw - 3rem, 1600px);
+  margin-inline: calc((100% - min(100cqw - 3rem, 1600px)) / 2);
+}
+@supports not (width: 1cqw) {
+  .tiptap .attachment[data-width="full"] {
+    width: 100%;
+    margin-inline: 0;
+  }
 }
 
 /* A float runs beside body text and stops at the next structural boundary,

@@ -62,15 +62,17 @@ Three behaviors are chosen deliberately:
 
 `markdown-it` is 15.0.1 with no attrs plugin in the tree ([package.json:43](../../package.json)), so this is a custom core rule beside the existing one, which is how the rest of vapor's markdown extensions are written.
 
-### Full-bleed costs one dropped `max-width`
+### Full-bleed breaks out of a centred column with container units
 
-`.attachment` gains `data-width` and `data-align`. A percent sets `width` on the block under the existing `max-width: 65ch` ([app/app.css:184](../../app/app.css)). `align=left` and `align=right` set `float` with an inline margin on the text side; `align=center` sets `margin-inline: auto`. `full` sets `max-width: none` and drops any float.
+`.attachment` carries `data-width` and `data-align`. Alignment and full bleed are rules; the width is an inline style, because a percent can be any value and `attr()` is not portable enough to read one.
 
-A floated block needs something to end the wrap. The `clear` rule applies to headings, horizontal rules, tables, code blocks, and the next attachment, so a float runs beside body text and stops at the next structural boundary rather than at an arbitrary paragraph.
+An earlier draft of this section said `.tiptap` is a left-aligned padded block rather than a centred column, and that full bleed therefore cost nothing but a dropped `max-width`. That was wrong, and running it is what showed it. The editor sits inside `mx-auto w-full max-w-3xl` ([app/components/Editor.tsx:436](../../app/components/Editor.tsx)), a centred 672px column; blocks only look left-aligned because 65ch exceeds that wrapper at every viewport. A full-bleed image measured 630px, identical to a heading.
 
-`StarterKit` supplies Gapcursor and only `CommentEditor` disables it ([app/components/CommentEditor.tsx:80](../../app/components/CommentEditor.tsx)), so the document editor already gives the caret a target beside a floated atom node. Whether that is sufficient in practice for clicking to the left of a right-floated image is the one part of this design most likely to need a second pass after it runs.
+Full bleed breaks out with container query units instead. The editor frame, the flex sibling of the 280px comment rail, is marked `container-type: inline-size` as `.doc-frame`, and the full-bleed rule takes `min(100cqw - 3rem, 1600px)` with a negative inline margin to re-centre it. The viewport would be the wrong unit: it includes the rail. Measured at a 1400px viewport, the frame is 1120px, the text column 630px, and a full-bleed image 1078px centred in the frame with symmetric 21px gaps, ending before the rail begins at 1120px. Reading systems without container units fall back to 100% through an `@supports` guard.
 
-The usual full-bleed problem does not arise. `.tiptap` is a left-aligned padded block, not a centered fixed-width column ([app/app.css:224](../../app/app.css)), and the comment rail is a 280px flex sibling ([app/components/DocumentLayout.tsx:315](../../app/components/DocumentLayout.tsx)). A full-bleed block fills the editor's content box and the rail keeps its space with no viewport arithmetic and no negative margins.
+Floats clear at headings, rules, tables, code blocks, blockquotes, and non-floated attachments. Floated attachments are exempt from the clear, or each would push the one before it down instead of sitting where it was put. Below 640px alignment drops and every image takes its own line.
+
+`StarterKit` supplies Gapcursor and only `CommentEditor` disables it ([app/components/CommentEditor.tsx:80](../../app/components/CommentEditor.tsx)), so the caret has a target beside a floated atom node.
 
 ### The EPUB needs the rule too, and full-bleed degrades there
 
@@ -86,7 +88,9 @@ A bug is introduced if only the CSS changes: `epubChapterHtml` runs a separate p
 
 ### The toolbar is a fourth bubble context
 
-`BubbleToolbar.tsx` already runs a TipTap `BubbleMenu` over a `BubbleContext` union of `selection | suggestion | annotation`. A fourth kind, `attachment`, is detected when the selection is a `NodeSelection` on an `attachment` node whose `kind` is `image`. Its buttons are four widths, plus Full, plus three alignments.
+`BubbleToolbar.tsx` already runs a TipTap `BubbleMenu` over a `BubbleContext` union of `selection | suggestion | annotation`. A fourth kind, `attachment`, is detected when the selection is a `NodeSelection` on an `attachment` node whose `kind` is `image`. Its buttons are four widths, plus Full, plus three alignments. The detection runs before the existing text gates: a node selection on an atom spans no text, so both the emptiness check and the `textBetween` check would reject it.
+
+Two things that only running it revealed. `BubbleMenu` renders its children into a portal and does not re-render them per transaction, so the pressed state has to read the editor through `useEditorState` rather than `editor.state` at render time; without it every button reads unpressed on a node that plainly carries a width. And Material Symbols is loaded as a named subset in [app/root.tsx:53](../../app/root.tsx), so `format_image_left`, `format_image_right`, `format_align_center`, and `width_full` each had to be added to `icon_names` or the ligature renders as raw text. `Icon.tsx` says so in its own doc comment.
 
 ### Resizing is not a tracked change
 
@@ -96,9 +100,9 @@ Agents get all of this through `replace`, since agents write markdown. No new MC
 
 ## Verified and not verified
 
-Verified by reading the source at `aeeaa3f`: the schema, parser, and serializer shapes; the `65ch` cap and the `.tiptap` container; the rail's width and that it is a flex sibling; `READING_CSS` and the print page sharing it; `attachmentImages`' regex; `epubChapterHtml`'s separate parser; `suggestModePlugin`'s two props; the `BubbleContext` union; `markdown-it` 15.0.1 with no attrs plugin.
+Verified by running it at a 1400px viewport against a local dev instance: the float, the wrap and where it ends, the clear at a heading, full bleed's width against the frame and the rail, the toolbar's buttons and pressed state, a click on Align right reaching `/:id.md` as `{width=50% align=right}`, and the print page carrying inline styles rather than literal braces. Verified by reading the source at `aeeaa3f`: the schema, parser, and serializer shapes; the `65ch` cap and the `.tiptap` container; the rail's width and that it is a flex sibling; `READING_CSS` and the print page sharing it; `attachmentImages`' regex; `epubChapterHtml`'s separate parser; `suggestModePlugin`'s two props; the `BubbleContext` union; `markdown-it` 15.0.1 with no attrs plugin.
 
-Not verified: nothing here has been run.
+Not verified: no EPUB has been opened in a reading system, so how any of them honours `float` on a block is unknown. The three test files CLAUDE.md names as environment failures (`safe-storage`, `anon-identity`, `use-theme`) still fail here; CLAUDE.md attributes that to Node 26 shipping a global `localStorage`, and this machine runs Node 25.8.1, so that note is one version out of date.
 
 Dropbox Paper's behavior was taken from Google's synthesis of Dropbox's blog and community threads rather than from Dropbox's documentation, and one of its two claims was wrong. It reported that Paper does not wrap text around images; Nicholas, who uses Paper, corrected that on 2026-09-13 and the design above reflects the correction. Its other claim from the same source, that Paper has no drag-to-resize handles and uses a preset toolbar, is therefore also unconfirmed. Presets were chosen independently for the one-write-per-click reason given in Decision 2, which does not depend on what Paper does, so the toolbar design stands either way.
 

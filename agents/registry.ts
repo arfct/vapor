@@ -59,6 +59,8 @@ export interface AuthCode {
   principal: string;
   email: string;
   caps: AgentCapability[];
+  /** The OpenID scopes the client asked for and we honour (openid, email, profile); absent on older codes. */
+  scope?: string;
   codeChallenge: string;
   redirectUri: string;
   exp: number;
@@ -125,6 +127,8 @@ export interface RefreshGrant {
   principal: string;
   email: string;
   caps: AgentCapability[];
+  /** As on AuthCode: the honoured OpenID scopes, carried so refreshes echo the same scope. */
+  scope?: string;
   exp: number;
 }
 

@@ -168,8 +168,8 @@ Agents on your instance get everything they need from the instance itself: the `
 
 Anyone on ChatGPT can already add an instance as a connector in developer mode. Reaching people on free and Plus plans, and on mobile, takes a listing in the ChatGPT plugins directory, which is a review process on the operator's side; the code does its part on every instance:
 
-- Tools declare `title`, `annotations` (read-only, destructive, open-world), and which credentials they accept (`noauth` for the anonymous endpoint, `oauth2` with the capability scope). Results come back as `structuredContent` alongside the text.
-- `GET /oauth/userinfo` returns the bearer's `sub`, `email`, and `email_verified: true` (both providers verify addresses), and the server metadata names it as `userinfo_endpoint`.
+- Tools declare `title`, `annotations` (read-only, destructive, open-world), an `outputSchema`, and which credentials they accept (`noauth` for the anonymous endpoint, `oauth2` with the capability scope). Results come back as `structuredContent` alongside the text.
+- `GET /oauth/userinfo` returns the bearer's `sub`, `email`, and `email_verified: true` (both providers verify addresses). `/.well-known/openid-configuration` describes the server the OpenID Connect way and advertises the `openid`, `email`, and `profile` scopes, which is what ChatGPT needs to let a workspace restrict the plugin to its own domain. No ID token is issued; identity comes from UserInfo.
 - `GET /.well-known/openai-apps-challenge` serves whatever `OPENAI_APPS_CHALLENGE` holds. Set it to the token the portal shows during domain verification, deploy, and click verify; you can unset it afterwards.
 - `/privacy` lists what is stored, why, who sees it, and for how long, which the review asks for.
 

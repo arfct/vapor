@@ -32,6 +32,7 @@ import {
   buildTypedBlock,
   pmNodeToYElement,
 } from "../app/shared/rich-markdown";
+import { changesSince, type BlockChanges, type BlockChangeKind } from "../app/shared/block-changes";
 import { chunkTyping } from "../app/lib/performance-chunks";
 import {
   eventCatalog,
@@ -145,6 +146,24 @@ const EXPIRING_LEAD_MS = 6 * 60 * 60 * 1000;
  * show.
  */
 const PERFORMANCE_WALL_BUDGET_MS = 10_000;
+
+/**
+ * How many block-change rows a document keeps for read_changes (#87). Past
+ * this the oldest go, and a cursor that falls off the end is answered with
+ * `truncated` rather than a partial account.
+ */
+const BLOCK_CHANGE_CAP = 5_000;
+
+/**
+ * A top-level block's persistent id, or null when it has none. Documents
+ * written before block ids carry no id on their blocks, so their changes are
+ * invisible to read_changes and those callers stay on read_document.
+ */
+function blockIdOf(block: unknown): string | null {
+  if (!(block instanceof Y.XmlElement)) return null;
+  const id = block.getAttribute("blockId");
+  return typeof id === "string" && id ? id : null;
+}
 
 /**
  * Durable Objects SQLite accepts Uint8Array for BLOB columns via the
@@ -431,6 +450,14 @@ class DocumentAgent extends Agent {
    */
   private scheduledDue = new Map<string, number>();
 
+  /**
+   * The block ids the fragment held when the observer last ran, so a block
+   * that leaves can be named (#87). Seeded when observers are registered and
+   * replaced on every firing; lost on eviction and reseeded from the restored
+   * document, which is correct because the observer only runs while awake.
+   */
+  private knownBlockIds: Set<string> | null = null;
+
   /** Resolvers parked by agentAwaitEvents long-polls with nothing to return yet; flushed by recordEvent. */
   private eventWaiters: (() => void)[] = [];
   /** Timestamp of the last "doc_changed" digest event, to cap it at one per 30s. */
@@ -553,6 +580,18 @@ class DocumentAgent extends Agent {
       )
     `;
     // Attachment metadata only; the bytes live in R2 under <docId>/<id>.
+    // Which blocks moved, for read_changes (#87). Its seq is its own
+    // sequence, not the events one: the observer records a change on every
+    // edit while doc_changed is digested to one event per 30 seconds, so a
+    // block change has no event seq of its own to borrow.
+    this.sql`
+      CREATE TABLE IF NOT EXISTS block_changes (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        block_id TEXT,
+        kind TEXT,
+        at INTEGER
+      )
+    `;
     this.sql`
       CREATE TABLE IF NOT EXISTS attachments (
         id TEXT PRIMARY KEY,
@@ -664,14 +703,21 @@ class DocumentAgent extends Agent {
     // it never gets a "mention" for text it typed itself. System writes
     // (the bare "agent" origin: import, restore) fire nothing.
     const frag = this.doc.getXmlFragment("default");
+    this.knownBlockIds = new Set(frag.toArray().map(blockIdOf).filter((id): id is string => id !== null));
     frag.observeDeep((events, transaction) => {
-      if (transaction.origin === "agent") return;
-      const actor = agentActor(transaction.origin);
-
       // No agents on the roster means nothing consumes events — not
       // mentions, and not doc_changed digests either. Check first, so an
       // agentless document accrues no `events` rows at all.
       const rosterNames = this.getRosterTargetsSync();
+
+      // Which blocks arrived and which left (#87). This runs ahead of every
+      // guard below, including the one for system writes: a restore replaces
+      // every block, and a polling agent must not be told the document held
+      // still. Rows are only written when an agent is there to read them.
+      const previousIds = this.syncBlockIds(frag, rosterNames.length > 0);
+
+      if (transaction.origin === "agent") return;
+      const actor = agentActor(transaction.origin);
       if (rosterNames.length === 0) return;
 
       // One digest window per actor: an agent's typing burst is one event
@@ -706,10 +752,15 @@ class DocumentAgent extends Agent {
         const block = this.topLevelBlockOf(target);
         if (block) blocks.add(block);
       }
+
       for (const block of blocks) {
         const text = this.blockText(block);
         if (text === null) continue; // block already gone from the fragment
         this.notifyMentions(block, text, rosterNames, actor);
+        // Arrivals are already recorded as "added" by syncBlockIds; this
+        // covers edits to blocks that were already there.
+        const id = blockIdOf(block);
+        if (id && previousIds?.has(id)) this.recordBlockChange(id, "changed");
       }
     });
 
@@ -1048,6 +1099,7 @@ class DocumentAgent extends Agent {
     // Recorded events (mentions, thread replies, doc_changed digests) are
     // meaningless once the document they refer to is gone.
     this.sql`DELETE FROM events`;
+    this.sql`DELETE FROM block_changes`;
     // Webhook subscriptions die with the document.
     this.sql`DELETE FROM subscriptions`;
     // So does its version history.
@@ -1395,6 +1447,70 @@ class DocumentAgent extends Agent {
       notified.add(name);
       this.recordEvent("mention", { agent: name, text, ...(actor ? { actor } : {}) });
     }
+  }
+
+  /**
+   * Refreshes the set of block ids in the fragment, recording what arrived
+   * and what left when `record` is set (#87). Returns the previous set, which
+   * says which touched blocks are edits rather than arrivals, or null on the
+   * first run, when there is nothing to compare against.
+   */
+  private syncBlockIds(frag: Y.XmlFragment, record: boolean): Set<string> | null {
+    const currentIds = new Set<string>();
+    for (const node of frag.toArray()) {
+      const id = blockIdOf(node);
+      if (id) currentIds.add(id);
+    }
+    const previous = this.knownBlockIds;
+    this.knownBlockIds = currentIds;
+    if (!previous || !record) return previous;
+    for (const id of previous) if (!currentIds.has(id)) this.recordBlockChange(id, "removed");
+    for (const id of currentIds) if (!previous.has(id)) this.recordBlockChange(id, "added");
+    return previous;
+  }
+
+  /**
+   * Appends a block-level change record for read_changes (#87), and trims the
+   * table to its cap. Called only from the fragment observer, which already
+   * returns early for system writes and for documents with no agents on the
+   * roster, so a document nobody watches accrues no rows.
+   */
+  private recordBlockChange(blockId: string, kind: "added" | "changed" | "removed"): void {
+    this.sql`
+      INSERT INTO block_changes (block_id, kind, at) VALUES (${blockId}, ${kind}, ${Date.now()})
+    `;
+    const seqs = this.sql<{ seq: number }>`SELECT seq FROM block_changes ORDER BY seq ASC`;
+    if (seqs.length > BLOCK_CHANGE_CAP) {
+      const cut = seqs[seqs.length - BLOCK_CHANGE_CAP].seq;
+      this.sql`DELETE FROM block_changes WHERE seq < ${cut}`;
+    }
+  }
+
+  /**
+   * The blocks that changed after `cursor`. A caller with no cursor, or one
+   * older than the rows still kept, is told `truncated` and reads the whole
+   * document instead: there is no baseline to diff against.
+   */
+  async agentReadChanges(
+    identity: AgentIdentity,
+    args: { cursor?: number },
+  ): Promise<BlockChanges | { error: AgentError }> {
+    const verified = await this.verifyIdentity(identity);
+    if ("error" in verified) return verified;
+    const { doc } = this.ensureInitialised();
+
+    const rows = this.sql<{ seq: number; block_id: string; kind: string }>`
+      SELECT seq, block_id, kind FROM block_changes ORDER BY seq ASC
+    `;
+    return changesSince(
+      getBlocks(doc),
+      rows.map((r) => ({ seq: r.seq, blockId: r.block_id, kind: r.kind as BlockChangeKind })),
+      {
+        cursor: args.cursor ?? null,
+        oldestRetainedSeq: rows.length ? rows[0].seq : 0,
+        latestSeq: rows.length ? rows[rows.length - 1].seq : 0,
+      },
+    );
   }
 
   /**

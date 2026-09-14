@@ -116,7 +116,7 @@ vi.mock("agents", () => ({
             // recordEvent), so synthesize a monotonically increasing one
             // here, matching real SQLite's behavior closely enough for
             // "insert then query by seq" tests.
-            if (table === "events" && !("seq" in row)) {
+            if ((table === "events" || table === "block_changes") && !("seq" in row)) {
               const maxSeq = rows.reduce((m, r) => Math.max(m, (r.seq as number) ?? 0), 0);
               row.seq = maxSeq + 1;
             }
@@ -154,12 +154,20 @@ vi.mock("agents", () => ({
         }
 
         if (query.startsWith("delete from")) {
-          const whereMatch = /where\s+(\w+)\s*=/i.exec(raw);
+          // Equality, and the `seq < ?` form the block_changes trim uses.
+          const whereMatch = /where\s+(\w+)\s*(=|<|>)\s*/i.exec(raw);
           if (whereMatch) {
+            const [, col, op] = whereMatch;
             const whereVal = values[0];
             this._tables.set(
               table,
-              rows.filter((row) => row[whereMatch[1]] !== whereVal),
+              rows.filter((row) =>
+                op === "<"
+                  ? !((row[col] as number) < (whereVal as number))
+                  : op === ">"
+                    ? !((row[col] as number) > (whereVal as number))
+                    : row[col] !== whereVal,
+              ),
             );
           } else {
             this._tables.set(table, []);
@@ -823,6 +831,131 @@ describe("DocumentAgent", () => {
       const conn = createConnection();
       await agent.onConnect(conn as never, {} as never);
       await agent.onClose(conn as never, 1000, "normal", true);
+    });
+  });
+
+  /* ================================================================ */
+  /*  read_changes (#87)                                              */
+  /* ================================================================ */
+
+  describe("read_changes", () => {
+    async function seeded() {
+      await agent.onRequest(
+        new Request("https://do/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: "# Title\n\nFirst.\n\nSecond." }),
+        }),
+      );
+      const id = identity({ caps: ["write"] });
+      // The observer only records for documents an agent watches, so enrol first.
+      await agent.agentJoin(id);
+      return id;
+    }
+
+    it("has no baseline on the first call, and hands back the cursor to start from", async () => {
+      const id = await seeded();
+      const first = await agent.agentReadChanges(id, {});
+      expect(first).toMatchObject({ truncated: true, blocks: [], removed: [] });
+      expect(typeof (first as { cursor: number }).cursor).toBe("number");
+    });
+
+    it("reports a block a person edited, at its current text, and holds still after", async () => {
+      const id = await seeded();
+      const cursor = (await agent.agentReadChanges(id, {})).cursor;
+
+      const client = connectYjsClient(agent);
+      const frag = client.doc.getXmlFragment("default");
+      const second = frag.toArray()[2] as import("yjs").XmlElement;
+      (second.firstChild as import("yjs").XmlText).insert(6, " and more");
+
+      const out = await agent.agentReadChanges(id, { cursor });
+      expect(out.truncated).toBe(false);
+      expect(out.blocks).toHaveLength(1);
+      expect(out.blocks[0].text).toContain("and more");
+      expect(out.blocks[0].change).toBe("changed");
+      expect(out.removed).toEqual([]);
+
+      // The same cursor twice would repeat the answer; the new one is empty.
+      expect(await agent.agentReadChanges(id, { cursor: out.cursor })).toMatchObject({ blocks: [], removed: [] });
+      cleanup(client);
+    });
+
+    it("collapses a burst of edits in one block to a single entry", async () => {
+      const id = await seeded();
+      const cursor = (await agent.agentReadChanges(id, {})).cursor;
+
+      const client = connectYjsClient(agent);
+      const text = (client.doc.getXmlFragment("default").toArray()[1] as import("yjs").XmlElement)
+        .firstChild as import("yjs").XmlText;
+      for (const ch of "abcdefghij") text.insert(text.length, ch);
+
+      const out = await agent.agentReadChanges(id, { cursor });
+      expect(out.blocks).toHaveLength(1);
+      expect(out.blocks[0].text).toContain("abcdefghij");
+      cleanup(client);
+    });
+
+    it("names a deleted block by its id under removed", async () => {
+      const id = await seeded();
+      const cursor = (await agent.agentReadChanges(id, {})).cursor;
+
+      const client = connectYjsClient(agent);
+      const frag = client.doc.getXmlFragment("default");
+      const doomed = (frag.toArray()[2] as import("yjs").XmlElement).getAttribute("blockId");
+      frag.delete(2, 1);
+
+      const out = await agent.agentReadChanges(id, { cursor });
+      expect(out.removed).toEqual([doomed]);
+      expect(out.blocks).toEqual([]);
+      cleanup(client);
+    });
+
+    it("marks a new block added, and its anchor is one replace accepts", async () => {
+      const id = await seeded();
+      const cursor = (await agent.agentReadChanges(id, {})).cursor;
+
+      expect(await agent.agentInsert(id, { where: "append", markdown: "Third.", pace: "instant" })).toEqual({ ok: true });
+
+      const out = await agent.agentReadChanges(id, { cursor });
+      const added = out.blocks.find((b) => b.text === "Third.");
+      expect(added?.change).toBe("added");
+      expect(await agent.agentReplace(id, { from: added!.anchor, markdown: "Third, revised." })).toEqual({ ok: true });
+    });
+
+    it("records a system write, so a restore is not invisible to a poller", async () => {
+      const id = await seeded();
+      const cursor = (await agent.agentReadChanges(id, {})).cursor;
+
+      // The bare "agent" origin is what import and restore write under. It
+      // deliberately fires no event, which is why read_changes tracks blocks
+      // ahead of that guard rather than behind it.
+      const doc = (agent as unknown as { doc: import("yjs").Doc }).doc;
+      const frag = doc.getXmlFragment("default");
+      const goneId = (frag.toArray()[2] as import("yjs").XmlElement).getAttribute("blockId");
+      doc.transact(() => frag.delete(2, 1), "agent");
+
+      const out = await agent.agentReadChanges(id, { cursor });
+      expect(out.removed).toEqual([goneId]);
+    });
+
+    it("records nothing while no agent watches the document", async () => {
+      await agent.onRequest(
+        new Request("https://do/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: "# Title\n\nFirst." }),
+        }),
+      );
+      const client = connectYjsClient(agent);
+      const text = (client.doc.getXmlFragment("default").toArray()[1] as import("yjs").XmlElement)
+        .firstChild as import("yjs").XmlText;
+      text.insert(text.length, " edited");
+
+      const id = identity({ caps: ["write"] });
+      const out = await agent.agentReadChanges(id, { cursor: 0 });
+      expect(out.blocks).toEqual([]);
+      cleanup(client);
     });
   });
 

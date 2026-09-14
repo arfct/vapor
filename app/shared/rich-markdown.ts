@@ -16,6 +16,7 @@ import MarkdownIt from "markdown-it";
 import * as Y from "yjs";
 import { yXmlFragmentToProseMirrorRootNode } from "@tiptap/y-tiptap";
 import { blockHash, formatMention, parseAnchor as parseLegacyAnchor, type DocBlock } from "./agent-protocol";
+export type { DocBlock };
 import { parseAttachmentUrl } from "./attachment-policy";
 import { parseImageLayout, serializeImageLayout, type ImageLayout } from "./image-layout";
 

@@ -4,14 +4,13 @@ import { CLAUDE_ROUTINE_PROMPT, wakeKindInfo, type WakeKind, type WakeTargetView
 import { useSession } from "~/lib/useSession";
 import { timeAgo } from "~/lib/time-ago";
 import { Input } from "~/components/ui/input";
-import Icon from "~/components/Icon";
+import UiPath from "~/components/UiPath";
 
 type Outcome =
   | { fired: true; status: number }
   | { fired: false; reason: string; status?: number; error?: string };
 
 const textButton = "cursor-pointer text-sm text-muted transition-colors hover:text-ink";
-const link = "underline decoration-border underline-offset-2 hover:text-ink";
 
 export const ROUTINES_URL = "https://claude.ai/code/routines/new";
 
@@ -237,10 +236,7 @@ export default function WakeSection({
       <div className="space-y-2">
         {kind === "claude-routine" ? (
           <p className="text-sm text-muted">
-            <a href={ROUTINES_URL} target="_blank" rel="noreferrer" className={link}>
-              <strong className="font-semibold text-ink">claude.ai → Code → Routines → New routine</strong>
-              <Icon name="open_in_new" className="ml-0.5 text-[14px] text-muted" />
-            </a>{" "}
+            <UiPath href={ROUTINES_URL}>claude.ai → Code → Routines → New routine</UiPath>{" "}
             with{" "}
             <button className="cursor-pointer underline hover:text-ink" onClick={copyPrompt}>
               {promptCopied ? "prompt copied" : "this prompt"}

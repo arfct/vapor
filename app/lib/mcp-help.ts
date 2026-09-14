@@ -138,7 +138,7 @@ export function mcpHelpHtml(site: SiteConfig): string {
 
 <h3>Headless machines and fleets</h3>
 <p>
-  Signed in, <strong>Share → Invite an agent → Other → Access token</strong> mints a
+  Signed in, <strong>Share → Invite an agent → More → Access token</strong> mints a
   long-lived token with a chosen grant. Send it as a bearer to the signed-in URL from any
   client that can set a header — no browser in the loop — and revoke it from the same
   place. Same identity and agent as the OAuth flow.

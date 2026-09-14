@@ -4,6 +4,7 @@ import { AGENT_CLIENTS, type AgentClientId } from "~/shared/agent-clients";
 import Dialog, { SnippetRow } from "~/components/ui/dialog";
 import AgentClientIcon from "~/components/AgentClientIcon";
 import Icon from "~/components/Icon";
+import UiPath from "~/components/UiPath";
 import WakeSection from "~/components/WakeSection";
 import TokenSection from "~/components/TokenSection";
 import { useSite } from "~/lib/site-context";
@@ -89,23 +90,6 @@ export function claudeConnectorLink(mcpUrl: string): string {
   return `https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=vapor&connectorUrl=${encodeURIComponent(mcpUrl)}`;
 }
 export const CHATGPT_CONNECTORS_URL = "https://chatgpt.com/#settings/Connectors";
-
-/** A UI path, linked straight to that screen when the product has a URL for it, with a pop-out mark. */
-function Nav({ href, children }: { href?: string; children: React.ReactNode }) {
-  const inner = <strong className="font-semibold text-ink">{children}</strong>;
-  if (!href) return inner;
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="text-ink transition-colors hover:text-muted"
-    >
-      {inner}
-      <Icon name="open_in_new" className="icon-inline ml-0.5 text-muted" />
-    </a>
-  );
-}
 
 const tabClass = (active: boolean) =>
   `flex flex-1 cursor-pointer flex-col items-center gap-1 border-b-2 px-1 pb-2 pt-1 text-xs transition-colors ${
@@ -221,7 +205,7 @@ export default function AgentsPanel({
             {(variant === "claude" || variant === "code-app") && (
               <>
                 <p className="text-sm text-muted">
-                  <Nav href={claudeConnectorLink(url)}>Settings → Connectors → Add custom connector</Nav>.
+                  <UiPath href={claudeConnectorLink(url)}>Settings → Connectors → Add custom connector</UiPath>.
                 </p>
                 <SnippetRow label="MCP server URL" text={url} showLabel={false} />
               </>
@@ -236,7 +220,7 @@ export default function AgentsPanel({
             {variant === "app" && (
               <>
                 <p className="text-sm text-muted">
-                  <Nav href={CHATGPT_CONNECTORS_URL}>Settings → Connectors → Advanced → Developer mode</Nav>, then{" "}
+                  <UiPath href={CHATGPT_CONNECTORS_URL}>Settings → Connectors → Advanced → Developer mode</UiPath>, then{" "}
                   <strong className="font-semibold text-ink">Create</strong> a connector with this URL
                   {asYou ? " and OAuth" : " and no authentication"}. Paid plans only.
                 </p>
@@ -269,7 +253,7 @@ export default function AgentsPanel({
             <SnippetRow label="Or .cursor/mcp.json" text={mcpServersJson} />
             {asYou && (
               <p className="text-sm text-muted">
-                Sign in from <Nav>Settings → MCP</Nav>.
+                Sign in from <UiPath>Settings → MCP</UiPath>.
               </p>
             )}
           </div>

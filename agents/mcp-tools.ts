@@ -17,6 +17,7 @@ export interface DocStub {
   agentReadChanges(identity: AgentIdentity, args: unknown): Promise<unknown>;
   agentInsert(identity: AgentIdentity, args: unknown): Promise<unknown>;
   agentReplace(identity: AgentIdentity, args: unknown): Promise<unknown>;
+  agentPatch(identity: AgentIdentity, args: unknown): Promise<unknown>;
   agentSuggest(identity: AgentIdentity, args: unknown): Promise<unknown>;
   agentComment(identity: AgentIdentity, args: unknown): Promise<unknown>;
   agentReply(identity: AgentIdentity, args: unknown): Promise<unknown>;
@@ -142,6 +143,14 @@ export const READ_CHANGES_OUTPUT = output({
   truncated: z
     .boolean()
     .describe("The window asked for is not fully covered, so this is not a complete account: read_document instead."),
+});
+
+export const PATCH_OUTPUT = output({
+  ok: z.literal(true),
+  replaced: z.number().describe("Blocks rewritten in place, keeping their ids."),
+  inserted: z.number(),
+  deleted: z.number(),
+  charged: z.number().describe("Characters charged against the hourly budget: what the patch added."),
 });
 
 export const CREATE_DOCUMENT_OUTPUT = output({
@@ -380,6 +389,28 @@ export const TOOLS: ToolDef[] = [
         to: args.to_anchor as string | undefined,
         markdown: args.markdown as string,
         pace: args.pace as string | undefined,
+        anchors: args.anchors as string[] | undefined,
+      }),
+  }),
+
+  docTool({
+    name: "patch",
+    output: PATCH_OUTPUT,
+    title: "Patch the document",
+    annotations: WRITE,
+    securitySchemes: CAN_WRITE,
+    description:
+      "Give the document's full new markdown and have the smallest set of block changes applied for you. Prefer this to a whole-document replace when revising a draft: the diff runs inside the document, so there is no window between your read and your write, blocks that did not change are not touched at all (their ids, their comments, and their attribution survive), history shows what changed rather than one opaque rewrite, and the hourly budget is charged for what you added rather than for the whole document. Pass `anchors` — every anchor from your read — or an edit someone made since then is quietly put back: only the blocks this patch would touch are checked, and stale_block names them. Requires the write capability.",
+    schema: {
+      markdown: z.string().describe("The whole document as it should read, not just the part you changed."),
+      anchors: z
+        .array(z.string())
+        .optional()
+        .describe("Every anchor from the read this markdown is based on. Blocks the patch would touch are verified against these first."),
+    },
+    call: (stub, identity, args) =>
+      stub.agentPatch(identity, {
+        markdown: args.markdown as string,
         anchors: args.anchors as string[] | undefined,
       }),
   }),

@@ -76,6 +76,8 @@ export type AgentErrorCode =
   | "not_author"
   /** Markdown the editor's mark model can't represent (CriticMarkup substitution). */
   | "unsupported_markup"
+  /** A patch that would empty the document: almost always a truncated argument (#59). */
+  | "empty_patch"
   /** Events polyfill: a referenced event type or subscription doesn't exist (sketch -32011). */
   | "not_found"
   /** Events polyfill: statically invalid arguments — bad URL, bad whsec_ secret, bad cursor (sketch -32602). */

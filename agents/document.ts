@@ -33,6 +33,7 @@ import {
   pmNodeToYElement,
 } from "../app/shared/rich-markdown";
 import { changesSince, type BlockChanges, type BlockChangeKind } from "../app/shared/block-changes";
+import { diffBlocks, patchCharge, type PatchOp } from "../app/shared/block-patch";
 import { chunkTyping } from "../app/lib/performance-chunks";
 import {
   eventCatalog,
@@ -2561,6 +2562,112 @@ class DocumentAgent extends Agent {
       markdown: args.markdown,
       ...(args.anchors ? { anchors: args.anchors } : {}),
     });
+  }
+
+  /**
+   * Applies the agent's whole new markdown as the smallest set of block
+   * operations that gets there (#59).
+   *
+   * The diff runs here, inside the Durable Object that owns the document, so
+   * there is no window between the read and the write. Blocks that did not
+   * change are not touched at all: their ids, their anchored comments, and
+   * their attribution survive, and version history shows what changed rather
+   * than one opaque rewrite. The hourly budget is charged for the text the
+   * patch adds, which is what made revising a long draft in place unaffordable.
+   *
+   * `anchors` is how a caller keeps an edit someone else made from being
+   * reverted. The agent's markdown carries its own idea of every block, so a
+   * paragraph a person rewrote since the read would otherwise be quietly put
+   * back. Only the anchors of blocks this patch would touch are checked; an
+   * edit elsewhere is none of the patch's business.
+   */
+  async agentPatch(
+    identity: AgentIdentity,
+    args: { markdown: string; anchors?: string[] },
+  ): Promise<{ ok: true; replaced: number; inserted: number; deleted: number; charged: number } | { error: AgentError }> {
+    const verified = await this.verifyIdentity(identity, "write");
+    if ("error" in verified) return verified;
+    const { doc } = this.ensureInitialised();
+
+    // Parse before anything else: Yjs cannot roll a transaction back, so a
+    // parse failure inside one would leave the document half-patched.
+    const probe = buildMarkdownBlocks(args.markdown);
+    if (!probe.ok) return { error: { code: "unsupported_markup", message: probe.message } };
+    const scratch = new Y.Doc();
+    insertBlockNodes(scratch, 0, probe.nodes);
+    const nextTexts = getBlocks(scratch).map((b) => b.text);
+
+    const current = getBlocks(doc);
+
+    // A patch is the whole document, so a truncated or empty `markdown`
+    // argument deletes everything. That is almost never the intent, and a
+    // caller who does mean it can say so with replace.
+    if (current.some((b) => b.text.trim()) && !nextTexts.some((t) => t.trim())) {
+      return {
+        error: {
+          code: "empty_patch",
+          message:
+            "That patch would empty the document. `markdown` is the whole document as it should read, not just the part you changed. To clear it deliberately, use replace.",
+        },
+      };
+    }
+
+    const ops = diffBlocks(
+      current.map((b) => b.text),
+      nextTexts,
+    );
+    if (ops.length === 0) return { ok: true, replaced: 0, inserted: 0, deleted: 0, charged: 0 };
+
+    if (args.anchors && args.anchors.length > 0) {
+      const touched = new Set(
+        ops.filter((op) => op.kind !== "insert").map((op) => current[op.index]?.id).filter((id): id is string => !!id),
+      );
+      const atRisk = args.anchors.filter((a) => touched.has(a.split("-")[0]));
+      const stale = staleAnchors(doc, atRisk);
+      if (stale) return { error: stale };
+    }
+
+    const charge = patchCharge(ops);
+    const rateLimited = await this.checkRateLimit(identity.id, charge);
+    if (rateLimited) return rateLimited;
+
+    // Every node built before the transaction opens, for the same reason the
+    // parse happens first.
+    const nodes = new Map<PatchOp, Y.XmlElement[]>();
+    for (const op of ops) {
+      if (op.kind === "delete") continue;
+      const built = buildMarkdownBlocks(op.markdown);
+      if (!built.ok) return { error: { code: "unsupported_markup", message: built.message } };
+      // A replaced block keeps its id, so comments anchored to it follow the
+      // text and history attributes the change to the block rather than to a
+      // new one that appeared.
+      const keepId = op.kind === "replace" ? current[op.index]?.id : null;
+      if (keepId && built.nodes.length === 1) built.nodes[0].setAttribute("blockId", keepId);
+      nodes.set(op, built.nodes);
+    }
+
+    const name = verified.entry.name;
+    this.maybeSnapshot("pre_replace", this.agentAuthor(name));
+    const frag = doc.getXmlFragment("default");
+    doc.transact(() => {
+      // Backwards: every index is against the document as it was read, and
+      // applying forwards would shift the ones still to come.
+      for (const op of [...ops].reverse()) {
+        if (op.kind === "delete") frag.delete(op.index, 1);
+        else if (op.kind === "replace") {
+          frag.delete(op.index, 1);
+          frag.insert(op.index, nodes.get(op)!);
+        } else frag.insert(op.index, nodes.get(op)!);
+      }
+    }, agentOrigin(name));
+
+    return {
+      ok: true,
+      replaced: ops.filter((o) => o.kind === "replace").length,
+      inserted: ops.filter((o) => o.kind === "insert").length,
+      deleted: ops.filter((o) => o.kind === "delete").length,
+      charged: charge,
+    };
   }
 
   /**

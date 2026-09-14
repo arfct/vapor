@@ -317,9 +317,13 @@ export function useThreads({
       const thread: ThreadData = JSON.parse(raw);
 
       if (!thread.resolved) {
-        // Resolving: remove inline markup, mark resolved
+        // Resolving: remove inline markup, mark resolved, and drop the
+        // selection. The rail and the sheet both keep the active thread
+        // visible whatever its state, so without this the card sits there
+        // until something else is clicked (#111).
         removeInlineComment(thread);
         thread.resolved = true;
+        setActiveThreadId((prev) => (prev === threadId ? null : prev));
       } else {
         // Unresolving: just toggle back (markup already removed)
         thread.resolved = false;

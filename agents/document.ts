@@ -9,6 +9,7 @@ import { MSG_SYNC, MSG_AWARENESS, DOCUMENT_TTL_MS, DOC_FORMAT_VERSION, USER_COLO
 import { animalGlyphForLabel } from "../app/shared/anon-animals";
 import type { AgentIdentity, AgentCapability, AgentRosterEntry, AgentError, MentionTarget, Pace } from "../app/shared/agent-protocol";
 import { agentMention, anonymousAgentMention } from "../app/shared/agent-protocol";
+import { shouldInvite, stripCommentRuns } from "../app/shared/mention-policy";
 import { colorIndexFor } from "../app/shared/short-id";
 import { descriptionFromMarkdown, titleFromMarkdown } from "../app/shared/doc-url";
 import {
@@ -463,8 +464,6 @@ class DocumentAgent extends Agent {
   private eventWaiters: (() => void)[] = [];
   /** Timestamp of the last "doc_changed" digest event, to cap it at one per 30s. */
   private lastDigestAt = new Map<string, number>();
-  /** Agent names already notified for a top-level block — see notifyMentions. */
-  private notifiedMentions = new WeakMap<Y.AbstractType<unknown>, Set<string>>();
 
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
   /** True while POST / sets a document up, so its writes book no snapshot. */
@@ -554,6 +553,8 @@ class DocumentAgent extends Agent {
     if (!rosterColumns.has("mention")) this.sql`ALTER TABLE roster ADD COLUMN mention TEXT`;
     if (!rosterColumns.has("owner_uid")) this.sql`ALTER TABLE roster ADD COLUMN owner_uid TEXT`;
     if (!rosterColumns.has("client")) this.sql`ALTER TABLE roster ADD COLUMN client TEXT`;
+    // When a body mention last invited the agent to this document (#116).
+    if (!rosterColumns.has("invited_at")) this.sql`ALTER TABLE roster ADD COLUMN invited_at INTEGER`;
     this.sql`
       CREATE TABLE IF NOT EXISTS performances (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -697,8 +698,9 @@ class DocumentAgent extends Agent {
       this.sql`DELETE FROM performances WHERE id = ${row.id}`;
     }
 
-    // Mention detection + doc_changed digests for human edits and for agent
-    // edits alike. Agent RPCs tag their transactions with the acting agent
+    // Body mention invitations + doc_changed digests for human edits and for
+    // agent edits alike (a body mention invites an absent agent once per
+    // document and is otherwise a pointer, #116; see inviteMentioned). Agent RPCs tag their transactions with the acting agent
     // (see applyMutation/performTypedInsert/performTypedSuggest); the events
     // they produce carry that `actor`, and an agent's poll drops its own, so
     // it never gets a "mention" for text it typed itself. System writes
@@ -757,7 +759,7 @@ class DocumentAgent extends Agent {
       for (const block of blocks) {
         const text = this.blockText(block);
         if (text === null) continue; // block already gone from the fragment
-        this.notifyMentions(block, text, rosterNames, actor);
+        this.inviteMentioned(text, rosterNames, actor);
         // Arrivals are already recorded as "added" by syncBlockIds; this
         // covers edits to blocks that were already there.
         const id = blockIdOf(block);
@@ -789,7 +791,19 @@ class DocumentAgent extends Agent {
           continue;
         }
         const change = event.changes.keys.get(key);
-        if (!change || change.action !== "update") continue; // "add" = brand-new thread, not a reply
+        if (!change) continue;
+        if (change.action === "add") {
+          // A brand-new thread: its comment text is also in the body as a
+          // `{>>…<<}` run, which the body scan skips, so a comment naming an
+          // agent is notified from here, every time (#116). The thread's
+          // author is not mentioning itself.
+          for (const name of findMentions(thread.commentText ?? "", rosterNames)) {
+            if (name === actor || name === thread.author?.name) continue;
+            this.recordEvent("mention", { agent: name, text: thread.commentText, threadId: thread.id, ...tagged });
+          }
+          continue;
+        }
+        if (change.action !== "update") continue;
         let previousReplyCount = 0;
         try {
           const previous = JSON.parse(change.oldValue) as ThreadData;
@@ -1411,42 +1425,28 @@ class DocumentAgent extends Agent {
   }
 
   /**
-   * Records a "mention" event for every roster agent named in a block's text
-   * that hasn't already been notified about this block.
-   *
-   * De-duplication is per (top-level block, agent name), because the scan
-   * runs over the block's whole text on every keystroke in it — without this,
-   * "@scribe, could you..." would fire a fresh mention for every character
-   * typed after the name. A name is forgotten again as soon as it is no
-   * longer present in the block, so deleting the mention and retyping it
-   * notifies properly rather than being swallowed. The map is keyed weakly by
-   * the live Yjs block, so it needs no explicit clearing: entries go away
-   * with the blocks (and with the whole document on expiry).
+   * Fires the one invitation a body mention carries (#116). A roster agent
+   * named in a block's text is notified only if it is not present in the
+   * document and has never been invited to it; the invitation is stamped on
+   * its roster row, so the same text can be typed on in, split, patched, or
+   * reloaded after a restart without firing again. Mentions inside inline
+   * comment runs are skipped here and notified from the thread entry, every
+   * time. An agent that is already here sees the mention on its next read
+   * (`read_document` lists the blocks that name it under `mentions`).
    */
-  private notifyMentions(
-    block: Y.AbstractType<unknown>,
-    text: string,
-    rosterNames: MentionTarget[],
-    actor: string | null,
-  ): void {
-    const mentioned = new Set(findMentions(text, rosterNames));
+  private inviteMentioned(text: string, rosterNames: MentionTarget[], actor: string | null): void {
+    const mentioned = new Set(findMentions(stripCommentRuns(text), rosterNames));
     // An agent writing its own name is not mentioning itself.
     if (actor) mentioned.delete(actor);
+    if (mentioned.size === 0) return;
 
-    let notified = this.notifiedMentions.get(block);
-    if (!notified) {
-      notified = new Set<string>();
-      this.notifiedMentions.set(block, notified);
-    }
-
-    for (const name of notified) {
-      if (!mentioned.has(name)) notified.delete(name);
-    }
-
+    const now = Date.now();
     for (const name of mentioned) {
-      if (notified.has(name)) continue;
-      notified.add(name);
-      this.recordEvent("mention", { agent: name, text, ...(actor ? { actor } : {}) });
+      const row = this.sql<{ invited_at: number | null }>`SELECT invited_at FROM roster WHERE name = ${name}`[0];
+      const present = (this.agentPresence.get(name)?.state ?? null) !== null;
+      if (!shouldInvite({ present, invitedAt: row?.invited_at ?? null })) continue;
+      this.sql`UPDATE roster SET invited_at = ${now} WHERE name = ${name}`;
+      this.recordEvent("mention", { agent: name, text, invite: true, ...(actor ? { actor } : {}) });
     }
   }
 
@@ -2061,6 +2061,8 @@ class DocumentAgent extends Agent {
         expires_at: string;
         presence: { name: string; isAgent: boolean; mention?: string }[];
         threads: ThreadData[];
+        /** The blocks that name the caller: where to look, since body mentions do not notify (#116). */
+        mentions: { anchor: string; text: string }[];
       }
     | { error: AgentError }
   > {
@@ -2070,7 +2072,12 @@ class DocumentAgent extends Agent {
     const { doc, awareness } = this.ensureInitialised();
 
     const markdown = yDocToMarkdown(doc);
-    const blocks = getBlocks(doc).map((b) => ({ anchor: formatAnchor(b), text: b.text }));
+    const docBlocks = getBlocks(doc);
+    const blocks = docBlocks.map((b) => ({ anchor: formatAnchor(b), text: b.text }));
+    const self: MentionTarget = { name: verified.entry.name, mention: verified.entry.mention ?? null };
+    const mentions = docBlocks
+      .filter((b) => findMentions(b.text, [self]).length > 0)
+      .map((b) => ({ anchor: formatAnchor(b), text: b.text }));
     const instructionBlocks = getAgentInstructions(doc);
     // Framed as untrusted document guidance, with each block's editor (#82).
     const instructions = instructionsForAgents(instructionBlocks);
@@ -2121,6 +2128,7 @@ class DocumentAgent extends Agent {
       expires_at: new Date(expiresAtMs).toISOString(),
       presence,
       threads,
+      mentions,
     };
   }
 

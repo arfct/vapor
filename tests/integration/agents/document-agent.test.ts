@@ -2175,9 +2175,26 @@ describe("DocumentAgent", () => {
       // Enrollment is implicit on an agent's first RPC call — the mention/
       // thread_reply/doc_changed observers only fire once the roster is
       // non-empty, so this agent must be on it *before* any human edit the
-      // test makes, exactly as an explicit mint used to guarantee.
-      await agent.agentJoin(id);
+      // test makes, exactly as an explicit mint used to guarantee. A read,
+      // not a join: a body mention only invites an agent that is not
+      // present (#116), and these tests are about that invitation.
+      await agent.agentRead(id);
       return { agent, id };
+    }
+
+    /** A person's new comment thread, as the browser writes it. */
+    function humanThread(client: ReturnType<typeof connectYjsClient>, id: string, commentText: string) {
+      client.doc.getMap<string>("threads").set(
+        id,
+        JSON.stringify({
+          id,
+          commentText,
+          author: { name: "Ada", color: "#000", colorLight: "#fff" },
+          createdAt: Date.now(),
+          resolved: false,
+          replies: [],
+        }),
+      );
     }
 
     it("records a mention through the real Yjs sync path when a human edits an existing block", async () => {
@@ -2198,7 +2215,7 @@ describe("DocumentAgent", () => {
       expect(mention).toBeDefined();
       expect(mention).toMatchObject({
         type: "mention",
-        payload: { agent: "scribe", text: expect.stringContaining("@scribe") },
+        payload: { agent: "scribe", text: expect.stringContaining("@scribe"), invite: true },
       });
       expect(typeof mention?.seq).toBe("number");
       expect("cursor" in result && result.cursor).toBe(events[events.length - 1].seq);
@@ -2294,7 +2311,7 @@ describe("DocumentAgent", () => {
       cleanup(client);
     });
 
-    it("re-fires a mention after it is deleted and retyped", async () => {
+    it("does not re-fire a body mention that is deleted and retyped: one invitation per document (#116)", async () => {
       const { agent, id } = await setup();
       const client = connectYjsClient(agent);
 
@@ -2305,6 +2322,7 @@ describe("DocumentAgent", () => {
         ytext.insert(ytext.length, ch);
       }
       const first = await agent.agentAwaitEvents(id, {});
+      expect(("events" in first ? first.events : []).filter((e) => e.type === "mention")).toHaveLength(1);
       const cursor = "cursor" in first ? first.cursor : 0;
 
       ytext.delete(base, ytext.length - base);
@@ -2312,12 +2330,122 @@ describe("DocumentAgent", () => {
         ytext.insert(ytext.length, ch);
       }
 
-      const second = await agent.agentAwaitEvents(id, { cursor });
-      const mentions = ("events" in second ? second.events : []).filter(
-        (e) => e.type === "mention",
-      );
-      expect(mentions).toHaveLength(1);
+      const second = await agent.agentAwaitEvents(id, { cursor, timeoutMs: 20 });
+      expect(("events" in second ? second.events : []).filter((e) => e.type === "mention")).toHaveLength(0);
       cleanup(client);
+    });
+
+    it("stays silent for a body mention in a new block, in a split block, and after a restart, once invited (#116)", async () => {
+      const { agent, id } = await setup();
+      const client = connectYjsClient(agent);
+      const frag = client.doc.getXmlFragment("default");
+
+      const para = frag.get(0) as Y.XmlElement;
+      const ytext = para.get(0) as Y.XmlText;
+      ytext.insert(ytext.length, " @scribe first");
+      const first = await agent.agentAwaitEvents(id, {});
+      expect(("events" in first ? first.events : []).filter((e) => e.type === "mention")).toHaveLength(1);
+      let cursor = "cursor" in first ? first.cursor : 0;
+
+      // A second mention in a brand-new paragraph.
+      client.doc.transact(() => {
+        const p2 = new Y.XmlElement("paragraph");
+        frag.insert(frag.length, [p2]);
+        const t2 = new Y.XmlText();
+        p2.insert(0, [t2]);
+        t2.insert(0, "@scribe again");
+      });
+      // Enter after the first mention: its tail moves into a new block.
+      client.doc.transact(() => {
+        const tail = ytext.toString().slice(ytext.toString().indexOf(" @scribe"));
+        ytext.delete(ytext.length - tail.length, tail.length);
+        const p3 = new Y.XmlElement("paragraph");
+        frag.insert(1, [p3]);
+        const t3 = new Y.XmlText();
+        p3.insert(0, [t3]);
+        t3.insert(0, tail.trim());
+      });
+      const second = await agent.agentAwaitEvents(id, { cursor, timeoutMs: 20 });
+      expect(("events" in second ? second.events : []).filter((e) => e.type === "mention")).toHaveLength(0);
+      cursor = "cursor" in second ? second.cursor : cursor;
+      cleanup(client);
+
+      // A restart shares the store but starts with empty memory: the
+      // invitation is on the roster row, not in a map of live blocks.
+      const agent2 = new DocumentAgent({} as never, {} as never);
+      await agent2.agentRead(id);
+      const client2 = connectYjsClient(agent2);
+      const p = client2.doc.getXmlFragment("default").get(0) as Y.XmlElement;
+      (p.get(0) as Y.XmlText).insert(0, "Edited: ");
+      const third = await agent2.agentAwaitEvents(id, { cursor, timeoutMs: 20 });
+      expect(("events" in third ? third.events : []).filter((e) => e.type === "mention")).toHaveLength(0);
+      cleanup(client2);
+    });
+
+    it("does not notify a present agent about a body mention; read_document points at it instead (#116)", async () => {
+      const { agent, id } = await setup();
+      await agent.agentJoin(id);
+      const client = connectYjsClient(agent);
+
+      const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
+      const ytext = para.get(0) as Y.XmlText;
+      ytext.insert(ytext.length, " over to @scribe");
+
+      const result = await agent.agentAwaitEvents(id, { timeoutMs: 20 });
+      expect(("events" in result ? result.events : []).filter((e) => e.type === "mention")).toHaveLength(0);
+
+      const read = await agent.agentRead(id);
+      expect("mentions" in read && read.mentions).toEqual([
+        { anchor: expect.any(String), text: expect.stringContaining("@scribe") },
+      ]);
+      expect("mentions" in read && "blocks" in read && read.mentions[0].anchor).toBe(read.blocks[0].anchor);
+      cleanup(client);
+    });
+
+    it("notifies a comment mention every time, present or not, and does not count its inline run as a body mention (#116)", async () => {
+      const { agent, id } = await setup();
+      await agent.agentJoin(id);
+      const client = connectYjsClient(agent);
+
+      // The browser writes the comment's text into the block as a hidden
+      // run and the thread entry into the map, in one transaction.
+      const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
+      const ytext = para.get(0) as Y.XmlText;
+      client.doc.transact(() => {
+        ytext.insert(ytext.length, "@scribe tighten this", { criticComment: {} });
+        humanThread(client, "t-1", "@scribe tighten this");
+      });
+
+      const first = await agent.agentAwaitEvents(id, {});
+      const mentions = ("events" in first ? first.events : []).filter((e) => e.type === "mention");
+      expect(mentions).toHaveLength(1);
+      expect(mentions[0].payload).toMatchObject({ agent: "scribe", text: "@scribe tighten this", threadId: "t-1" });
+      expect(mentions[0].payload).not.toHaveProperty("invite");
+
+      // A second comment naming the agent notifies again.
+      const cursor = "cursor" in first ? first.cursor : 0;
+      humanThread(client, "t-2", "@scribe and this");
+      const second = await agent.agentAwaitEvents(id, { cursor });
+      expect(("events" in second ? second.events : []).filter((e) => e.type === "mention")).toHaveLength(1);
+
+      cleanup(client);
+    });
+
+    it("an agent's comment naming another agent notifies it, tagged with the actor (#116)", async () => {
+      const { agent, id: scribe } = await setup(["comment"]);
+      await agent.agentJoin(scribe);
+      const muse = identity({ id: "email:muse@x.com", name: "muse", caps: ["comment"] });
+      await agent.agentJoin(muse);
+
+      const read = await agent.agentRead(muse);
+      const anchor = "blocks" in read ? read.blocks[0].anchor : "";
+      const result = await agent.agentComment(muse, { anchor, text: "@scribe your turn" });
+      expect("threadId" in result).toBe(true);
+
+      const forScribe = await agent.agentAwaitEvents(scribe, { timeoutMs: 20 });
+      const mentions = ("events" in forScribe ? forScribe.events : []).filter((e) => e.type === "mention");
+      expect(mentions).toHaveLength(1);
+      expect(mentions[0].payload).toMatchObject({ agent: "scribe", actor: "muse", text: "@scribe your turn" });
     });
 
     it("records no events at all while the roster is empty", async () => {
@@ -2828,8 +2956,9 @@ describe("DocumentAgent", () => {
         body: JSON.stringify({ content: "# Title\n\nBody." }),
       }));
       const id = identity({ caps });
-      // Enroll the subscriber so @scribe mentions register against the roster.
-      await agent.agentJoin(id);
+      // Enroll the subscriber so @scribe mentions register against the roster,
+      // without joining: a body mention invites only an absent agent (#116).
+      await agent.agentRead(id);
       return { agent, id };
     }
 
@@ -3005,14 +3134,12 @@ describe("DocumentAgent", () => {
 
       await agent.eventsSubscribe(id, { name: "mention", url: URL, secret: SECRET });
 
-      // Mention notifications dedupe per (text node, agent) while the name
-      // stays in the block, so to re-mention we remove the first mention
-      // (forgetting the name) before inserting the second.
+      // A body mention invites once per document (#116), so the second
+      // mention here is a comment, which notifies every time.
       const client = connectYjsClient(agent);
       const para = client.doc.getXmlFragment("default").get(0) as Y.XmlElement;
       const ytext = para.get(0) as Y.XmlText;
-      const base = ytext.length;
-      ytext.insert(base, " one @scribe");
+      ytext.insert(ytext.length, " one @scribe");
       await untilFetchCalls(1);
       await vi.advanceTimersByTimeAsync(10_000); // burn the retry ladder
       expect(subsRows()[0].failing_since).not.toBeNull();
@@ -3020,8 +3147,17 @@ describe("DocumentAgent", () => {
 
       // An hour later, still failing: now it suspends.
       await vi.advanceTimersByTimeAsync(61 * 60 * 1000);
-      ytext.delete(base, " one @scribe".length);
-      ytext.insert(base, " two @scribe");
+      client.doc.getMap<string>("threads").set(
+        "t-two",
+        JSON.stringify({
+          id: "t-two",
+          commentText: "two @scribe",
+          author: { name: "Ada", color: "#000", colorLight: "#fff" },
+          createdAt: Date.now(),
+          resolved: false,
+          replies: [],
+        }),
+      );
       await untilFetchCalls(4);
       await vi.advanceTimersByTimeAsync(10_000);
       expect(subsRows()[0].active).toBe(0);

@@ -264,9 +264,12 @@ Reply to comments in the thread, not in the body.
 
 <h2>Watching a document</h2>
 <p>
-  Documents emit four events: <code>mention</code> when the text says
+  Documents emit four events: <code>mention</code> when a comment or a reply says
   <code>@agent-name</code> (the name shown in the Agents panel; people pick it from
-  the completion menu that opens when they type <code>@</code> in the text or in a comment),
+  the completion menu that opens when they type <code>@</code>), and once when the body
+  text names an agent that is not in the document yet — the invitation. Other body
+  mentions do not notify: they are pointers, and <code>read_document</code> lists
+  the blocks that name your agent under <code>mentions</code>.
   <code>thread.reply</code> when a person answers in a thread the agent took part in,
   <code>document.changed</code>, a digest of edits, and <code>document.expiring</code>,
   once, six hours before the document deletes itself — the cue to export. An agent
@@ -381,7 +384,7 @@ A fenced block whose language is \`agent\` carries guidance for agents; people s
 
 ## Watching
 
-Documents emit mention (the text says @agent-name; people pick agents from the menu that opens on typing @, in the text or in a comment), thread.reply (a person answered in the agent's thread), document.changed, and document.expiring (once, six hours before the document deletes itself — export then). read_document also returns created_at and expires_at.
+Documents emit mention (a comment or reply says @agent-name, or the body names an agent that is not in the document yet — that one fires once, as the invitation; other body mentions are pointers that read_document lists under mentions, not notifications), thread.reply (a person answered in the agent's thread), document.changed, and document.expiring (once, six hours before the document deletes itself — export then). read_document also returns created_at and expires_at.
 
 - **Let vapor wake your agent.** Sign in, open Share → Invite an agent, and under Claude (routine) or Other (webhook) give vapor one target: a Claude Code routine's fire URL and token, or an HTTPS webhook. Every mention of your agent, and every reply in its threads, in any document it is on, fires it. Create the routine at https://claude.ai/code/routines/new with the Vapor connector and an API trigger; the prompt is at the end of this file. One wake per document every 30 seconds, fifty a day, no retries.
 - **Poll for a while.** After sharing a link, stay about ten minutes: call events_poll with the last cursor, wait at least retryAfterMs between empty polls, answer what arrives, then return when asked or mentioned.

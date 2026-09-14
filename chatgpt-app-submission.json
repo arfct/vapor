@@ -10,14 +10,26 @@
   "tools": {
     "read_document": {
       "annotations": {
-        "readOnlyHint": true,
-        "openWorldHint": false,
+        "readOnlyHint": false,
+        "openWorldHint": true,
         "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Retrieves a specified vapor document's markdown, anchors, metadata, presence, and comment threads without modifying data.",
-        "open_world_justification": "Only accesses vapor documents identified by document id and does not fetch arbitrary public webpages or unrelated external systems.",
+        "read_only_justification": "Retrieves document content and also enrolls or refreshes the caller in that document's agent roster.",
+        "open_world_justification": "Can access any public-by-link vapor document whose identifier the caller supplies.",
         "destructive_justification": "Does not delete, overwrite, revoke access, or perform irreversible actions."
+      }
+    },
+    "read_changes": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Retrieves blocks changed since a cursor and also enrolls or refreshes the caller in the document's agent roster.",
+        "open_world_justification": "Can inspect changes in any public-by-link vapor document whose identifier the caller supplies.",
+        "destructive_justification": "Does not delete or overwrite document content, comments, subscriptions, or access grants."
       }
     },
     "insert": {
@@ -42,6 +54,18 @@
         "read_only_justification": "Replaces one or more existing document blocks and therefore changes document state.",
         "open_world_justification": "Writes content into a public-by-link document that can be viewed or edited by anyone with the URL.",
         "destructive_justification": "Overwrites existing blocks in the document, with stale-anchor checks to reduce accidental overwrites."
+      }
+    },
+    "patch": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Applies block-level insertions, replacements, and deletions to make a live document match supplied markdown.",
+        "open_world_justification": "Writes content into a public-by-link document that can be viewed or edited by anyone with the URL.",
+        "destructive_justification": "Can overwrite or delete existing blocks, with stale-anchor checks and a guard against accidentally emptying the document."
       }
     },
     "suggest": {
@@ -142,37 +166,37 @@
     },
     "await_events": {
       "annotations": {
-        "readOnlyHint": true,
-        "openWorldHint": false,
+        "readOnlyHint": false,
+        "openWorldHint": true,
         "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Long-polls document events and returns event data without modifying document state.",
-        "open_world_justification": "Only reads events from a specified vapor document and does not interact with arbitrary external systems.",
+        "read_only_justification": "Long-polls document events and also enrolls or refreshes the caller in the document's agent roster.",
+        "open_world_justification": "Can poll events from any public-by-link vapor document whose identifier the caller supplies.",
         "destructive_justification": "Does not delete, overwrite, revoke access, or perform irreversible actions."
       }
     },
     "events_list": {
       "annotations": {
-        "readOnlyHint": true,
-        "openWorldHint": false,
+        "readOnlyHint": false,
+        "openWorldHint": true,
         "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Returns the event types supported by a document without modifying document state.",
-        "open_world_justification": "Only reads the event catalog for a specified vapor document and does not interact with arbitrary external systems.",
+        "read_only_justification": "Returns supported event types and also enrolls or refreshes the caller in the document's agent roster.",
+        "open_world_justification": "Can inspect event support for any public-by-link vapor document whose identifier the caller supplies.",
         "destructive_justification": "Does not delete, overwrite, revoke access, or perform irreversible actions."
       }
     },
     "events_poll": {
       "annotations": {
-        "readOnlyHint": true,
-        "openWorldHint": false,
+        "readOnlyHint": false,
+        "openWorldHint": true,
         "destructiveHint": false
       },
       "justifications": {
-        "read_only_justification": "Polls event occurrences from a document event log without modifying document state.",
-        "open_world_justification": "Only reads events from a specified vapor document and does not interact with arbitrary external systems.",
+        "read_only_justification": "Polls document event occurrences and also enrolls or refreshes the caller in the document's agent roster.",
+        "open_world_justification": "Can poll events from any public-by-link vapor document whose identifier the caller supplies.",
         "destructive_justification": "Does not delete, overwrite, revoke access, or perform irreversible actions."
       }
     },
@@ -263,19 +287,19 @@
       "expected_output_url": null
     },
     {
-      "description": "Directly edit a document and attach a small file when write access is available.",
-      "user_prompt": "In document ab12cd34, append a References section and attach this small CSV as supporting data.",
+      "description": "Revise a document efficiently and attach a small file when write access is available.",
+      "user_prompt": "Revise vapor document ab12cd34 to improve the draft while preserving unchanged blocks, then attach this small CSV as supporting data.",
       "file_attachment_urls": null,
-      "tools_triggered": "read_document, insert, attach",
-      "expected_output": "Appends the requested markdown and adds the file as an attachment block, or returns a capability error if write access is missing.",
+      "tools_triggered": "read_document, patch, attach",
+      "expected_output": "Reads the current anchors, applies only the necessary block changes, and adds the file as an attachment block, or returns a capability error if write access is missing.",
       "expected_output_url": null
     },
     {
-      "description": "Monitor addressed document events using polling or webhook subscription.",
-      "user_prompt": "For document ab12cd34, list the event types and subscribe my HTTPS webhook to mentions.",
+      "description": "Monitor document events and retrieve only the blocks that changed.",
+      "user_prompt": "For vapor document ab12cd34, check for document change events and show me only the blocks changed since cursor 12.",
       "file_attachment_urls": null,
-      "tools_triggered": "events_list, events_subscribe",
-      "expected_output": "Lists supported document events and registers the signed webhook subscription, or explains the signed-in endpoint requirement.",
+      "tools_triggered": "events_list, events_poll, read_changes",
+      "expected_output": "Checks supported events, polls for document changes, and returns the current changed or removed blocks with an updated cursor.",
       "expected_output_url": null
     }
   ],

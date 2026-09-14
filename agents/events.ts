@@ -28,7 +28,8 @@ export const EVENT_TYPES = [
   {
     name: "mention",
     internalType: "mention",
-    description: "Fires when this agent is @mentioned in the document text, by a person or by another agent (`actor`).",
+    description:
+      "Fires when this agent is @mentioned in a comment or a thread reply, by a person or by another agent (`actor`), and once per document when a body mention invites it while it is away (`invite: true`). Other body mentions are pointers, not notifications: read_document lists the blocks that name you under `mentions`.",
     delivery: ["poll", "webhook"] as const,
     addressed: true,
   },

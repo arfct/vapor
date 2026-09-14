@@ -153,7 +153,7 @@ The two downloaded files should be byte-identical. If they are not, it is a bug.
 A mention is a token, `@slug[+tag]~sid`, that the editor shows as a name (design: `docs/plans/2026-09-06-agent-identity-plan.md`):
 
 - `@nicholas-jitkoff~k3f0a9x2` names a person. The slug is their display name for readers of the raw text; the eight-character short id is their public `uid` (or, for an anonymous person, their browser id) and is what resolves. Renames never break a mention.
-- `@nicholas-jitkoff+agent~k3f0a9x2` names that person's counterpart agent: the same id with the `agent` tag. The server records a `mention` event for it and wakes the owner's agent if they set a wake target.
+- `@nicholas-jitkoff+agent~k3f0a9x2` names that person's counterpart agent: the same id with the `agent` tag. In a comment or reply, the server records a `mention` event for it and wakes the owner's agent if they set a wake target; in the body it does so once per document, as an invitation while the agent is away, and is otherwise a pointer `read_document` reports under `mentions` (#116).
 - `@claude-code~c41d7e90` names an anonymous agent: its client slug and a session id.
 
 In the editor a token is a `mention` node (`app/lib/mention.ts`, mirrored in `richSchema`) rendered as `@Nicholas Jitkoff` in the owner's colour, with the id hidden; it deletes as one unit. In markdown, over MCP, in `/:id.md`, and in comment text the full token is what travels, so the document itself carries the exact identity. Comment bodies shown as plain text have their ids stripped for display (`stripMentionIds`).

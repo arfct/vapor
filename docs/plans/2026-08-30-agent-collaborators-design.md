@@ -94,7 +94,7 @@ Rate limit: per token, a budget consistent with the simulated typing speed (enfo
 
 ## Events and summoning
 
-`DocumentAgent` records events (`mention`, `thread_reply`, `doc_changed` digest) in an `events` table with a monotonic cursor, pruned with the doc. A mention is `@name` matching a roster agent's name, detected in inserted text. `await_events` long-polls up to ~50 s and returns anything after the caller's cursor; clients re-call in a loop to feel resident. This is what makes a counterpart agent summonable: its owner's client holds `await_events` open, someone types `@nicks-agent fix the intro`, the client wakes and edits.
+`DocumentAgent` records events (`mention`, `thread_reply`, `doc_changed` digest) in an `events` table with a monotonic cursor, pruned with the doc. A mention is `@name` matching a roster agent's name. Where it is written decides what it does (#116): in a comment or a thread reply it notifies every time, since each is a fresh request; in the body it is a pointer to the passage the agent should care about (`read_document` lists those blocks under `mentions`) and fires only once per document, as the invitation that brings an absent agent in (`invite: true`, stamped on the roster row so restarts and re-identified blocks cannot re-fire it). `await_events` long-polls up to ~50 s and returns anything after the caller's cursor; clients re-call in a loop to feel resident. This is what makes a counterpart agent summonable: someone comments `@nicks-agent fix the intro` on the paragraph, or names it in the body of a document it has not joined, and the owner's client wakes and edits.
 
 The UI renders agent presence with a distinguishing badge in the avatar stack and caret label — human-like, but never passing as human.
 

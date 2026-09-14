@@ -91,12 +91,13 @@ describe("mcp tool table", () => {
     }
   });
 
-  it("marks reads read-only and anything that lands in a public document open-world", () => {
+  it("marks roster-refreshing reads open-world and destructive writes accurately", () => {
     const by = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
-    expect(by.read_document.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: false });
-    expect(by.events_poll.annotations.readOnlyHint).toBe(true);
-    expect(by.read_changes.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: false });
+    for (const name of ["read_document", "read_changes", "await_events", "events_list", "events_poll"]) {
+      expect(by[name].annotations, name).toMatchObject({ readOnlyHint: false, destructiveHint: false, openWorldHint: true });
+    }
     expect(by.replace.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true, openWorldHint: true });
+    expect(by.patch.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true, openWorldHint: true });
     expect(by.delete_comment.annotations.destructiveHint).toBe(true);
     expect(by.suggest.annotations).toMatchObject({ destructiveHint: false, openWorldHint: true });
   });

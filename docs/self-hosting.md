@@ -173,7 +173,7 @@ Anyone on ChatGPT can already add an instance as a connector in developer mode. 
 - `GET /.well-known/openai-apps-challenge` serves whatever `OPENAI_APPS_CHALLENGE` holds. Set it to the token the portal shows during domain verification, deploy, and click verify; you can unset it afterwards.
 - `/privacy` lists what is stored, why, who sees it, and for how long, which the review asks for.
 
-The portal side, in order: verify your organisation's identity on [platform.openai.com](https://platform.openai.com), then under Plugins submit the MCP URL (`https://vapor.example/mcp`), the OAuth details (discovered from `/.well-known/oauth-authorization-server`; dynamic client registration is on), the privacy and terms URLs, and a test account the reviewers can sign in with that does not require multi-factor authentication. A personal access token (Share → Invite an agent → Other) minted by that account works as the reviewers' bearer if they prefer one over the sign-in flow. Reviews look at every tool once, so keep the descriptions honest about what each writes.
+The portal side, in order: verify your organisation's identity on [platform.openai.com](https://platform.openai.com), then under Plugins submit the MCP URL (`https://vapor.example/mcp`), the OAuth details (discovered from `/.well-known/oauth-authorization-server`; dynamic client registration is on), the privacy and terms URLs, and a test account the reviewers can sign in with that does not require multi-factor authentication. A personal access token (Share → Invite an agent → More) minted by that account works as the reviewers' bearer if they prefer one over the sign-in flow. Reviews look at every tool once, so keep the descriptions honest about what each writes.
 
 ## Operating notes
 

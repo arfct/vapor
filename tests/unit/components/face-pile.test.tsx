@@ -41,7 +41,7 @@ describe("FacePile", () => {
     expect(trigger.querySelector("[data-self-face]")).not.toBeNull();
   });
 
-  it("puts the viewer last, apart from the others, and lists them as You", () => {
+  it("puts the viewer last, overlapping like any other face, and lists them as You", () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => [] })));
     const yjs = liveYjs(me);
     renderWithDocument(createElement(FacePile, { alsoOnline: [{ name: "Ada Lovelace", color: "#64B5F6" }] }), {
@@ -51,7 +51,9 @@ describe("FacePile", () => {
     const titles = Array.from(trigger.querySelectorAll("[title]")).map((el) => el.getAttribute("title"));
     expect(titles).toEqual(["Ada Lovelace", "Curious Ladybug"]);
     const selfWrap = trigger.querySelector("[data-self-face]") as HTMLElement;
-    expect(selfWrap.className).toContain("ml-1.5");
+    // Your face overlaps its neighbour by the same 8px the others do.
+    expect(selfWrap.className).toContain("-ml-2");
+    expect(selfWrap.className).not.toContain("ml-1.5");
     // Face wrappers are flex boxes so the faces centre in the pill instead of sitting on a text baseline.
     for (const wrap of Array.from(trigger.querySelectorAll("[title]")).map((el) => el.parentElement!.parentElement!)) {
       expect(wrap.className.split(" ")).toContain("flex");

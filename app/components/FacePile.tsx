@@ -27,7 +27,9 @@ function statusLabel(person: Person): string {
  * One face on an opaque paper backing, so overlapping faces don't show
  * through each other: a disc for a person, a hexagon for an agent (the
  * backing doubles as the ring a clip-path would otherwise cut off).
- * People who aren't connected go grey and half strength.
+ * People who aren't connected go grey and a step away from the page's own
+ * brightness, never translucent: alpha would let the faces underneath show
+ * through the overlap (see .face-away in app.css).
  */
 function Face({
   user,
@@ -44,9 +46,9 @@ function Face({
 }) {
   const backing = isAgent ? `avatar-hexagon ${ring ? "p-[2px]" : ""}` : "rounded-full";
   return (
-    // opacity/filter create stacking contexts that would float dimmed faces
-    // above the others; give every face one, with the present ones on top.
-    <span className={`relative inline-flex bg-paper ${backing} ${away ? "z-0 opacity-50 grayscale" : "z-10"}`}>
+    // filter creates a stacking context that would float dimmed faces above
+    // the others; give every face one, with the present ones on top.
+    <span className={`relative inline-flex bg-paper ${backing} ${away ? "face-away z-0" : "z-10"}`}>
       <Avatar
         name={user.name}
         avatar={user.avatar}
@@ -163,9 +165,9 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
 
   rows.push({ key: "self", user: self, isAgent: false, away: false, status: "You · here now" });
 
-  // Oldest on the left, newest on the right; the newest faces are the
-  // ones shown, with the older remainder counted at the left. You are
-  // always the last face, a step apart from the others.
+  // Oldest on the left, newest on the right; the newest faces are the ones
+  // shown, with the older remainder counted at the left. You are always the
+  // last face, overlapping its neighbour like any other.
   const shown = people.slice(-MAX_FACES);
   const overflow = people.length - shown.length;
   const online = people.filter((p) => p.status === "online").length;
@@ -195,7 +197,7 @@ export default function FacePile({ alsoOnline }: { alsoOnline?: PresenceUser[] }
                   <Face user={person.user} isAgent={person.isAgent} away={person.status !== "online"} className="h-7 w-7" ring />
                 </span>
               ))}
-              <span className={`flex ${shown.length > 0 || overflow > 0 ? "ml-1.5" : ""}`} data-self-face>
+              <span className={`flex ${shown.length > 0 || overflow > 0 ? "-ml-2" : ""}`} data-self-face>
                 <Face user={self} isAgent={false} away={false} className="h-7 w-7" ring />
               </span>
             </span>

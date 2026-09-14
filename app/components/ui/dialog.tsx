@@ -35,7 +35,10 @@ export default function Dialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-paper/20 p-4"
+      // Anchored 60px from the top rather than centred: a dialog whose content
+      // changes height (tabs with different bodies) would otherwise move under
+      // the pointer as it grew, since centring splits the change both ways.
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-paper/20 p-4 pt-[60px]"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -44,7 +47,7 @@ export default function Dialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="squircle-[24px] max-h-[85vh] min-h-[420px] w-full max-w-[420px] overflow-y-auto bg-paper p-6 shadow-[0_8px_10px_1px_rgba(0,0,0,0.14),0_3px_14px_2px_rgba(0,0,0,0.12),0_5px_5px_-3px_rgba(0,0,0,0.2)]"
+        className="squircle-[24px] max-h-[calc(100vh-76px)] min-h-[420px] w-full max-w-[420px] overflow-y-auto bg-paper p-6 shadow-[0_8px_10px_1px_rgba(0,0,0,0.14),0_3px_14px_2px_rgba(0,0,0,0.12),0_5px_5px_-3px_rgba(0,0,0,0.2)]"
       >
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-baseline gap-2">

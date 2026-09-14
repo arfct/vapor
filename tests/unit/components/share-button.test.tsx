@@ -22,16 +22,27 @@ describe("ShareButton", () => {
     vi.restoreAllMocks();
   });
 
-  it("opens with copy and download rows, and no agent row without a handler", () => {
+  it("opens with copy and a Download group of the three formats, and no agent row without a handler", () => {
     renderWithDocument(createElement(ShareButton));
     fireEvent.click(screen.getByLabelText("Share options"));
 
     expect(screen.getByText("Copy link")).toBeTruthy();
     expect(screen.getByText("Download")).toBeTruthy();
-    expect(screen.getByText("Download EPUB")).toBeTruthy();
-    expect(screen.getByText("Print or save as PDF")).toBeTruthy();
+    for (const format of ["Markdown", "PDF", "EPUB"]) expect(screen.getByText(format)).toBeTruthy();
     expect(screen.queryByText("Send to device")).toBeNull();
     expect(screen.queryByText("Invite an agent")).toBeNull();
+  });
+
+  it("orders the menu: invite, the ways to hand it over, then the formats to take away", () => {
+    renderWithDocument(createElement(ShareButton, { onInviteAgent: () => {}, onSendTo: () => {} }));
+    fireEvent.click(screen.getByLabelText("Share options"));
+    const labels = ["Invite an agent", "Copy link", "Send to device", "Download", "Markdown", "PDF", "EPUB"];
+    const tops = labels.map((label) => {
+      const node = screen.getByText(label);
+      return { label, order: Array.from(document.querySelectorAll("*")).indexOf(node) };
+    });
+    expect(tops.map((t) => t.label)).toEqual(labels);
+    expect([...tops].sort((a, b) => a.order - b.order).map((t) => t.label)).toEqual(labels);
   });
 
   it("invite-an-agent row calls its handler", () => {

@@ -190,8 +190,8 @@ export const ATTACH_OUTPUT = output({
   inserted: z.object({ ok: z.literal(true).optional(), error: errorSchema.optional() }).describe("The result of inserting the block."),
 });
 
-/** Reads: safe to call freely, nothing leaves the reader's view. */
-export const READ: ToolAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+/** Reads that also enroll or refresh the caller in a public document's roster. */
+export const READ: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true };
 /** Writes into a public document: additive, not destructive, but visible to the world. */
 export const WRITE: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
 /** Writes that replace or remove what is there. */
@@ -402,7 +402,7 @@ export const TOOLS: ToolDef[] = [
     name: "patch",
     output: PATCH_OUTPUT,
     title: "Patch the document",
-    annotations: WRITE,
+    annotations: DESTRUCTIVE,
     securitySchemes: CAN_WRITE,
     description:
       "Give the document's full new markdown and have the smallest set of block changes applied for you. Prefer this to a whole-document replace when revising a draft: the diff runs inside the document, so there is no window between your read and your write, blocks that did not change are not touched at all (their ids, their comments, and their attribution survive), history shows what changed rather than one opaque rewrite, and the hourly budget is charged for what you added rather than for the whole document. Pass `anchors` — every anchor from your read — or an edit someone made since then is quietly put back: only the blocks this patch would touch are checked, and stale_block names them. Requires the write capability.",

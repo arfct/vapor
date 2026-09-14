@@ -138,7 +138,7 @@ export function mcpHelpHtml(site: SiteConfig): string {
 
 <h3>Headless machines and fleets</h3>
 <p>
-  Signed in, <strong>Share → Invite an agent → Other → Access token</strong> mints a
+  Signed in, <strong>Share → Invite an agent → More → Access token</strong> mints a
   long-lived token with a chosen grant. Send it as a bearer to the signed-in URL from any
   client that can set a header — no browser in the loop — and revoke it from the same
   place. Same identity and agent as the OAuth flow.
@@ -278,7 +278,7 @@ Reply to comments in the thread, not in the body.
 <p>
   <strong>Let vapor wake it.</strong> Sign in and open Share → Invite an agent:
   under <strong>Claude</strong>, give vapor a Claude Code routine's fire URL and
-  token; under <strong>Other</strong>, an HTTPS webhook of your own.
+  token; under <strong>More</strong>, an HTTPS webhook of your own.
   From then on a mention of your agent, or a reply in one of its threads, in any
   document it is on, fires that target. No relay, no per-document setup. For a
   routine, <a href="https://claude.ai/code/routines/new">create it</a> with the Vapor connector attached,
@@ -351,7 +351,7 @@ Two URLs, same tools. Signed in (${mcpUrl}) gives the agent a stable identity an
 - Gemini CLI: ${plugin.gemini ? `\`${plugin.gemini}\` (connection plus skill), or ` : ""}\`gemini mcp add --transport http vapor ${mcpUrl}\`
 - VS Code: \`.vscode/mcp.json\` → \`${json({ servers: { vapor: { type: "http", url: mcpUrl } } })}\`
 - Anything else: \`${json({ mcpServers: { vapor: { url: mcpUrl } } })}\`
-- Headless or a fleet: a signed-in person mints a personal access token under Share → Invite an agent → Other → Access token, with a suggest-and-comment or full-write grant; send it as \`Authorization: Bearer vpt_…\` to ${mcpUrl}. Same identity as OAuth, revocable there.
+- Headless or a fleet: a signed-in person mints a personal access token under Share → Invite an agent → More → Access token, with a suggest-and-comment or full-write grant; send it as \`Authorization: Bearer vpt_…\` to ${mcpUrl}. Same identity as OAuth, revocable there.
 
 ## Skill
 

@@ -835,6 +835,116 @@ describe("DocumentAgent", () => {
   });
 
   /* ================================================================ */
+  /*  patch (#59)                                                     */
+  /* ================================================================ */
+
+  describe("patch", () => {
+    async function seeded(content = "# Title\n\nFirst.\n\nSecond.") {
+      await agent.onRequest(
+        new Request("https://do/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content }),
+        }),
+      );
+      return identity({ caps: ["write"] });
+    }
+    const read = async (id: AgentIdentity) => (await agent.agentRead(id)) as { markdown: string; blocks: { anchor: string; text: string }[] };
+
+    it("rewrites only the block that changed, and leaves the other ids alone", async () => {
+      const id = await seeded();
+      const before = await read(id);
+
+      const out = await agent.agentPatch(id, { markdown: "# Title\n\nFirst, revised.\n\nSecond." });
+      expect(out).toMatchObject({ ok: true, replaced: 1, inserted: 0, deleted: 0 });
+
+      const after = await read(id);
+      expect(after.markdown).toBe("# Title\n\nFirst, revised.\n\nSecond.");
+      // Untouched blocks keep their exact anchors: same id, same hash.
+      expect(after.blocks[0].anchor).toBe(before.blocks[0].anchor);
+      expect(after.blocks[2].anchor).toBe(before.blocks[2].anchor);
+      // The rewritten block keeps its id so comments anchored to it follow.
+      expect(after.blocks[1].anchor.split("-")[0]).toBe(before.blocks[1].anchor.split("-")[0]);
+      expect(after.blocks[1].anchor).not.toBe(before.blocks[1].anchor);
+    });
+
+    it("does nothing, and charges nothing, when the markdown already matches", async () => {
+      const id = await seeded();
+      const out = await agent.agentPatch(id, { markdown: "# Title\n\nFirst.\n\nSecond." });
+      expect(out).toEqual({ ok: true, replaced: 0, inserted: 0, deleted: 0, charged: 0 });
+    });
+
+    it("charges for what it adds, not for the document it restates", async () => {
+      const long = "x".repeat(3000);
+      const id = await seeded(`# Title\n\n${long}\n\nSecond.`);
+      const out = (await agent.agentPatch(id, { markdown: `# Title\n\n${long}\n\nSecond, revised.` })) as { charged: number };
+      expect(out.charged).toBe("Second, revised.".length);
+    });
+
+    it("inserts and deletes in the same patch, indexing against the document as read", async () => {
+      const id = await seeded("A\n\nB\n\nC\n\nD");
+      const out = await agent.agentPatch(id, { markdown: "A\n\nC\n\nD2\n\nE" });
+      expect(out).toMatchObject({ ok: true, deleted: 1, replaced: 1, inserted: 1 });
+      expect((await read(id)).markdown).toBe("A\n\nC\n\nD2\n\nE");
+    });
+
+    it("refuses when a block it would touch changed since the read, and applies nothing", async () => {
+      const id = await seeded();
+      const before = await read(id);
+
+      const client = connectYjsClient(agent);
+      const text = (client.doc.getXmlFragment("default").toArray()[1] as import("yjs").XmlElement)
+        .firstChild as import("yjs").XmlText;
+      text.insert(text.length, " Edited by a person.");
+
+      const out = await agent.agentPatch(id, {
+        markdown: "# Title\n\nFirst, revised.\n\nSecond.",
+        anchors: before.blocks.map((b) => b.anchor),
+      });
+      expect(out).toMatchObject({ error: { code: "stale_block" } });
+      expect((await read(id)).markdown).toContain("Edited by a person.");
+      cleanup(client);
+    });
+
+    it("goes ahead when the edit since the read is in a block the patch does not touch", async () => {
+      const id = await seeded();
+      const before = await read(id);
+
+      const client = connectYjsClient(agent);
+      const text = (client.doc.getXmlFragment("default").toArray()[2] as import("yjs").XmlElement)
+        .firstChild as import("yjs").XmlText;
+      text.insert(text.length, " Edited by a person.");
+
+      const out = await agent.agentPatch(id, {
+        markdown: "# Title\n\nFirst, revised.\n\nSecond. Edited by a person.",
+        anchors: before.blocks.map((b) => b.anchor),
+      });
+      expect(out).toMatchObject({ ok: true, replaced: 1 });
+      expect((await read(id)).markdown).toBe("# Title\n\nFirst, revised.\n\nSecond. Edited by a person.");
+      cleanup(client);
+    });
+
+    it("needs the write capability", async () => {
+      await seeded();
+      const readOnly = identity({ caps: ["comment"] });
+      expect(await agent.agentPatch(readOnly, { markdown: "# Other" })).toMatchObject({
+        error: { code: "capability_denied" },
+      });
+    });
+
+    it("refuses to empty the document through an empty patch", async () => {
+      const id = await seeded();
+      expect(await agent.agentPatch(id, { markdown: "" })).toMatchObject({
+        error: { code: "empty_patch" },
+      });
+      expect(await agent.agentPatch(id, { markdown: "   \n\n  " })).toMatchObject({
+        error: { code: "empty_patch" },
+      });
+      expect((await read(id)).markdown).toBe("# Title\n\nFirst.\n\nSecond.");
+    });
+  });
+
+  /* ================================================================ */
   /*  read_changes (#87)                                              */
   /* ================================================================ */
 

@@ -351,7 +351,7 @@ Two URLs, same tools. Signed in (${mcpUrl}) gives the agent a stable identity an
 - Gemini CLI: ${plugin.gemini ? `\`${plugin.gemini}\` (connection plus skill), or ` : ""}\`gemini mcp add --transport http vapor ${mcpUrl}\`
 - VS Code: \`.vscode/mcp.json\` → \`${json({ servers: { vapor: { type: "http", url: mcpUrl } } })}\`
 - Anything else: \`${json({ mcpServers: { vapor: { url: mcpUrl } } })}\`
-- Headless or a fleet: a signed-in person mints a personal access token under Share → Invite an agent → Other → Access token, with a suggest-and-comment or full-write grant; send it as \`Authorization: Bearer vpt_…\` to ${mcpUrl}. Same identity as OAuth, revocable there.
+- Headless or a fleet: a signed-in person mints a personal access token under Share → Invite an agent → More → Access token, with a suggest-and-comment or full-write grant; send it as \`Authorization: Bearer vpt_…\` to ${mcpUrl}. Same identity as OAuth, revocable there.
 
 ## Skill
 

@@ -21,6 +21,7 @@ const ID: AgentIdentity = {
 
 const SPEC_TOOLS = [
   "read_document",
+  "read_changes",
   "insert",
   "replace",
   "suggest",
@@ -68,6 +69,7 @@ describe("mcp tool table", () => {
       events_list: { events: [{ name: "mention", description: "d", delivery: ["poll"], inputSchema: {}, payloadSchema: {} }] },
       events_poll: { events: [], cursor: null, truncated: false, hasMore: false, nextPollMs: 5000, retryAfterMs: 5000 },
       events_subscribe: { id: "s1", refreshBefore: "2026-09-16T00:00:00.000Z", cursor: "s0", truncated: false },
+      read_changes: { blocks: [{ anchor: "k3f0a9x2-a91f0c2d", text: "# A", change: "changed" }], removed: ["k3f0a9x3"], cursor: 12, truncated: false },
     };
     for (const t of TOOLS) {
       const schema = z.object(t.output);
@@ -91,6 +93,7 @@ describe("mcp tool table", () => {
     const by = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
     expect(by.read_document.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: false });
     expect(by.events_poll.annotations.readOnlyHint).toBe(true);
+    expect(by.read_changes.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: false });
     expect(by.replace.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true, openWorldHint: true });
     expect(by.delete_comment.annotations.destructiveHint).toBe(true);
     expect(by.suggest.annotations).toMatchObject({ destructiveHint: false, openWorldHint: true });
@@ -98,7 +101,7 @@ describe("mcp tool table", () => {
 
   it("only lets anonymous callers reach what the anonymous endpoint grants", () => {
     const anon = (name: string) => TOOLS.find((t) => t.name === name)!.securitySchemes.some((s) => s.type === "noauth");
-    for (const n of ["read_document", "suggest", "comment", "reply", "join", "events_poll"]) expect(anon(n), n).toBe(true);
+    for (const n of ["read_document", "read_changes", "suggest", "comment", "reply", "join", "events_poll"]) expect(anon(n), n).toBe(true);
     for (const n of ["insert", "replace", "events_subscribe", "events_unsubscribe"]) expect(anon(n), n).toBe(false);
     const write = TOOLS.find((t) => t.name === "insert")!.securitySchemes.find((s) => s.type === "oauth2");
     expect(write).toMatchObject({ type: "oauth2", scopes: ["write"] });

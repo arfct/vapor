@@ -83,6 +83,14 @@ export default function ShareButton({
           {createdAt && <span>vaporized in {formatRemainingTime(createdAt)}</span>}
         </div>
         <MenuSeparator />
+        {onInviteAgent && (
+          <MenuItem className="gap-2" onClick={onInviteAgent}>
+            <Icon name="robot_2" />
+            <span>Invite an agent</span>
+          </MenuItem>
+        )}
+        {/* Ways to hand the document to someone: the link, and the reader's
+            own device. Taking a copy away is the group below. */}
         {canShare && (
           <MenuItem className="gap-2" onClick={handleShare}>
             <Icon name="ios_share" />
@@ -93,33 +101,26 @@ export default function ShareButton({
           <Icon name={COPY_ICON[copyState]} />
           <span>{COPY_LABEL[copyState]}</span>
         </MenuItem>
-        <MenuItem className="gap-2" onClick={handleDownload}>
-          <Icon name="download" />
-          <span>Download</span>
-        </MenuItem>
-        <MenuItem className="gap-2" onClick={() => window.location.assign(`/${docId}.epub`)}>
-          <Icon name="menu_book" />
-          <span>Download EPUB</span>
-        </MenuItem>
-        <MenuItem className="gap-2" onClick={() => window.open(`/${docId}/print?print=1`, "_blank", "noopener")}>
-          <Icon name="print" />
-          <span>Print or save as PDF</span>
-        </MenuItem>
         {onSendTo && (
           <MenuItem className="gap-2" onClick={onSendTo}>
             <Icon name="send" />
             <span>Send to device</span>
           </MenuItem>
         )}
-        {onInviteAgent && (
-          <>
-            <MenuSeparator />
-            <MenuItem className="gap-2" onClick={onInviteAgent}>
-              <Icon name="robot_2" />
-              <span>Invite an agent</span>
-            </MenuItem>
-          </>
-        )}
+        <MenuSeparator />
+        <div className="px-3 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted">Download</div>
+        <MenuItem className="gap-2" onClick={handleDownload}>
+          <Icon name="download" />
+          <span>Markdown</span>
+        </MenuItem>
+        <MenuItem className="gap-2" onClick={() => window.open(`/${docId}/print?print=1`, "_blank", "noopener")}>
+          <Icon name="print" />
+          <span>PDF</span>
+        </MenuItem>
+        <MenuItem className="gap-2" onClick={() => window.location.assign(`/${docId}.epub`)}>
+          <Icon name="menu_book" />
+          <span>EPUB</span>
+        </MenuItem>
       </MenuContent>
     </Menu>
   );

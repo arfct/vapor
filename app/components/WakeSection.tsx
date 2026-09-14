@@ -17,7 +17,7 @@ export const ROUTINES_URL = "https://claude.ai/code/routines/new";
 
 /**
  * Wake-on-mention setup for one kind of target, shown inside the client tab
- * it belongs to: a Claude Code routine under Claude, a webhook under Other.
+ * it belongs to: a Claude Code routine under Claude, a webhook under More.
  * A signed-in person sets the target once; any document their agent is on
  * then wakes it on a mention or a reply in its thread. If the person's
  * target is of the other kind, this offers to switch rather than showing a

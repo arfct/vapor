@@ -99,10 +99,10 @@ function Nav({ href, children }: { href?: string; children: React.ReactNode }) {
       href={href}
       target="_blank"
       rel="noreferrer"
-      className="underline decoration-border underline-offset-2 hover:decoration-ink"
+      className="text-ink transition-colors hover:text-muted"
     >
       {inner}
-      <Icon name="open_in_new" className="ml-0.5 text-[14px] text-muted" />
+      <Icon name="open_in_new" className="icon-inline ml-0.5 text-muted" />
     </a>
   );
 }
@@ -115,7 +115,7 @@ const tabClass = (active: boolean) =>
 /**
  * The Agents panel: how to connect an agent over MCP, one tab per client
  * with its mark. Wake-on-mention setup lives inside the tab it belongs to:
- * a Claude Code routine under Claude, a webhook under Other. Agents
+ * a Claude Code routine under Claude, a webhook under More. Agents
  * authenticate via OAuth (or the anonymous endpoint) and enroll on first
  * touch. The document's roster is managed from the face pile, not here; it
  * is loaded only so the wake sections know whether the person's own agent
@@ -197,7 +197,8 @@ export default function AgentsPanel({
               onClick={() => pickClient(c.id)}
               className={tabClass(client === c.id)}
             >
-              <AgentClientIcon client={c.id} size={20} />
+              {/* "More" is not a product, so it takes a symbol rather than a mark. */}
+              {c.id === "other" ? <Icon name="more_horiz" /> : <AgentClientIcon client={c.id} size={20} />}
               {c.label}
             </button>
           ))}

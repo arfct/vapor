@@ -26,7 +26,8 @@ export const AGENT_CLIENTS: AgentClient[] = [
   // LM Studio hosts local models with an MCP client; its sessions declare
   // names like "lmstudio-mcp-server-session". Recognised, not yet a tab.
   { id: "lmstudio", label: "LM Studio", matches: ["lmstudio", "lm-studio"], invite: false },
-  { id: "other", label: "Other", matches: [] },
+  // Not a client: the tab for everything else, last in the row.
+  { id: "other", label: "More", matches: [] },
 ];
 
 export function agentClient(id: string): AgentClient {

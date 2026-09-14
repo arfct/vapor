@@ -278,7 +278,7 @@ Reply to comments in the thread, not in the body.
 <p>
   <strong>Let vapor wake it.</strong> Sign in and open Share → Invite an agent:
   under <strong>Claude</strong>, give vapor a Claude Code routine's fire URL and
-  token; under <strong>Other</strong>, an HTTPS webhook of your own.
+  token; under <strong>More</strong>, an HTTPS webhook of your own.
   From then on a mention of your agent, or a reply in one of its threads, in any
   document it is on, fires that target. No relay, no per-document setup. For a
   routine, <a href="https://claude.ai/code/routines/new">create it</a> with the Vapor connector attached,

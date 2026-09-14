@@ -423,7 +423,10 @@ export default function Editor({
   return (
     <>
       <div
-        className={`min-h-full cursor-text ${hidden ? "hidden" : ""} ${revealClass}`}
+        // doc-frame is the query container a full-bleed image measures against:
+        // the space beside the comment rail, not the centred 3xl text column
+        // it lives in and not the viewport (#109).
+        className={`doc-frame min-h-full cursor-text ${hidden ? "hidden" : ""} ${revealClass}`}
         onClick={handleClick}
         onAnimationEnd={(e) => {
           // Blocks cascade in; the class leaves once the last one has landed.

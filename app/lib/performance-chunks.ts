@@ -11,10 +11,13 @@ const SENTENCE_ENDINGS = new Set([".", "!", "?", "\n"]);
  * the delay before the *next* chunk — used to simulate an agent typing into
  * the document instead of pasting it in one shot.
  *
- * - `"natural"`: 2-4 chars/tick, 180-320ms base delay (~10 chars/s, a
- *   brisk human typist); an extra 300-900ms pause is added after a tick
- *   ending in ".", "!", "?", or "\n".
- * - `"fast"`: 6-12 chars/tick, 20-40ms delay; no sentence pauses.
+ * - `"natural"`: 2-4 chars/tick, 60-107ms base delay (~36 chars/s); an extra
+ *   100-300ms pause is added after a tick ending in ".", "!", "?", or "\n".
+ * - `"fast"`: 6-12 chars/tick, 7-13ms delay; no sentence pauses.
+ *
+ * Both paces were tripled on 2026-09-13 at Nicholas's request. "natural" is
+ * named for its shape, not its rate: 36 chars/s is roughly 430 words a
+ * minute, well past any typist.
  *
  * `rng` defaults to `Math.random` and is injectable so tests can produce
  * deterministic output (e.g. `() => 0.5`).
@@ -27,7 +30,7 @@ export function chunkTyping(
   const ticks: TypingTick[] = [];
 
   const [minChars, maxChars, minDelay, maxDelay] =
-    pace === "fast" ? [6, 12, 20, 40] : [2, 4, 180, 320];
+    pace === "fast" ? [6, 12, 7, 13] : [2, 4, 60, 107];
 
   let cursor = 0;
   // Carried from a sentence-ending chunk onto the delay of the *next*
@@ -55,7 +58,7 @@ export function chunkTyping(
     const delayMs = minDelay + Math.floor(rng() * (maxDelay - minDelay + 1)) + extraDelayForNext;
     extraDelayForNext = 0;
     if (pace === "natural" && SENTENCE_ENDINGS.has(chunk[chunk.length - 1])) {
-      extraDelayForNext = 300 + Math.floor(rng() * 601);
+      extraDelayForNext = 100 + Math.floor(rng() * 201);
     }
 
     ticks.push({ chunk, delayMs });

@@ -17,6 +17,7 @@ import * as Y from "yjs";
 import { yXmlFragmentToProseMirrorRootNode } from "@tiptap/y-tiptap";
 import { blockHash, formatMention, parseAnchor as parseLegacyAnchor, type DocBlock } from "./agent-protocol";
 import { parseAttachmentUrl } from "./attachment-policy";
+import { parseImageLayout, serializeImageLayout, type ImageLayout } from "./image-layout";
 
 /* ---------- Schema (names must match the TipTap extensions) ---------- */
 
@@ -93,6 +94,8 @@ export const richSchema = new Schema({
         src: { default: "" },
         alt: { default: "" },
         bytes: { default: null as number | string | null },
+        width: { default: null as string | null },
+        align: { default: null as "left" | "center" | "right" | null },
       },
     },
     // GFM tables. Cells hold inline content only — one line per cell, as
@@ -328,10 +331,16 @@ function attachmentRule(state: { tokens: InlineToken[]; Token: TokenCtor }): voi
     const meaningful = inline.children.filter((c) => !isBlank(c));
     const alone = toks[i - 1]?.type === "paragraph_open" && toks[i + 1]?.type === "paragraph_close";
 
-    let attachment: { kind: "image" | "file"; src: string; alt: string } | null = null;
-    if (alone && meaningful.length === 1 && meaningful[0].type === "image") {
+    let attachment: ({ kind: "image" | "file"; src: string; alt: string } & Partial<ImageLayout>) | null = null;
+    const layout =
+      alone && meaningful.length === 2 && meaningful[0].type === "image" && meaningful[1].type === "text"
+        ? parseImageLayout(meaningful[1].content)
+        : null;
+    if (alone && meaningful[0]?.type === "image" && (meaningful.length === 1 || layout)) {
       const parsed = parseAttachmentUrl(meaningful[0].attrGet("src") ?? "");
-      if (parsed) attachment = { kind: "image", src: parsed.path, alt: meaningful[0].content };
+      if (parsed) {
+        attachment = { kind: "image", src: parsed.path, alt: meaningful[0].content, ...(layout ?? {}) };
+      }
     } else if (
       alone &&
       meaningful.length === 3 &&
@@ -351,6 +360,8 @@ function attachmentRule(state: { tokens: InlineToken[]; Token: TokenCtor }): voi
       tok.attrSet("kind", attachment.kind);
       tok.attrSet("src", attachment.src);
       tok.attrSet("alt", attachment.alt);
+      if (attachment.width) tok.attrSet("width", attachment.width);
+      if (attachment.align) tok.attrSet("align", attachment.align);
       toks.splice(i - 1, 3, tok);
       i -= 1;
       continue;
@@ -465,6 +476,8 @@ export const markdownParser = new MarkdownParser(richSchema, makeMarkdownIt() as
       kind: tok.attrGet("kind") === "image" ? "image" : "file",
       src: tok.attrGet("src") ?? "",
       alt: tok.attrGet("alt") ?? "",
+      width: tok.attrGet("width"),
+      align: tok.attrGet("align"),
     }),
   },
   hardbreak: { node: "hardBreak" },
@@ -532,7 +545,8 @@ export const markdownSerializer = new MarkdownSerializer(
     attachment(state, node) {
       const alt = String(node.attrs.alt ?? "").replace(/[[\]]/g, "\\$&");
       const src = String(node.attrs.src ?? "");
-      state.write(`${node.attrs.kind === "image" ? "!" : ""}[${alt}](${src})`);
+      const layout = serializeImageLayout(node.attrs as ImageLayout);
+      state.write(`${node.attrs.kind === "image" ? "!" : ""}[${alt}](${src})${layout}`);
       state.closeBlock(node);
     },
     table(state, node) {

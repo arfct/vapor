@@ -16,6 +16,26 @@ Keep it short.
 `;
 
 describe("EPUB export (#100)", () => {
+  const sized = "![cat.png](/abcd1234/attachments/abcdefghijklmnop/cat.png){width=50% align=left}";
+
+  it("renders an image's attribute block as layout, not as literal text (#109)", () => {
+    const html = epubChapterHtml(sized, []);
+    expect(html).not.toContain("{width=50%");
+    expect(html).toContain("width: 50%");
+    expect(html).toContain("float: left");
+  });
+
+  it("clears floated images at the next structural boundary (#109)", () => {
+    expect(READING_CSS).toMatch(/clear: both/);
+  });
+
+  it("renders an image with no attribute block unchanged (#109)", () => {
+    const plain = "![cat.png](/abcd1234/attachments/abcdefghijklmnop/cat.png)";
+    const html = epubChapterHtml(plain, []);
+    expect(html).not.toContain("style=");
+    expect(html).toContain("<img");
+  });
+
   it("resolves CriticMarkup as accepted and drops comments and agent fences", () => {
     const text = readingMarkdown(md);
     expect(text).toContain("Hello there, new text quoted.");
@@ -78,15 +98,23 @@ describe("EPUB export (#100)", () => {
     expect(epubFilename("abcd1234", "no heading here")).toBe("abcd1234.epub");
   });
 
-  it("sets the page's type: a sans body, bold sans headings stepping down, a larger lighter title, mono code", () => {
+  it("sets the page's type: Paper's heading scale in the system font, a larger lighter title, mono code", () => {
     expect(READING_CSS).toMatch(/body \{ font-family: ui-sans-serif, system-ui/);
-    expect(READING_CSS).toContain("h1 { font-size: 1.875em;");
-    expect(READING_CSS).toContain("h2 { font-size: 1.5em;");
+    expect(READING_CSS).toContain("h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui");
+    // Paper's extended headings, as ems of the body size: 30/36/-0.4px, 24/30/-0.2px, 20/26px, all 600.
+    expect(READING_CSS).toContain("h1 { font-size: 1.875em; line-height: 1.2; letter-spacing: -0.013em;");
+    expect(READING_CSS).toContain("h2 { font-size: 1.5em; line-height: 1.25; letter-spacing: -0.008em;");
+    expect(READING_CSS).toContain("h3, h4 { font-size: 1.25em; line-height: 1.3;");
+    expect(READING_CSS).toMatch(/^h1, h2, h3, h4 \{[^}]*font-weight: 600;/m);
     expect(READING_CSS).toContain("body > h1:first-child { font-size: 2.5em; font-weight: 500;");
     expect(READING_CSS).toMatch(/code, pre, kbd \{ font-family: "IBM Plex Mono"/);
     expect(READING_CSS).not.toContain("Georgia");
     const files = unzipSync(buildEpub({ id: "abcd1234", markdown: md }));
     expect(strFromU8(files["OEBPS/style.css"])).toBe(READING_CSS);
+  });
+
+  it("caps an image at 80% of the page height so a tall one does not take the page (#109)", () => {
+    expect(READING_CSS).toContain("img { max-width: 100%; max-height: 80vh; height: auto; }");
   });
 
   it("renders a printable page with the same styles, page rules, and an optional auto-print", () => {

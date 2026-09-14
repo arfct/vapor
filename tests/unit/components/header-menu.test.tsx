@@ -69,6 +69,14 @@ describe("HeaderMenu", () => {
     expect(screen.queryByText("Sign in")).toBeNull();
   });
 
+  it("trigger is the three-line menu glyph in plain Edit, and the mode's glyph otherwise", () => {
+    const { unmount } = renderWithDocument(createElement(HeaderMenu));
+    expect(screen.getByLabelText("Menu").textContent?.trim()).toBe("menu");
+    unmount();
+    renderWithDocument(createElement(HeaderMenu), { context: { mode: "suggest" } });
+    expect(screen.getByLabelText("Menu").textContent?.trim()).toBe("rate_review");
+  });
+
   it("trigger shows the mode when it isn't plain Edit", () => {
     renderWithDocument(createElement(HeaderMenu), { context: { mode: "suggest" } });
     expect(screen.getByLabelText("Menu").getAttribute("title")).toBe("Suggest");

@@ -2,6 +2,7 @@ import MarkdownIt from "markdown-it";
 import { zipSync, strToU8 } from "fflate";
 import { stripMentionIds } from "./agent-protocol";
 import { parseAttachmentUrl } from "./attachment-policy";
+import { parseImageLayout, imageLayoutStyle } from "./image-layout";
 import { titleFromMarkdown } from "./doc-url";
 
 /**
@@ -59,7 +60,35 @@ export function attachmentImages(markdown: string): { path: string; id: string; 
   return out;
 }
 
+type EpubToken = {
+  type: string;
+  content: string;
+  children: EpubToken[] | null;
+  attrSet(name: string, value: string): void;
+};
+
+/**
+ * Turns an image's `{width=… align=…}` block into inline CSS on the `<img>`
+ * and removes the text, so exports carry the layout rather than printing the
+ * braces. Mirrors `attachmentRule` in rich-markdown.ts (#109).
+ */
+function imageLayoutRule(state: { tokens: EpubToken[] }): void {
+  for (const token of state.tokens) {
+    if (token.type !== "inline" || !token.children) continue;
+    const kids = token.children;
+    for (let i = 0; i < kids.length - 1; i++) {
+      if (kids[i].type !== "image" || kids[i + 1].type !== "text") continue;
+      const layout = parseImageLayout(kids[i + 1].content);
+      if (!layout) continue;
+      const style = imageLayoutStyle(layout);
+      if (style) kids[i].attrSet("style", style);
+      kids[i + 1].content = "";
+    }
+  }
+}
+
 const md = new MarkdownIt({ html: false, linkify: true, xhtmlOut: true });
+md.core.ruler.after("inline", "imageLayout", imageLayoutRule as never);
 
 function escapeXml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -98,10 +127,13 @@ export function epubChapterHtml(markdown: string, images: EpubImage[]): string {
  */
 export const READING_CSS = `body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 1em; line-height: 1.6; color: #1a1a1a; margin: 0 auto; padding: 1.5em; max-width: 42em; }
 p { margin: 0 0 0.6em; }
-h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-weight: bold; line-height: 1.2; }
-h1 { font-size: 1.875em; margin: 1.5em 0 0.6em; }
-h2 { font-size: 1.5em; line-height: 1.3; margin: 1.25em 0 0.5em; }
-h3, h4 { font-size: 1.25em; line-height: 1.3; margin: 1em 0 0.4em; }
+/* Dropbox Paper's extended-headings scale, as ems of the body size: 30px/36px
+   at -0.4px, 24px/30px at -0.2px, 20px/26px, all at weight 600. The type is
+   Paper's; the face stays the system sans. */
+h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-weight: 600; }
+h1 { font-size: 1.875em; line-height: 1.2; letter-spacing: -0.013em; margin: 1em 0 0.4em; }
+h2 { font-size: 1.5em; line-height: 1.25; letter-spacing: -0.008em; margin: 1.08em 0 0.42em; }
+h3, h4 { font-size: 1.25em; line-height: 1.3; margin: 1.2em 0 0.4em; }
 body > h1:first-child { font-size: 2.5em; font-weight: 500; line-height: 1.1; margin-top: 0; }
 h1:first-child, h2:first-child, h3:first-child { margin-top: 0; }
 ul, ol { margin: 0 0 0.6em 1.5em; padding: 0; }
@@ -114,7 +146,10 @@ pre { background: #f2f2f2; padding: 0.75em 1em; border-radius: 4px; overflow-x: 
 pre code { background: none; padding: 0; }
 a { color: inherit; text-decoration: underline; text-decoration-color: #999; }
 hr { border: 0; border-top: 1px solid #d9d9d9; margin: 1.5em 0; }
-img { max-width: 100%; height: auto; }
+img { max-width: 100%; max-height: 80vh; height: auto; }
+/* A floated image runs beside body text and stops at the next structural
+   boundary, not at an arbitrary paragraph (#109). */
+h1, h2, h3, hr, table, pre, blockquote { clear: both; }
 table { border-collapse: collapse; margin: 0 0 0.75em; font-size: 0.95em; }
 th, td { border: 1px solid #d9d9d9; padding: 0.3em 0.6em; text-align: left; vertical-align: top; }
 th { font-weight: bold; background: #f7f7f7; }

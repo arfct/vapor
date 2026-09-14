@@ -22,6 +22,8 @@ export const Attachment = Node.create({
       src: { default: "", rendered: false },
       alt: { default: "", rendered: false },
       bytes: { default: null, rendered: false },
+      width: { default: null, rendered: false },
+      align: { default: null, rendered: false },
     };
   },
 
@@ -34,6 +36,8 @@ export const Attachment = Node.create({
           src: el.getAttribute("data-src") ?? "",
           alt: el.getAttribute("data-alt") ?? "",
           bytes: el.getAttribute("data-bytes") ? Number(el.getAttribute("data-bytes")) : null,
+          width: el.getAttribute("data-width"),
+          align: el.getAttribute("data-align"),
         }),
       },
     ];
@@ -47,6 +51,8 @@ export const Attachment = Node.create({
         "data-src": node.attrs.src,
         "data-alt": node.attrs.alt,
         "data-bytes": node.attrs.bytes ?? undefined,
+        "data-width": node.attrs.width ?? undefined,
+        "data-align": node.attrs.align ?? undefined,
       }),
     ];
   },

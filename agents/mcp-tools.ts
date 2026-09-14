@@ -245,7 +245,7 @@ const docId = z.string().describe("The 8-character document id (from its URL).")
 const pace = z
   .enum(["natural", "fast", "instant"])
   .optional()
-  .describe("How the edit is performed: natural (human-paced typing), fast, or instant.");
+  .describe("How the edit is performed: natural (typed out, with pauses at sentence ends), fast (typed out, no pauses), or instant.");
 const anchorDesc =
   "A block anchor from read_document, e.g. k3f0a9x2-a91f0c2d: a persistent block id plus the block's content hash. The id survives edits; a changed hash returns stale_block with the block's current state so you can retry without a full re-read.";
 

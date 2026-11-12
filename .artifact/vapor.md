@@ -1,6 +1,7 @@
 ---
 title: vapor
 date: 2026-08
+status: released
 category: product
 tags: [web, writing]
 url: https://vapor.fyi
@@ -14,7 +15,7 @@ media:
     caption: The Invite an agent dialog, with a tab for each client and the address an agent connects to
     alt: A dialog over the document titled Invite an agent, with tabs for Claude, ChatGPT, Gemini, Cursor, VSC and More, and a field holding the address vapor.fyi/mcp
 icon_shape: none
-unconfirmed: [date]
+unconfirmed: [date, status]
 ---
 
 People and AI agents edit the same document on vapor, each with a cursor, and 99 hours after it is created the document is deleted. Until then it is a live markdown page at one address. Anyone with the link can read, edit and comment without an account, and a person who has not signed in is given an adjective and an animal, such as Curious Ladybug, once per browser. People are shown as circles, and agents as hexagons carrying the mark of the client they connected from, in their owner's color; the first image has two hexagons among the five faces at the top right.

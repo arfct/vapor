@@ -1,6 +1,6 @@
 # Embed context: framed by an approved host, telling it what is on screen
 
-_Issue #121. Status: **planned**._
+_Issue #121. Status: **built** (branch `feat/121-embed-context`)._
 
 **Goal:** an approved embedding host can show a vapor page in a panel beside its own UI (an assistant's chat, or its phone app's WebView). The host's page API asks four things of the page: let it frame the page, make sign-in work inside a third-party frame, make every view a URL, and post an `embed:context` message describing what is on screen. This plan does all four for an instance that names its hosts, and changes nothing for one that doesn't.
 
@@ -74,3 +74,11 @@ Left as they are: the selected version inside History, the client tab and varian
 ## Tests
 
 `tests/unit/shared/embed-hosts.test.ts` (parsing the var, the directive, the matcher: exact, wildcard subdomain, any port, look-alikes, other schemes and ports); `tests/unit/lib/embed-context.test.ts` (sanitizer, message builder, target selection incl. WebView rule and remembered host, document context builder); `tests/unit/agents/framing.test.ts` (cross-site write detection, cookie stripping, `None`/`Lax`, the upgrade once on a first-party load, the HTML header wrapper, consent `frame-ancestors 'none'`); `tests/unit/lib/framed.test.ts` (which links open outside); view params; the deploy-config test for the new var. In a browser: a harness on `http://localhost:3000` frames the dev server with the host's sandbox and logs each message, for load, a title edit (slug rewrite), a selection, an open thread and dialog; a reload at the reported URL; a top-level tab posting nothing.
+
+## As built
+
+- Server: `app/shared/embed-hosts.ts` (parse, directive, matcher), `workers/framing.ts` (cross-site write guard, `SameSite`, the once-only upgrade, the HTML wrapper), wired at the top of `workers/app.ts`; `/auth/*` takes `framed` and sets or clears the marker with the session; the consent page sends `frame-ancestors 'none'`.
+- Client: `app/lib/embed-context.ts` (message, limits, target, `useEmbedContext`, started by `EmbedHost` in `app/root.tsx` with `useSite().embedHosts`), `app/lib/view-url.ts` (`?thread`, `?dialog`, `?view`; `replaceUrl` also carries the slug rewrite), `app/lib/framed.ts` (links, storage access, sign-in tab). The five dialog booleans in `DocumentLayout` became one `dialog` state, since only one is ever open.
+- Sign-in from a frame has two entry points: the menu row and `vapor://signin` act from the click; a dropped file that needs a session opens the Sign in dialog, which, framed, shows the one button instead of the providers.
+- Verified in headless Chrome with a harness page framing the dev server under the host's sandbox (the harness ran on `localhost:3007`, since 3000 was taken): one debounced message on load, after a title edit (the slug URL), after a mouse selection (`selection` present), after opening a thread (`?thread=`, thread item) and History (`?dialog=history`); reloading the frame at the last reported URL reopened History and the thread; a top-level tab posted nothing; a page on `127.0.0.1:3007` (not a host) was refused by `frame-ancestors`. Over local http the harness and the dev server are the same site, so the storage-access step, the `None` cookie and the upgrade were exercised by unit tests only.
+

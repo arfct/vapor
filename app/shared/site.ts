@@ -15,7 +15,14 @@
  *   SOURCE_URL      where this instance's code and plugin live. Shown in the
  *                   footer and used to derive the plugin install commands, so
  *                   a fork that ships its own plugin should point this at itself.
+ *   EMBED_HOSTS     space-separated CSP host sources (https://host.example,
+ *                   https://*.preview.host.example, http://localhost:*) of the
+ *                   sites allowed to frame this instance, which a framed page
+ *                   tells what is on screen (app/shared/embed-hosts.ts). Unset:
+ *                   no frame-ancestors is sent and cookies stay SameSite=Lax.
  */
+
+import { parseEmbedHosts } from "./embed-hosts";
 
 export interface SiteConfig {
   /** The origin this instance is served from, no trailing slash. */
@@ -24,6 +31,8 @@ export interface SiteConfig {
   operatorName: string | null;
   /** Repository URL: footer link, issue reports, plugin install commands. */
   sourceUrl: string;
+  /** EMBED_HOSTS, parsed: who may frame this instance and hear its embed context. Empty when unset. */
+  embedHosts: string[];
 }
 
 /** The upstream repository — the default for SOURCE_URL. */
@@ -38,6 +47,7 @@ export interface SiteEnv {
   REDIRECT_HOSTS?: string;
   OPERATOR_NAME?: string;
   SOURCE_URL?: string;
+  EMBED_HOSTS?: string;
 }
 
 /**
@@ -76,6 +86,11 @@ export function redirectHosts(env: SiteEnv): string[] {
     .filter(Boolean);
 }
 
+/** EMBED_HOSTS as host sources (empty when unset); malformed entries are dropped. */
+export function embedHosts(env: SiteEnv): string[] {
+  return parseEmbedHosts(env.EMBED_HOSTS);
+}
+
 /**
  * The site config for one request. The request's origin wins over
  * PUBLIC_ORIGIN so previews (workers.dev, localhost, a tunnel) describe
@@ -89,6 +104,7 @@ export function siteForRequest(env: SiteEnv, requestOrigin: string): SiteConfig 
     origin,
     operatorName: (env.OPERATOR_NAME ?? "").trim() || null,
     sourceUrl: cleanUrl(env.SOURCE_URL) ?? UPSTREAM_SOURCE_URL,
+    embedHosts: embedHosts(env),
   };
 }
 

@@ -40,6 +40,8 @@
 	//   SOURCE_URL        your fork, if you publish your own plugin from it
 	//   SEND_FROM_EMAIL   the address Send to Kindle mails from (with the RESEND_API_KEY secret)
 	//   OPENAI_APPS_CHALLENGE  domain-verification token for OpenAI's plugin portal (docs/self-hosting.md)
+	//   EMBED_HOSTS       space-separated sites allowed to frame this instance, as CSP sources
+	//                     ("https://host.example https://*.preview.host.example"); unset = no frame-ancestors
 	// SESSION_SECRET and RESEND_API_KEY are secrets, not vars: `wrangler secret put <NAME>`.
 	"vars": {},
 	"keep_vars": true

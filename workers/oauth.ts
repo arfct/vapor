@@ -16,6 +16,7 @@ import {
   type SessionClaims,
 } from "../app/lib/auth.server";
 import { consentPageHtml } from "../app/lib/oauth-pages";
+import { NEVER_FRAMED } from "./framing";
 import { DEFAULT_CAPABILITIES } from "../app/shared/agent-protocol";
 import type { AgentCapability } from "../app/shared/agent-protocol";
 import type { AuthCode, OAuthClient, RefreshGrant, TokenReplay } from "../agents/registry";
@@ -223,7 +224,8 @@ function openidConfiguration(origin: string) {
 function consentResponse(opts: Parameters<typeof consentPageHtml>[0]): Response {
   return new Response(consentPageHtml(opts), {
     status: opts.error ? 400 : 200,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+    // Never framed: a click here grants an agent the person's identity.
+    headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": NEVER_FRAMED },
   });
 }
 
@@ -333,8 +335,9 @@ async function handleAuthorize(request: Request, deps: OAuthDeps): Promise<Respo
     return consentResponse({ clientName: client.name, email: session.email, params: passthrough });
   }
 
-  // POST with a live session: the decision (same-origin form + SameSite
-  // cookie makes cross-site forgery a non-starter)
+  // POST with a live session: the decision. The form is same-origin, and a
+  // cross-site POST arrives without the session (workers/framing.ts strips
+  // it in workers/app.ts), so it lands on the sign-in page, not here.
   if (params.get("decision") !== "approve") {
     return redirectWith(redirectUri, { error: "access_denied" }, state);
   }

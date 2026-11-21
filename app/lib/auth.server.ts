@@ -202,13 +202,19 @@ export async function sessionFromRequest(request: Request, secret: string): Prom
   return token ? verifySessionToken(token, secret) : null;
 }
 
-export function sessionCookieHeader(token: string, maxAge: number, secure: boolean): string {
+/**
+ * The session cookie. `sameSite` is Lax unless the instance names embedding
+ * hosts (workers/framing.ts, sessionSameSite), when a framed page needs None;
+ * None is only ever sent with Secure.
+ */
+export function sessionCookieHeader(token: string, maxAge: number, secure: boolean, sameSite: "Lax" | "None" = "Lax"): string {
+  const site = sameSite === "None" && secure ? "None" : "Lax";
   const secureFlag = secure ? "; Secure" : "";
-  return `${SESSION_COOKIE}=${token}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Lax${secureFlag}`;
+  return `${SESSION_COOKIE}=${token}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=${site}${secureFlag}`;
 }
 
-export function clearSessionCookieHeader(secure: boolean): string {
-  return sessionCookieHeader("", 0, secure);
+export function clearSessionCookieHeader(secure: boolean, sameSite: "Lax" | "None" = "Lax"): string {
+  return sessionCookieHeader("", 0, secure, sameSite);
 }
 
 /** Same-origin guard on credential-posting endpoints (/auth/google, consent). */

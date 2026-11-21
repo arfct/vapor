@@ -24,6 +24,7 @@ import {
   principalFor,
   type VerifiedIdentity,
 } from "../app/lib/auth.server";
+import { sessionSameSite, upgradeMarkerCookie } from "./framing";
 
 /** The subset of the DocumentAgent RPC surface handleRawMarkdown calls. */
 export interface MarkdownStub {
@@ -274,6 +275,11 @@ export interface AuthDeps {
     info: { displayName: string; avatar?: string; email?: string; legacyPrincipal?: string },
   ) => Promise<{ profile: AuthProfile }>;
   getProfile: (principal: string) => Promise<{ profile: AuthProfile | null }>;
+  /**
+   * The instance names embedding hosts (EMBED_HOSTS), so the session cookie
+   * is SameSite=None over https for a framed page (workers/framing.ts).
+   */
+  framed?: boolean;
   /** A typed address to the person behind it; see Registry.resolveEmail. */
   resolveEmail?: (
     requester: string,
@@ -291,11 +297,10 @@ export interface AuthProfile {
   avatar: string | null;
 }
 
-function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json", ...headers },
-  });
+function json(body: unknown, status = 200, headers: Record<string, string> = {}, setCookies: string[] = []): Response {
+  const out = new Headers({ "Content-Type": "application/json", ...headers });
+  for (const cookie of setCookies) out.append("Set-Cookie", cookie);
+  return new Response(JSON.stringify(body), { status, headers: out });
 }
 
 /**
@@ -325,6 +330,7 @@ export async function handleAuth(request: Request, deps: AuthDeps): Promise<Resp
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/auth/")) return null;
   const secure = url.protocol === "https:";
+  const sameSite = sessionSameSite(secure, deps.framed ?? false);
 
   // Which providers this instance offers. The client renders a button per
   // non-empty id; an instance with neither is anonymous-only.
@@ -365,7 +371,10 @@ export async function handleAuth(request: Request, deps: AuthDeps): Promise<Resp
   }
 
   if (request.method === "POST" && url.pathname === "/auth/logout") {
-    return json({ ok: true }, 200, { "Set-Cookie": clearSessionCookieHeader(secure) });
+    // The upgrade marker goes with the session, so a later sign-in starts clean.
+    const clear = [clearSessionCookieHeader(secure, sameSite)];
+    if (secure) clear.push(upgradeMarkerCookie(0));
+    return json({ ok: true }, 200, {}, clear);
   }
 
   /** Mints the session for a verified identity and answers the sign-in POST. */
@@ -377,11 +386,10 @@ export async function handleAuth(request: Request, deps: AuthDeps): Promise<Resp
     const email = verified.email.toLowerCase();
     const { profile } = await deps.upsertProfile(principal, { ...info, email });
     const token = await mintSessionToken({ principal, email }, deps.secret, SESSION_TTL_SECONDS);
-    return json(
-      { signedIn: true, uid: profile.uid, displayName: profile.displayName },
-      200,
-      { "Set-Cookie": sessionCookieHeader(token, SESSION_TTL_SECONDS, secure) },
-    );
+    // A None cookie is born upgraded, so the first-party load never re-sets it.
+    const set = [sessionCookieHeader(token, SESSION_TTL_SECONDS, secure, sameSite)];
+    if (sameSite === "None") set.push(upgradeMarkerCookie(SESSION_TTL_SECONDS));
+    return json({ signedIn: true, uid: profile.uid, displayName: profile.displayName }, 200, {}, set);
   }
 
   if (request.method === "POST" && url.pathname === "/auth/google") {

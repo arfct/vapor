@@ -8,7 +8,7 @@ Work is tracked in GitHub issues on this repository; branches are `feat/<issue>-
 
 ### Portability rule
 
-Nothing in `app/`, `agents/`, or `workers/` may name a host or a repository. The origin comes from the request (`url.origin`, or the root loader's `site` via `useSite()` in components); the rest comes from the optional vars `PUBLIC_ORIGIN`, `REDIRECT_HOSTS`, `OPERATOR_NAME`, and `SOURCE_URL`, resolved in `app/shared/site.ts`. The one allowed literal is the reference origin in `plugin/skills/vapor/SKILL.md`, which `workers/routes.ts` rewrites when serving `/skill.md`. Instance-specific config (domains, client ids) lives in `deploy/*.jsonc`, never in the generic `wrangler.jsonc`; `tests/unit/deploy-config.test.ts` keeps the two describing the same Worker.
+Nothing in `app/`, `agents/`, or `workers/` may name a host or a repository. The origin comes from the request (`url.origin`, or the root loader's `site` via `useSite()` in components); the rest comes from the optional vars `PUBLIC_ORIGIN`, `REDIRECT_HOSTS`, `OPERATOR_NAME`, `SOURCE_URL`, and `EMBED_HOSTS` (who may frame the instance; #121), resolved in `app/shared/site.ts`. The one allowed literal is the reference origin in `plugin/skills/vapor/SKILL.md`, which `workers/routes.ts` rewrites when serving `/skill.md`. Instance-specific config (domains, client ids) lives in `deploy/*.jsonc`, never in the generic `wrangler.jsonc`; `tests/unit/deploy-config.test.ts` keeps the two describing the same Worker.
 
 ### Start of Session
 

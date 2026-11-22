@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import type { Editor } from "@tiptap/core";
 import { EditorState } from "@tiptap/pm/state";
 import { filterSlashItems, slashRows, slashAllowed, SLASH_ITEMS } from "~/lib/slash-commands";
 import { inCode } from "~/lib/mention-suggestion";
@@ -62,5 +63,60 @@ describe("where popups may open", () => {
     // Offset of the `x` inside the code span: "see " is 4 chars, paragraph opens at 0.
     expect(inCode(inline, 6)).toBe(true);
     expect(inCode(inline, 2)).toBe(false);
+  });
+});
+
+describe("slash item commands", () => {
+  /** A stand-in editor whose chain() records each command and its args. */
+  function recordingEditor() {
+    const calls: unknown[][] = [];
+    const chain: Record<string, (...args: unknown[]) => unknown> = new Proxy(
+      {},
+      {
+        get: (_t, prop: string) => (...args: unknown[]) => {
+          calls.push([prop, ...args]);
+          return chain;
+        },
+      },
+    );
+    return { editor: { chain: () => chain } as unknown as Editor, calls };
+  }
+
+  const expected: Record<string, unknown[]> = {
+    paragraph: ["setParagraph"],
+    h1: ["setHeading", { level: 1 }],
+    h2: ["setHeading", { level: 2 }],
+    h3: ["setHeading", { level: 3 }],
+    bullet: ["toggleBulletList"],
+    numbered: ["toggleOrderedList"],
+    task: ["toggleTaskList"],
+    quote: ["toggleBlockquote"],
+    divider: ["setHorizontalRule"],
+    code: ["toggleCodeBlock"],
+    table: ["insertTable", { rows: 3, cols: 3, withHeaderRow: true }],
+    agent: ["toggleAgentInstructions"],
+  };
+
+  for (const [id, command] of Object.entries(expected)) {
+    it(`${id} focuses and runs ${command[0]}`, () => {
+      const item = SLASH_ITEMS.find((i) => i.id === id)!;
+      const { editor, calls } = recordingEditor();
+      item.run(editor, {});
+      expect(calls).toEqual([["focus"], command, ["run"]]);
+    });
+  }
+
+  it("comment defers to the layout's action, if any", () => {
+    const item = SLASH_ITEMS.find((i) => i.id === "comment")!;
+    const { editor, calls } = recordingEditor();
+    const comment = vi.fn();
+    item.run(editor, { comment });
+    expect(comment).toHaveBeenCalledTimes(1);
+    expect(() => item.run(editor, {})).not.toThrow();
+    expect(calls).toEqual([]);
+  });
+
+  it("every item has a tested command", () => {
+    expect(SLASH_ITEMS.map((i) => i.id).sort()).toEqual([...Object.keys(expected), "comment"].sort());
   });
 });

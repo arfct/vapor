@@ -6,7 +6,7 @@
 // can be unset in a fresh environment regardless of what the type says.
 //
 // The optional per-instance vars (PUBLIC_ORIGIN, REDIRECT_HOSTS,
-// OPERATOR_NAME, SOURCE_URL) are documented in app/shared/site.ts and
+// OPERATOR_NAME, SOURCE_URL, EMBED_HOSTS) are documented in app/shared/site.ts and
 // docs/self-hosting.md; every one has a working default.
 interface Env {
   SESSION_SECRET: string;
@@ -22,6 +22,8 @@ interface Env {
   SEND_FROM_EMAIL?: string;
   /** OpenAI plugin portal domain-verification token, served at /.well-known/openai-apps-challenge (#103). */
   OPENAI_APPS_CHALLENGE?: string;
+  /** Space-separated CSP host sources allowed to frame this instance (#121); see app/shared/site.ts. */
+  EMBED_HOSTS?: string;
 }
 
 declare namespace Cloudflare {
@@ -37,5 +39,6 @@ declare namespace Cloudflare {
     RESEND_API_KEY?: string;
     SEND_FROM_EMAIL?: string;
     OPENAI_APPS_CHALLENGE?: string;
+    EMBED_HOSTS?: string;
   }
 }

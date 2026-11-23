@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { parseEmbedHosts } from "~/shared/embed-hosts";
 
 const root = join(__dirname, "..", "..");
 
@@ -50,9 +51,18 @@ describe.each(instances)("deploy/%s", (file) => {
   });
 
   it("only sets vars the app knows about", () => {
-    const known = ["GOOGLE_CLIENT_ID", "APPLE_CLIENT_ID", "SEND_FROM_EMAIL", "OPENAI_APPS_CHALLENGE", "PUBLIC_ORIGIN", "REDIRECT_HOSTS", "OPERATOR_NAME", "SOURCE_URL"];
+    const known = ["GOOGLE_CLIENT_ID", "APPLE_CLIENT_ID", "SEND_FROM_EMAIL", "OPENAI_APPS_CHALLENGE", "PUBLIC_ORIGIN", "REDIRECT_HOSTS", "OPERATOR_NAME", "SOURCE_URL", "EMBED_HOSTS"];
     for (const key of Object.keys((instance.vars as Record<string, string>) ?? {})) {
       expect(known, key).toContain(key);
     }
+  });
+
+  it("names only well-formed embedding hosts, if any", () => {
+    const value = (instance.vars as Record<string, string> | undefined)?.EMBED_HOSTS;
+    if (value === undefined) return;
+    const sources = value.split(/\s+/).filter(Boolean);
+    expect(sources.length).toBeGreaterThan(0);
+    // Every entry survives parsing, so nothing in the var is silently dropped.
+    expect(parseEmbedHosts(value)).toEqual(sources);
   });
 });

@@ -22,6 +22,10 @@ import HeaderMenu from "~/components/HeaderMenu";
 import FacePile from "~/components/FacePile";
 import CommentRail from "~/components/CommentRail";
 import CommentSheet from "~/components/CommentSheet";
+import { documentContext, useEmbedContext } from "~/lib/embed-context";
+import { parseDialog, parseThreadParam, readParam, replaceUrl, setParam, type DialogName } from "~/lib/view-url";
+import { isFramed, signInFromFrame, useNeedsStorageAccess } from "~/lib/framed";
+import { notifyAuthChanged, useSession } from "~/lib/useSession";
 
 /**
  * The two places a vapor editor appears. A "doc" lives at /:id behind a
@@ -33,6 +37,8 @@ export type Surface =
   | { kind: "home"; fallbackMarkdown: string };
 
 const HEADER_STROKE_SCROLL_PX = 100;
+/** How long a `?thread=` waits, once the document has synced, for its thread to appear. */
+const THREAD_RESTORE_MS = 3000;
 
 async function createDocument(content: string, threads: ThreadData[]): Promise<string> {
   const id = generateDocumentId();
@@ -51,6 +57,7 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     threads,
     activeThreadId,
     showPreview,
+    setActiveThreadId,
     handleEditorReady,
     handleCommentClick,
     commentHighlight,
@@ -75,9 +82,8 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     if (surface.kind !== "doc") return;
     document.title = title ? `${title} · vapor` : "vapor";
     const path = documentPath(surface.id, title);
-    if (window.location.pathname !== path) {
-      window.history.replaceState(window.history.state, "", `${path}${window.location.search}${window.location.hash}`);
-    }
+    // replaceUrl also tells an embedding host the address changed (#121).
+    replaceUrl(`${path}${window.location.search}${window.location.hash}`);
   }, [surface, title]);
   // A document the visitor just created gets focus so they can type at once.
   const fresh = Boolean((useLocation().state as { fresh?: boolean } | null)?.fresh);
@@ -87,7 +93,6 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   const chromeRef = useRef<HTMLDivElement>(null);
   const [keyboardUp, setKeyboardUp] = useState(false);
   useVisualViewportFrame(chromeRef, setKeyboardUp);
-  const [agentsOpen, setAgentsOpen] = useState(false);
   // One comments panel, two presentations: a rail beside the document at
   // lg and up, a full-height sheet over it below. Open by default only where
   // the rail fits; the sheet renders client-side so narrow SSR shows nothing.
@@ -124,6 +129,88 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [openCommentInput]);
   const isHome = surface.kind === "home";
+
+  // One dialog at a time, and the open one is in the URL: `?dialog=history`
+  // (#121). Read after mount, since the server can't see the query.
+  const [dialog, setDialog] = useState<DialogName | null>(null);
+  const closeDialog = useCallback(() => setDialog(null), []);
+  const agentsOpen = dialog === "invite";
+  const signInOpen = dialog === "signin";
+  const sendOpen = dialog === "send";
+  const newOpen = dialog === "new";
+  const historyOpen = dialog === "history";
+  const dialogRestored = useRef(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDialog(parseDialog(readParam("dialog"), surface.kind === "doc"));
+  }, [surface.kind]);
+  useEffect(() => {
+    // The first run sees the state from before the restore above lands.
+    if (!dialogRestored.current) {
+      dialogRestored.current = true;
+      return;
+    }
+    if (readParam("dialog") !== dialog) setParam("dialog", dialog);
+  }, [dialog]);
+
+  // The open comment thread is in the URL too: `?thread=t-…`. On load it
+  // waits for the threads to arrive, then opens (Editor scrolls it into
+  // view); one that never turns up is dropped from the address.
+  const pendingThread = useRef<string | null>(null);
+  useEffect(() => {
+    pendingThread.current = parseThreadParam(readParam("thread"));
+  }, []);
+  useEffect(() => {
+    const pending = pendingThread.current;
+    if (!pending) return;
+    if (threads.some((t) => t.id === pending)) {
+      pendingThread.current = null;
+      setActiveThreadId(pending);
+      return;
+    }
+    if (!yjs.synced || !editorInstance) return;
+    const giveUp = window.setTimeout(() => {
+      if (pendingThread.current !== pending) return;
+      pendingThread.current = null;
+      setParam("thread", null);
+    }, THREAD_RESTORE_MS);
+    return () => clearTimeout(giveUp);
+  }, [threads, yjs.synced, editorInstance, setActiveThreadId]);
+  useEffect(() => {
+    if (pendingThread.current) {
+      // Someone opened another thread before the one in the URL arrived.
+      if (!activeThreadId || activeThreadId === pendingThread.current) return;
+      pendingThread.current = null;
+    }
+    if (readParam("thread") !== activeThreadId) setParam("thread", activeThreadId);
+  }, [activeThreadId]);
+
+  // What an embedding host is told is on screen (#121): the document and
+  // the open thread, by the ids the MCP tools take. The tour has no id the
+  // API knows, so it reports its title alone.
+  const activeThread = activeThreadId ? threads.find((t) => t.id === activeThreadId) ?? null : null;
+  useEmbedContext(
+    surface.kind === "doc"
+      ? documentContext({ id: surface.id, title }, activeThread ? { id: activeThread.id, commentText: activeThread.commentText } : null)
+      : { title: "vapor" },
+  );
+
+  // Sign-in from a frame (#121): Google and Apple refuse to run framed in
+  // many browsers, and a framed page may not see the person's cookies. So,
+  // framed and signed out, Sign in asks for storage access (and reloads with
+  // the session it lets through) or opens sign-in in a new tab, then reads
+  // the session again when the frame has the focus back.
+  const session = useSession();
+  const [framed, setFramed] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFramed(isFramed());
+  }, []);
+  const needsStorageAccess = useNeedsStorageAccess(framed);
+  const openSignIn = useCallback(() => {
+    if (framed && !session?.signedIn) signInFromFrame(needsStorageAccess, notifyAuthChanged);
+    else setDialog("signin");
+  }, [framed, session?.signedIn, needsStorageAccess]);
   // The tour's cast is fictional; those who wrote within a day of the
   // newest comment count as present so the pile demonstrates what it's
   // for, while the older commenter reads as idle.
@@ -136,19 +223,13 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   }, [isHome, threads]);
 
   const toggleComments = useCallback(() => setCommentsOpen((v) => !v), []);
-  const [signInOpen, setSignInOpen] = useState(false);
-  const closeSignIn = useCallback(() => setSignInOpen(false), []);
-  const [sendOpen, setSendOpen] = useState(false);
-  const closeSend = useCallback(() => setSendOpen(false), []);
   // Something elsewhere (a dropped file while signed out) asks for sign-in.
   useEffect(() => {
-    const open = () => setSignInOpen(true);
+    const open = () => setDialog("signin");
     window.addEventListener(SIGN_IN_EVENT, open);
     return () => window.removeEventListener(SIGN_IN_EVENT, open);
   }, []);
-  const inviteAgent = () => setAgentsOpen(true);
-  const [newOpen, setNewOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const inviteAgent = () => setDialog("invite");
   const { attach } = useAttachments({
     docId: surface.kind === "doc" ? surface.id : "",
     enabled: surface.kind === "doc",
@@ -172,10 +253,10 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
   // tour shows how to connect without a roster), the New document dialog,
   // and the Sign in dialog.
   const handleAppLink = useCallback((url: string) => {
-    if (url === "vapor://invite") setAgentsOpen(true);
-    if (url === "vapor://new") setNewOpen(true);
-    if (url === "vapor://signin") setSignInOpen(true);
-  }, []);
+    if (url === "vapor://invite") setDialog("invite");
+    if (url === "vapor://new") setDialog("new");
+    if (url === "vapor://signin") openSignIn();
+  }, [openSignIn]);
 
   // A new document starts empty; the tour stays on the homepage. (A document
   // made from another's markdown keeps that document's attachment URLs,
@@ -240,18 +321,18 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
         {/* The tour has nothing to share; Create takes Share's place there
             and the menu's New document row steps aside for it. */}
         {isHome ? (
-          <button className="header-button" aria-label="Create" title="Create" onClick={() => setNewOpen(true)}>
+          <button className="header-button" aria-label="Create" title="Create" onClick={() => setDialog("new")}>
             <Icon name="add_2" />
           </button>
         ) : (
-          <ShareButton onInviteAgent={inviteAgent} onSendTo={isHome ? undefined : () => setSendOpen(true)} />
+          <ShareButton onInviteAgent={inviteAgent} onSendTo={isHome ? undefined : () => setDialog("send")} />
         )}
         <HeaderMenu
           comments={wide ? undefined : { open: commentsOpen, onToggle: toggleComments }}
-          onNewDocument={isHome ? undefined : () => setNewOpen(true)}
-          onHistory={isHome ? undefined : () => setHistoryOpen(true)}
-          onSendTo={isHome ? undefined : () => setSendOpen(true)}
-          onSignIn={() => setSignInOpen(true)}
+          onNewDocument={isHome ? undefined : () => setDialog("new")}
+          onHistory={isHome ? undefined : () => setDialog("history")}
+          onSendTo={isHome ? undefined : () => setDialog("send")}
+          onSignIn={openSignIn}
         />
       </header>
       {/* The comment sheet rides a fixed layer pinned to the visual viewport,
@@ -269,18 +350,18 @@ export default function DocumentLayout({ surface }: { surface: Surface }) {
 
       <AgentsPanel
         open={agentsOpen}
-        onClose={() => setAgentsOpen(false)}
+        onClose={closeDialog}
         docId={surface.kind === "doc" ? surface.id : undefined}
       />
       <NewDocumentDialog
         open={newOpen}
-        onClose={() => setNewOpen(false)}
+        onClose={closeDialog}
         onBlank={createBlankDocument}
         onFile={uploadFile}
       />
-      {surface.kind === "doc" && <HistoryDialog open={historyOpen} onClose={() => setHistoryOpen(false)} />}
-      <SignInDialog open={signInOpen} onClose={closeSignIn} />
-      {surface.kind === "doc" && <SendDialog open={sendOpen} onClose={closeSend} docId={surface.id} />}
+      {surface.kind === "doc" && <HistoryDialog open={historyOpen} onClose={closeDialog} />}
+      <SignInDialog open={signInOpen} onClose={closeDialog} />
+      {surface.kind === "doc" && <SendDialog open={sendOpen} onClose={closeDialog} docId={surface.id} />}
       {/* The page itself scrolls, so mobile browsers collapse their toolbar
           and let the text run under it. Half a screen at the foot so the end
           of the document can scroll clear of the keyboard. */}

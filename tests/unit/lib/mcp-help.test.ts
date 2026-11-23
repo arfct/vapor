@@ -6,6 +6,7 @@ const site: SiteConfig = {
   origin: "https://vapor.example",
   operatorName: null,
   sourceUrl: "https://github.com/someone/vapor",
+  embedHosts: [],
 };
 
 describe("mcpHelpHtml", () => {

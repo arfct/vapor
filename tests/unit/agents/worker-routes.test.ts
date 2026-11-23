@@ -522,6 +522,31 @@ describe("handleAuth", () => {
     expect(await missing?.json()).toEqual({ person: null });
   });
 
+  it("on an instance with embedding hosts, sign-in sets a SameSite=None session and its upgrade marker", async () => {
+    const res = await handleAuth(googlePost(), deps({ framed: true }));
+    const cookies = res?.headers.getSetCookie() ?? [];
+    expect(cookies[0]).toMatch(/^vp_session=[^;]+; .*SameSite=None; Secure$/);
+    expect(cookies[1]).toMatch(/^vp_session_none=1; .*SameSite=None; Secure$/);
+  });
+
+  it("on plain http, sign-in stays Lax even with embedding hosts", async () => {
+    const req = new Request("http://localhost:5173/auth/google", {
+      method: "POST",
+      headers: { Origin: "http://localhost:5173", "Content-Type": "application/json" },
+      body: JSON.stringify({ credential: "tok" }),
+    });
+    const cookies = (await handleAuth(req, deps({ framed: true })))?.headers.getSetCookie() ?? [];
+    expect(cookies).toHaveLength(1);
+    expect(cookies[0]).toContain("SameSite=Lax");
+  });
+
+  it("logout with embedding hosts clears the session and the marker", async () => {
+    const res = await handleAuth(new Request("https://vapor.fyi/auth/logout", { method: "POST" }), deps({ framed: true }));
+    const cookies = res?.headers.getSetCookie() ?? [];
+    expect(cookies.map((c) => c.split("=")[0])).toEqual(["vp_session", "vp_session_none"]);
+    expect(cookies.every((c) => c.includes("Max-Age=0") && c.includes("SameSite=None"))).toBe(true);
+  });
+
   it("logout clears the cookie", async () => {
     const res = await handleAuth(
       new Request("https://vapor.fyi/auth/logout", { method: "POST" }),

@@ -21,6 +21,8 @@ SESSION_SECRET=
 # REDIRECT_HOSTS=
 # OPERATOR_NAME=
 # SOURCE_URL=
+# Sites allowed to frame the app, as CSP host sources (app/shared/embed-hosts.ts).
+# EMBED_HOSTS=http://localhost:3000
 
 # Send to Kindle by email (docs/self-hosting.md). Both or neither.
 # RESEND_API_KEY=

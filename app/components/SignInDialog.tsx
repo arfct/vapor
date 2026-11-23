@@ -3,6 +3,7 @@ import Dialog from "~/components/ui/dialog";
 import { useSession, notifyAuthChanged } from "~/lib/useSession";
 import { useTheme } from "~/lib/useTheme";
 import { signInWithApple } from "~/lib/apple-signin";
+import { isFramed, signInFromFrame, useNeedsStorageAccess } from "~/lib/framed";
 
 declare global {
   interface Window {
@@ -54,6 +55,8 @@ function SignInBody({ onClose }: { onClose: () => void }) {
   const [providers, setProviders] = useState<Providers | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [appleBusy, setAppleBusy] = useState(false);
+  const [framed] = useState(isFramed);
+  const needsStorageAccess = useNeedsStorageAccess(framed);
   // State, not a ref: the host mounts a render after `open` flips, so the
   // effect must re-run once the element exists.
   const [googleHost, setGoogleHost] = useState<HTMLDivElement | null>(null);
@@ -145,6 +148,26 @@ function SignInBody({ onClose }: { onClose: () => void }) {
   }
 
   const none = providers !== null && !providers.googleClientId && !providers.appleClientId;
+
+  // Inside another site's frame the providers' own sign-in rarely runs
+  // (#121): one button asks for the person's cookies, or opens sign-in in a
+  // new tab, and the session is read again when the frame has the focus back.
+  if (framed) {
+    return (
+      <div className="space-y-5">
+        <p className="text-sm text-muted">
+          Optional. Signing in puts your name on your edits and comments; documents stay open to anyone with the link.
+        </p>
+        <button
+          type="button"
+          onClick={() => signInFromFrame(needsStorageAccess, notifyAuthChanged)}
+          className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded bg-ink text-sm font-medium text-paper transition-opacity hover:opacity-90"
+        >
+          {needsStorageAccess ? "Use your vapor sign-in" : "Sign in in a new tab"}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

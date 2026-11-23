@@ -14,6 +14,7 @@ function browserDefault(): SiteConfig {
     origin: typeof window !== "undefined" ? window.location.origin : "",
     operatorName: null,
     sourceUrl: UPSTREAM_SOURCE_URL,
+    embedHosts: [],
   };
 }
 

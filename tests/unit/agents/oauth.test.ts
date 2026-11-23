@@ -464,6 +464,8 @@ describe("oauth authorization server", () => {
     );
     expect(asBrowser?.status).toBe(400);
     expect(asBrowser?.headers.get("Content-Type")).toContain("text/html");
+    // The consent page is never framed, embedding hosts or not (#121).
+    expect(asBrowser?.headers.get("Content-Security-Policy")).toBe("frame-ancestors 'none'");
     const html = (await asBrowser?.text()) ?? "";
     expect(html).toContain("https://evil.example/cb");
     expect(html).toContain(REDIRECT);

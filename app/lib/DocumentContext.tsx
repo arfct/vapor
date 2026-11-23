@@ -12,6 +12,7 @@ import { mentionKey, parseMentionToken, rankMentionItems, type AgentRosterEntry,
 import type { MentionSourceRef } from "~/lib/mention-suggestion";
 import type { MentionTarget, MentionTargetsRef } from "~/lib/mention-highlight";
 import type { SlashActionsRef } from "~/lib/slash-commands";
+import { readParam, setParam } from "~/lib/view-url";
 
 export interface DocumentContextValue {
   docId: string;
@@ -124,6 +125,22 @@ export function DocumentProvider({
   const [commentHighlight, setCommentHighlight] = useState<{ from: number; to: number } | null>(null);
 
   const showPreview = previewToggled || previewHeld;
+
+  // The markdown view is a place: `?view=markdown` (#121). Read once after
+  // mount (the server can't see it), then kept in step with the toggle.
+  const previewRestored = useRef(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (readParam("view") === "markdown") setPreviewToggled(true);
+  }, []);
+  useEffect(() => {
+    // The first run sees the state from before the restore above lands.
+    if (!previewRestored.current) {
+      previewRestored.current = true;
+      return;
+    }
+    if ((readParam("view") === "markdown") !== previewToggled) setParam("view", previewToggled ? "markdown" : null);
+  }, [previewToggled]);
 
   const {
     threads,

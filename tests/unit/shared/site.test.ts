@@ -15,7 +15,16 @@ describe("siteForRequest", () => {
       origin: "http://localhost:5173",
       operatorName: null,
       sourceUrl: UPSTREAM_SOURCE_URL,
+      embedHosts: [],
     });
+  });
+
+  it("reads EMBED_HOSTS as host sources, dropping anything that could break out of the directive", () => {
+    const site = siteForRequest(
+      { EMBED_HOSTS: " https://host.example  https://*.preview.host.example\nhttp://localhost:* 'self' https://x.example; script-src * https://a.example/path" },
+      "https://vapor.example",
+    );
+    expect(site.embedHosts).toEqual(["https://host.example", "https://*.preview.host.example", "http://localhost:*"]);
   });
 
   it("prefers the request origin over PUBLIC_ORIGIN, so previews describe themselves", () => {

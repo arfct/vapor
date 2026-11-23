@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   isRouteErrorResponse,
   Link,
@@ -6,12 +7,15 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLocation,
 } from "react-router";
 
 import type { Route } from "./+types/root";
 import Fathom from "~/components/Fathom";
 import { getCloudflare } from "~/lib/cloudflare.server";
-import { SiteProvider } from "~/lib/site-context";
+import { SiteProvider, useSite } from "~/lib/site-context";
+import { notifyEmbedContext, startEmbedContext } from "~/lib/embed-context";
+import { installFramedLinks } from "~/lib/framed";
 import { siteForRequest } from "~/shared/site";
 import "./app.css";
 
@@ -79,9 +83,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function App({ loaderData }: Route.ComponentProps) {
   return (
     <SiteProvider site={loaderData.site}>
+      <EmbedHost />
       <Outlet />
     </SiteProvider>
   );
+}
+
+/**
+ * Tells an embedding host what is on screen, when the page is framed by one
+ * of EMBED_HOSTS or shown in an app's WebView (app/lib/embed-context.ts),
+ * and opens links to other sites in a new tab from a frame (#121). Every
+ * router navigation is a reason to send.
+ */
+function EmbedHost() {
+  const { embedHosts } = useSite();
+  const key = embedHosts.join(" ");
+  useEffect(() => startEmbedContext(key ? key.split(" ") : []), [key]);
+  useEffect(() => installFramedLinks(), []);
+  const location = useLocation();
+  useEffect(() => {
+    notifyEmbedContext();
+  }, [location.key, location.pathname, location.search, location.hash]);
+  return null;
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

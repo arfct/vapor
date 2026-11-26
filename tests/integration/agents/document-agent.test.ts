@@ -18,6 +18,7 @@ import { threadIdForComment } from "~/shared/thread-id";
 import { YjsProvider } from "~/lib/yjs-provider";
 import { MAX_AGENTS_PER_DOC, type AgentCapability, type AgentIdentity } from "~/shared/agent-protocol";
 import { yDocToMarkdown } from "~/shared/rich-markdown";
+import { RATE_LIMITS } from "~/shared/rate-limit-policy";
 
 /* ------------------------------------------------------------------ */
 /*  Mock Agent base class                                              */
@@ -2911,12 +2912,12 @@ describe("DocumentAgent", () => {
 
       // Pre-fill this agent's rate-limit log at the per-minute mutation
       // cap, driving checkRateLimit's denial path directly rather than via
-      // 10 real calls.
+      // that many real calls.
       const rosterRows = mockTables.get("roster") ?? [];
       const row = rosterRows.find((r) => r.name === "scribe")!;
       const now = Date.now();
       row.recent_mutations = JSON.stringify(
-        Array.from({ length: 10 }, () => ({ at: now, chars: 1 })),
+        Array.from({ length: RATE_LIMITS.principal.mutationsPerMinute }, () => ({ at: now, chars: 1 })),
       );
 
       const commentResult = await agent.agentComment(id, { anchor, text: "hi" });
@@ -2924,6 +2925,25 @@ describe("DocumentAgent", () => {
 
       const replyResult = await agent.agentReply(id, { threadId: "whatever", text: "hi" });
       expect(replyResult).toMatchObject({ error: { code: "rate_limited" } });
+    });
+
+    it("gives a signed-in agent the principal limits and an anonymous agent the anonymous ones", async () => {
+      const { agent, id } = await setup(["comment"]);
+      const anon = identity({ kind: "anonymous", id: "anon:s1", name: "visitor", owner: null, caps: ["comment"] });
+      const read = await agent.agentRead(id);
+      const anchor = ("blocks" in read ? read.blocks : [])[0].anchor;
+      await agent.agentRead(anon);
+
+      // Each agent has written just past the anonymous hourly budget, in one
+      // earlier edit, within the hour.
+      const rosterRows = mockTables.get("roster") ?? [];
+      const past = JSON.stringify([{ at: Date.now() - 1000, chars: RATE_LIMITS.anonymous.charsPerHour }]);
+      for (const row of rosterRows) row.recent_mutations = past;
+
+      expect(await agent.agentComment(id, { anchor, text: "signed in" })).not.toHaveProperty("error");
+      expect(await agent.agentComment(anon, { anchor, text: "anonymous" })).toMatchObject({
+        error: { code: "rate_limited", message: expect.stringContaining("fits in") },
+      });
     });
 
     it("prunes events on doc expiry (alarm)", async () => {

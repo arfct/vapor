@@ -122,8 +122,6 @@ export function isReservedSlug(slug: string): boolean {
  */
 export const MAX_AGENTS_PER_DOC = 16;
 export const DEFAULT_CAPABILITIES: AgentCapability[] = ["suggest", "comment"];
-export const RATE_LIMIT_MUTATIONS_PER_MIN = 10;
-export const RATE_LIMIT_CHARS_PER_HOUR = 20_000;
 
 export function blockHash(text: string): string {
   return fnv1a32Hex(text);

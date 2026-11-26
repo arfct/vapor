@@ -16,9 +16,8 @@ import {
   AGENT_NAME_RE,
   findMentions,
   MAX_AGENTS_PER_DOC,
-  RATE_LIMIT_MUTATIONS_PER_MIN,
-  RATE_LIMIT_CHARS_PER_HOUR,
 } from "../app/shared/agent-protocol";
+import { checkMutation, RATE_LIMITS, type MutationLogEntry } from "../app/shared/rate-limit-policy";
 import {
   getBlocks,
   getAgentInstructions,
@@ -385,12 +384,6 @@ interface RosterRow {
   owner_uid?: string | null;
   /** The connecting client's display name, e.g. "Claude". */
   client?: string | null;
-}
-
-/** One recorded mutation, used for rate-limiting agent writes. */
-interface MutationLogEntry {
-  at: number;
-  chars: number;
 }
 
 function rowToRosterEntry(row: RosterRow): AgentRosterEntry {
@@ -2000,21 +1993,16 @@ class DocumentAgent extends Agent {
   }
 
   /**
-   * Checks and records rate-limit usage for a token ahead of a mutation of
-   * `chars` characters. Denies with `rate_limited` when the token has made
-   * more than `RATE_LIMIT_MUTATIONS_PER_MIN` mutations in the last 60s, or
-   * written more than `RATE_LIMIT_CHARS_PER_HOUR` characters in the last
-   * hour. On success, records this attempt. The log is pruned to the last
-   * hour on every check regardless of outcome.
+   * Checks and records rate-limit usage for an agent ahead of a mutation of
+   * `chars` characters, against its kind's limits (`RATE_LIMITS`; policy in
+   * `app/shared/rate-limit-policy.ts`). Denies with `rate_limited`, saying
+   * when the edit fits. The log is pruned to the last hour on every check
+   * regardless of outcome; a refused attempt is not recorded.
    */
-  private async checkRateLimit(identityId: string, chars: number): Promise<{ error: AgentError } | null> {
+  private async checkRateLimit(identity: AgentIdentity, chars: number): Promise<{ error: AgentError } | null> {
     const rows = this.sql<{ recent_mutations: string | null }>`
-      SELECT recent_mutations FROM roster WHERE identity_id = ${identityId}
+      SELECT recent_mutations FROM roster WHERE identity_id = ${identity.id}
     `;
-
-    const now = Date.now();
-    const hourAgo = now - 60 * 60 * 1000;
-    const minuteAgo = now - 60 * 1000;
 
     const raw = rows[0]?.recent_mutations;
     // A corrupt log is treated as empty rather than thrown from: it is
@@ -2029,19 +2017,10 @@ class DocumentAgent extends Agent {
         console.warn("Discarding unparseable rate-limit log for an agent token");
       }
     }
-    const pruned = log.filter((e) => e.at > hourAgo);
 
-    const recentCount = pruned.filter((e) => e.at > minuteAgo).length;
-    const totalChars = pruned.reduce((sum, e) => sum + e.chars, 0);
-
-    if (recentCount >= RATE_LIMIT_MUTATIONS_PER_MIN || totalChars + chars > RATE_LIMIT_CHARS_PER_HOUR) {
-      this.sql`UPDATE roster SET recent_mutations = ${JSON.stringify(pruned)} WHERE identity_id = ${identityId}`;
-      return { error: { code: "rate_limited", message: "Agent mutation rate limit exceeded" } };
-    }
-
-    pruned.push({ at: now, chars });
-    this.sql`UPDATE roster SET recent_mutations = ${JSON.stringify(pruned)} WHERE identity_id = ${identityId}`;
-    return null;
+    const verdict = checkMutation(log, chars, RATE_LIMITS[identity.kind], Date.now());
+    this.sql`UPDATE roster SET recent_mutations = ${JSON.stringify(verdict.log)} WHERE identity_id = ${identity.id}`;
+    return verdict.allowed ? null : { error: { code: "rate_limited", message: verdict.message } };
   }
 
   /**
@@ -2516,7 +2495,7 @@ class DocumentAgent extends Agent {
       };
     }
 
-    const rateLimited = await this.checkRateLimit(identity.id, args.markdown.length);
+    const rateLimited = await this.checkRateLimit(identity, args.markdown.length);
     if (rateLimited) return rateLimited;
 
     return this.dispatchMutation(verified.entry.name, args.pace, {
@@ -2560,7 +2539,7 @@ class DocumentAgent extends Agent {
     // (#59). A range that doesn't resolve is charged in full and fails
     // properly at dispatch.
     const charge = replaceCharge(doc, args.from, args.to, args.markdown);
-    const rateLimited = await this.checkRateLimit(identity.id, charge);
+    const rateLimited = await this.checkRateLimit(identity, charge);
     if (rateLimited) return rateLimited;
 
     return this.dispatchMutation(verified.entry.name, args.pace, {
@@ -2636,7 +2615,7 @@ class DocumentAgent extends Agent {
     }
 
     const charge = patchCharge(ops);
-    const rateLimited = await this.checkRateLimit(identity.id, charge);
+    const rateLimited = await this.checkRateLimit(identity, charge);
     if (rateLimited) return rateLimited;
 
     // Every node built before the transaction opens, for the same reason the
@@ -2692,7 +2671,7 @@ class DocumentAgent extends Agent {
     const verified = await this.verifyIdentity(identity, "suggest");
     if ("error" in verified) return verified;
 
-    const rateLimited = await this.checkRateLimit(identity.id, args.find.length + args.replacement.length);
+    const rateLimited = await this.checkRateLimit(identity, args.find.length + args.replacement.length);
     if (rateLimited) return rateLimited;
 
     return this.dispatchMutation(verified.entry.name, args.pace, {
@@ -2767,7 +2746,7 @@ class DocumentAgent extends Agent {
     if (typeof args.text !== "string" || args.text.trim().length === 0) {
       return { error: { code: "invalid_params", message: "text must not be empty" } };
     }
-    const rateLimited = await this.checkRateLimit(identity.id, args.text.length);
+    const rateLimited = await this.checkRateLimit(identity, args.text.length);
     if (rateLimited) return rateLimited;
 
     const { doc } = this.ensureInitialised();
@@ -2880,7 +2859,7 @@ class DocumentAgent extends Agent {
     if (typeof args.text !== "string" || args.text.trim().length === 0) {
       return { error: { code: "invalid_params", message: "text must not be empty" } };
     }
-    const rateLimited = await this.checkRateLimit(identity.id, args.text.length);
+    const rateLimited = await this.checkRateLimit(identity, args.text.length);
     if (rateLimited) return rateLimited;
 
     const { doc } = this.ensureInitialised();
@@ -2970,7 +2949,7 @@ class DocumentAgent extends Agent {
     const verified = await this.verifyIdentity(identity, "comment");
     if ("error" in verified) return verified;
 
-    const rateLimited = await this.checkRateLimit(identity.id, args.text.length);
+    const rateLimited = await this.checkRateLimit(identity, args.text.length);
     if (rateLimited) return rateLimited;
 
     const { doc } = this.ensureInitialised();
